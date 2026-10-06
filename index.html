@@ -146,6 +146,7 @@ canvas#cv{width:100%;aspect-ratio:3/4;border-radius:18px;background:#fffdf5;touc
 .sheet{position:fixed;inset:0;z-index:40;background:rgba(20,0,50,.5);display:flex;align-items:flex-end;justify-content:center}
 .sheet .card{width:100%;max-width:560px;border-radius:28px 28px 0 0;padding-bottom:calc(env(safe-area-inset-bottom) + 20px);max-height:90vh;overflow:auto}
 .net{font-size:12px;color:#fff;opacity:.85;text-align:center;margin-top:16px;font-weight:700}
+.net.warn{opacity:1;font-size:14px;background:rgba(0,0,0,.28);padding:10px 14px;border-radius:14px}
 .langsw{display:flex;justify-content:flex-end;gap:6px}
 .langsw button{border:0;border-radius:12px;padding:7px 12px;font:inherit;font-size:14px;cursor:pointer;background:rgba(255,255,255,.25);color:#fff}
 .langsw button.on{background:#fff;color:var(--violet)}
@@ -173,7 +174,7 @@ canvas#cv{width:100%;aspect-ratio:3/4;border-radius:18px;background:#fffdf5;touc
       <button class="btn g w" id="bHaveCode" data-i="haveCode"></button>
       <div id="codeBox" class="hidden">
         <label class="l" data-i="pairCode"></label>
-        <input class="f" id="inCode" placeholder="XXXX-XXXX-2" autocapitalize="characters" autocomplete="off">
+        <input class="f" id="inCode" placeholder="XXXX-XXXX" autocapitalize="characters" autocomplete="off">
         <div style="height:12px"></div>
         <button class="btn c w" id="bJoin" data-i="connect"></button>
       </div>
@@ -236,12 +237,23 @@ canvas#cv{width:100%;aspect-ratio:3/4;border-radius:18px;background:#fffdf5;touc
     <label class="l" data-i="setPtCodeL"></label>
     <div class="code" id="setPtCode" style="font-size:22px"></div>
     <button class="btn y w" id="bShare2" data-i="sendInvite"></button>
-    <label class="l" data-i="setMyCodeL"></label>
-    <div class="code" id="setMyCode" style="font-size:22px"></div>
     <div style="height:8px"></div>
     <button class="btn w" id="bSaveSet" data-i="save"></button>
     <div style="height:12px"></div>
     <button class="btn g w" id="bUnpair" data-i="unpair"></button>
+  </div>
+</div>
+<div class="sheet hidden" id="shareSheet">
+  <div class="card">
+    <div class="ghead"><h2 data-i="shareTitle"></h2><button class="btn g" id="bCloseShare" style="padding:10px 14px">✕</button></div>
+    <div class="small" data-i="shareHelp"></div>
+    <div class="code" id="shareCode"></div>
+    <div class="row"><a class="btn c" id="shTg" target="_blank" rel="noopener" style="text-decoration:none">✈️ Telegram</a><a class="btn" id="shWa" target="_blank" rel="noopener" style="text-decoration:none;background:linear-gradient(135deg,#25d366,#128c7e);box-shadow:0 5px 0 #0b6b5a">💬 WhatsApp</a></div>
+    <div style="height:12px"></div>
+    <button class="btn y w" id="shCopy" data-i="copyInvite"></button>
+    <div style="height:12px"></div>
+    <button class="btn g w hidden" id="shMore" data-i="shareMore"></button>
+    <textarea class="f hidden" id="shareText" rows="4" style="margin-top:12px;font-size:14px;user-select:text;-webkit-user-select:text" readonly></textarea>
   </div>
 </div>
 <div class="toast" id="toast"></div>
@@ -269,15 +281,17 @@ ru: {
   app: 'Дуэт', tagline: 'Мини-игры вдвоём с видеосвязью', yourName: 'Как тебя зовут?', namePh: 'Имя', yourAva: 'Твой аватар',
   createPair: '✨ Создать пару', haveCode: 'У меня есть код от друга', pairCode: 'Код пары', connect: 'Подключиться',
   inviteTitle: 'Пригласи друга', inviteSub: 'Это нужно сделать один раз. Дальше вы всегда будете видеть, когда другой онлайн.',
-  codeForFriend: 'Код для друга:', sendInvite: '📤 Отправить приглашение', inviteDone: 'Готово, в игру!',
+  codeForFriend: 'Код пары (один на двоих):', sendInvite: '📤 Отправить приглашение', inviteDone: 'Готово, в игру!',
   inviteHelp: 'Друг открывает ссылку или вводит код в приложении «Дуэт» → «У меня есть код от друга».',
   enableSound: '🔊 Включить звук', pickGame: 'Выбери игру', settings: 'Настройки', lang: 'Язык / Language', name: 'Имя', avatar: 'Аватар',
-  setPtCodeL: 'Код для друга (если он ещё не подключён или сменил телефон)', setMyCodeL: 'Мой код (чтобы войти с другого устройства)',
+  setPtCodeL: 'Код пары — один и тот же для вас обоих. Его можно ввести и на новом телефоне',
+  shareTitle: 'Приглашение', shareHelp: 'Отправь другу ссылку или просто продиктуй код:', copyInvite: '📋 Скопировать приглашение', shareMore: '📤 Другие приложения',
+  netSlow: '⚠️ Нет связи с сервером соединения. Проверь интернет или попробуй другую сеть (Wi‑Fi / мобильный интернет).',
   save: 'Сохранить', unpair: 'Отвязать пару и начать заново',
   friend: 'Друг', shareText: (n, c) => `${n} зовёт тебя играть в «Дуэт» 🎮💞\nКод пары: ${c}\n`,
   copied: 'Приглашение скопировано 📋', copyPrompt: 'Скопируй приглашение:', invitedBy: n => `${n} приглашает тебя в игру! Введи имя 😊`,
-  enterName: 'Сначала введи имя', badCode: 'Неверный код. Пример: ABCD-EFGH-2', saved: 'Сохранено ✅', unpairQ: 'Отвязать пару? Нужно будет заново обменяться кодом.',
-  netConnecting: 'Подключение к сети…', netOk: '🟢 Ты в сети', netReconnect: 'Переподключение…', netDup: 'Подключаемся… (приложение открыто ещё где-то?)',
+  enterName: 'Сначала введи имя', badCode: 'Неверный код. Пример: ABCD-EFGH', saved: 'Сохранено ✅', unpairQ: 'Отвязать пару? Нужно будет заново обменяться кодом.',
+  netConnecting: 'Подключение к сети…', netOk: '🟢 Ты в сети', netReconnect: 'Переподключение…', netDup: '⚠️ Код пары уже используется на двух других устройствах. Закрой «Дуэт» там, где он не нужен.',
   netErr: 'Нет связи с сервером, пробуем снова…', netFail: 'Ошибка: сетевой модуль не загрузился',
   cameOnline: n => `${n} в сети!`, lost: 'Связь прервалась 😢', wentOffline: n => `${n} вышел(а) из сети`,
   noCam: 'Нет доступа к камере. Разреши его в настройках браузера.', micOff: 'Микрофон выключен 🔇', micOn: 'Микрофон включён 🎤',
@@ -306,15 +320,17 @@ en: {
   app: 'Duet', tagline: 'Mini-games for two with video chat', yourName: "What's your name?", namePh: 'Name', yourAva: 'Your avatar',
   createPair: '✨ Create a pair', haveCode: 'I have a code from a friend', pairCode: 'Pair code', connect: 'Connect',
   inviteTitle: 'Invite a friend', inviteSub: "You only do this once. After that you'll always see when the other one is online.",
-  codeForFriend: 'Code for your friend:', sendInvite: '📤 Send invite', inviteDone: "Done, let's play!",
+  codeForFriend: 'Pair code (shared by both of you):', sendInvite: '📤 Send invite', inviteDone: "Done, let's play!",
   inviteHelp: 'Your friend opens the link or enters the code in Duet → "I have a code from a friend".',
   enableSound: '🔊 Turn on sound', pickGame: 'Pick a game', settings: 'Settings', lang: 'Language / Язык', name: 'Name', avatar: 'Avatar',
-  setPtCodeL: "Code for your friend (if they haven't joined yet or got a new phone)", setMyCodeL: 'My code (to sign in on another device)',
+  setPtCodeL: 'Pair code — the same for both of you. You can also enter it on a new phone',
+  shareTitle: 'Invite', shareHelp: 'Send your friend the link or just tell them the code:', copyInvite: '📋 Copy invite', shareMore: '📤 Other apps',
+  netSlow: "⚠️ Can't reach the connection server. Check your internet or try another network (Wi‑Fi / mobile data).",
   save: 'Save', unpair: 'Unpair and start over',
   friend: 'Friend', shareText: (n, c) => `${n} invites you to play Duet 🎮💞\nPair code: ${c}\n`,
   copied: 'Invite copied 📋', copyPrompt: 'Copy the invite:', invitedBy: n => `${n} invites you to play! Enter your name 😊`,
-  enterName: 'Enter your name first', badCode: 'Invalid code. Example: ABCD-EFGH-2', saved: 'Saved ✅', unpairQ: "Unpair? You'll need to exchange codes again.",
-  netConnecting: 'Connecting…', netOk: "🟢 You're online", netReconnect: 'Reconnecting…', netDup: 'Connecting… (is the app open somewhere else?)',
+  enterName: 'Enter your name first', badCode: 'Invalid code. Example: ABCD-EFGH', saved: 'Saved ✅', unpairQ: "Unpair? You'll need to exchange codes again.",
+  netConnecting: 'Connecting…', netOk: "🟢 You're online", netReconnect: 'Reconnecting…', netDup: '⚠️ This pair code is already in use on two other devices. Close Duet where you don\'t need it.',
   netErr: 'No connection to the server, retrying…', netFail: 'Error: network module failed to load',
   cameOnline: n => `${n} is online!`, lost: 'Connection lost 😢', wentOffline: n => `${n} went offline`,
   noCam: 'No camera access. Allow it in your browser settings.', micOff: 'Microphone off 🔇', micOn: 'Microphone on 🎤',
@@ -362,21 +378,30 @@ function confetti() { const cs = ['#ffd60a','#00d1ff','#f107a3','#7cff4f','#ff8a
 let S = {};
 function load() { try { S = JSON.parse(localStorage.getItem('duet') || '{}'); } catch (e) { S = {}; } }
 function save() { try { localStorage.setItem('duet', JSON.stringify(S)); } catch (e) {} }
-const isA = () => S.pair && S.pair.role === 'a';
-const myId = () => PREFIX + S.pair.id + '-' + S.pair.role;
+let ROLE = 'a';
+const isA = () => ROLE === 'a';
+const myId = () => PREFIX + S.pair.id + '-' + ROLE;
 const ptId = () => PREFIX + S.pair.id + '-' + (isA() ? 'b' : 'a');
-const fmtCode = (id, role) => id.slice(0, 4) + '-' + id.slice(4, 8) + '-' + (role === 'a' ? '1' : '2');
-const ptCode = () => fmtCode(S.pair.id, isA() ? 'b' : 'a');
-const myCode = () => fmtCode(S.pair.id, S.pair.role);
-function parseCode(s) { s = (s || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); if (s.length !== 9 || !/[12]$/.test(s)) return null; return { id: s.slice(0, 8), role: s[8] === '1' ? 'a' : 'b' }; }
+const fmtCode = id => id.slice(0, 4) + '-' + id.slice(4, 8);
+const ptCode = () => fmtCode(S.pair.id);
+function parseCode(s) { s = (s || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); if (s.length === 9 && /[12]$/.test(s)) s = s.slice(0, 8); if (s.length !== 8) return null; return { id: s }; }
 const ptName = () => (S.partner && S.partner.name) || T.friend;
 const ptEmoji = () => (S.partner && S.partner.emoji) || '🙂';
 function inviteLink() { return location.href.split('#')[0].split('?')[0] + '#c=' + ptCode().replace(/-/g, '') + '&n=' + encodeURIComponent(S.me.name); }
-async function shareInvite() {
-  const text = T.shareText(S.me.name, ptCode());
-  const url = inviteLink();
-  try { if (navigator.share) { await navigator.share({ title: T.app, text, url }); return; } } catch (e) { if (e.name === 'AbortError') return; }
-  try { await navigator.clipboard.writeText(text + url); toast(T.copied); } catch (e) { prompt(T.copyPrompt, text + url); }
+function copyText(t) {
+  const fallback = () => { const ta = h('textarea', { value: t, style: 'position:fixed;top:0;left:0;opacity:0' }); document.body.append(ta); ta.focus(); ta.select(); try { ta.setSelectionRange(0, t.length); } catch (e) {} let ok = false; try { ok = document.execCommand('copy'); } catch (e) {} ta.remove(); return ok; };
+  if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(t).then(() => true, fallback);
+  return Promise.resolve(fallback());
+}
+function shareInvite() {
+  const text = T.shareText(S.me.name, ptCode()), url = inviteLink(), full = text + url;
+  const box = $('shareSheet'); $('shareCode').textContent = ptCode(); $('shareText').value = full;
+  $('shTg').href = 'https://t.me/share/url?url=' + encodeURIComponent(url) + '&text=' + encodeURIComponent(text);
+  $('shWa').href = 'https://wa.me/?text=' + encodeURIComponent(full);
+  $('shCopy').onclick = () => copyText(full).then(ok => { if (ok) toast(T.copied); else { $('shareText').classList.remove('hidden'); $('shareText').select(); toast(T.copyPrompt); } });
+  $('shMore').classList.toggle('hidden', !navigator.share);
+  $('shMore').onclick = () => { navigator.share({ title: T.app, text, url }).catch(() => {}); };
+  box.classList.remove('hidden');
 }
 
 /* ================= screens ================= */
@@ -392,39 +417,48 @@ function setupScreen() {
     if (hp.get('n')) toast(T.invitedBy(hp.get('n')), 4000); }
 }
 function needName() { const n = $('inName').value.trim(); if (!n) { $('inName').focus(); $('inName').classList.add('shake'); setTimeout(() => $('inName').classList.remove('shake'), 500); toast(T.enterName); return null; } return n; }
-$('bCreate').onclick = () => { const n = needName(); if (!n) return; let id = ''; for (let i = 0; i < 8; i++) id += ALPH[rnd(ALPH.length)]; S = { me: { name: n, emoji: pickEmoji }, pair: { id, role: 'a' }, partner: null }; save(); $('inviteCode').textContent = ptCode(); show('scrInvite'); };
+$('bCreate').onclick = () => { const n = needName(); if (!n) return; let id = ''; for (let i = 0; i < 8; i++) id += ALPH[rnd(ALPH.length)]; S = { me: { name: n, emoji: pickEmoji }, pair: { id }, partner: null }; save(); $('inviteCode').textContent = ptCode(); show('scrInvite'); };
 $('bHaveCode').onclick = () => { $('codeBox').classList.toggle('hidden'); $('inCode').focus(); };
 $('bJoin').onclick = () => { const n = needName(); if (!n) return; const p = parseCode($('inCode').value); if (!p) { toast(T.badCode); return; } S = { me: { name: n, emoji: pickEmoji }, pair: p, partner: null }; const hp = new URLSearchParams(location.hash.slice(1)); if (hp.get('n')) S.partner = { name: hp.get('n'), emoji: '🙂' }; save(); history.replaceState(null, '', location.pathname + location.search); startMain(); };
 $('bShare').onclick = shareInvite; $('bShare2').onclick = shareInvite;
 $('bInviteDone').onclick = startMain;
 
-$('bSettings').onclick = () => { $('setName').value = S.me.name; let e = S.me.emoji; emojiPicker($('setEmoji'), e, x => e = x); $('setEmoji').dataset.v = ''; $('setPtCode').textContent = ptCode(); $('setMyCode').textContent = myCode(); $('sheet').classList.remove('hidden');
+$('bSettings').onclick = () => { $('setName').value = S.me.name; let e = S.me.emoji; emojiPicker($('setEmoji'), e, x => e = x); $('setEmoji').dataset.v = ''; $('setPtCode').textContent = ptCode(); $('sheet').classList.remove('hidden');
   $('bSaveSet').onclick = () => { const n = $('setName').value.trim(); if (n) S.me.name = n; S.me.emoji = e; save(); sendHello(); renderStatus(); $('sheet').classList.add('hidden'); toast(T.saved); }; };
 $('bCloseSheet').onclick = () => $('sheet').classList.add('hidden');
+$('bCloseShare').onclick = () => $('shareSheet').classList.add('hidden');
+$('shareSheet').onclick = e => { if (e.target === $('shareSheet')) $('shareSheet').classList.add('hidden'); };
 $('sheet').onclick = e => { if (e.target === $('sheet')) $('sheet').classList.add('hidden'); };
 $('bUnpair').onclick = () => { if (!confirm(T.unpairQ)) return; try { peer && peer.destroy(); } catch (e) {} localStorage.removeItem('duet'); location.reload(); };
 
 /* ================= networking ================= */
-let peer = null, conn = null, pending = null, lastSeen = 0, online = false, started = false;
+let slowT, flips = 0, peer = null, conn = null, pending = null, lastSeen = 0, online = false, started = false;
 function peerOpts() {
   const q = new URLSearchParams(location.search), o = { debug: 0 };
   if (q.get('ph')) { o.host = q.get('ph'); o.port = +q.get('pp') || 9000; o.path = q.get('path') || '/'; o.secure = q.get('ps') === '1'; o.config = { iceServers: [] }; }
   return o;
 }
-function setNet(t) { $('net').textContent = t; }
+function setNet(t, warn) { $('net').textContent = t; $('net').classList.toggle('warn', !!warn); }
 function startPeer() {
   if (peer && !peer.destroyed) { try { peer.destroy(); } catch (e) {} }
-  setNet(T.netConnecting);
+  setNet(T.netConnecting, true);
+  ROLE = S.pair.pref || ROLE;
   const p = new Peer(myId(), peerOpts()); peer = p;
-  p.on('open', () => { if (peer !== p) return; setNet(T.netOk); dial(); });
+  clearTimeout(slowT); slowT = setTimeout(() => { if (peer === p && !p.open) setNet(T.netSlow, true); }, 12000);
+  p.on('open', () => { if (peer !== p) return; flips = 0; clearTimeout(slowT); S.pair.pref = ROLE; save(); setNet(T.netOk); dial(); });
   p.on('connection', c => { if (peer === p) wireConn(c); });
   p.on('call', call => { if (peer === p) onIncomingCall(call); });
   p.on('disconnected', () => { if (peer !== p) return; setNet(T.netReconnect); setTimeout(() => { if (peer === p && p.disconnected && !p.destroyed) { try { p.reconnect(); } catch (e) { startPeer(); } } }, 1500); });
   p.on('error', e => {
     if (peer !== p) return;
     if (e.type === 'peer-unavailable') return;
-    if (e.type === 'unavailable-id') { setNet(T.netDup); setTimeout(() => { if (peer === p) startPeer(); }, 5000); return; }
-    setNet(T.netErr);
+    if (e.type === 'unavailable-id') {
+      // Slot taken: the partner (or a stale session) holds it, so take the other slot.
+      flips++; S.pair.pref = isA() ? 'b' : 'a'; ROLE = S.pair.pref;
+      if (flips > 3) setNet(T.netDup, true);
+      setTimeout(() => { if (peer === p) startPeer(); }, flips > 3 ? 5000 : 300); return;
+    }
+    setNet(T.netErr, true);
     setTimeout(() => { if (peer === p && (p.destroyed || p.disconnected || !p.open)) startPeer(); }, 4000);
   });
 }
@@ -668,7 +702,7 @@ function TTT(root) {
   const again = h('button', { className: 'btn y w hidden', style: 'margin-top:14px', on: { click: () => { gsend({ k: 'again', r: round + 1 }); reset(round + 1); } } }, T.againGame);
   root.append(score, msg, board, again);
   const xRole = () => round % 2 ? 'a' : 'b';
-  const mySym = () => S.pair.role === xRole() ? 'X' : 'O';
+  const mySym = () => ROLE === xRole() ? 'X' : 'O';
   function reset(r) { round = r; b = Array(9).fill(''); turn = 'X'; over = false; again.classList.add('hidden'); draw(); }
   function winner() { for (const l of L) if (b[l[0]] && b[l[0]] === b[l[1]] && b[l[1]] === b[l[2]]) return l; return null; }
   function draw(line) {
