@@ -1,7 +1,6 @@
 {
  "name": "Дуэт — игры вдвоём",
  "short_name": "Дуэт",
- "start_url": "./",
  "scope": "./",
  "display": "standalone",
  "orientation": "portrait",
