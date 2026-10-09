@@ -311,13 +311,16 @@ canvas#cvDraw{width:100%;aspect-ratio:3/4;border-radius:18px;background:#fffdf5;
     <div id="lobby">
       <div class="lobbybar hidden" id="lobbyBar"><span id="lobbyText"></span><div class="lbtns" id="lobbyBtns"></div></div>
       <button class="btn c w" id="bFind" style="margin:4px 0 6px">🔍 Найти игрока</button>
+      <button class="btn w bwatch bgames" id="bGames" style="margin:4px 0 6px"></button>
+      <div class="pending hidden" id="pendingBar"><span id="pendingText"></span><button class="btn g" id="pendingCancel">✕</button></div>
+      <div id="gamesBox" hidden>
       <div class="sect"><b id="arcTitle">🕹️ Аркада · 41 игра</b> <span id="arcHint"></span></div>
       <div class="lvlrow"><div class="seg big" id="modeSeg"><button data-m="duo">💞 Вдвоём</button><button data-m="hotseat">📱 На одном</button><button data-m="bot">🤖 С ботом</button></div></div>
-      <div class="pending hidden" id="pendingBar"><span id="pendingText"></span><button class="btn g" id="pendingCancel">✕</button></div>
       <div class="lvlrow" id="lvlRow"><span id="lvlLbl">Бот:</span><div class="seg" id="lvl"><button data-l="0">лёгкий</button><button data-l="1">нормальный</button><button data-l="2">сильный</button></div></div>
       <div class="grid" id="arcGrid"></div>
       <div class="sect"><b id="classicTitle">💞 Классика</b> <span id="lobbyHint"></span></div>
       <div class="grid" id="grid"></div>
+      </div>
     </div>
     <div id="panel" class="panel card hidden"></div>
     <div class="net" id="net"></div>
@@ -15776,7 +15779,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202610090927';
+const APP_VERSION = '202610091334';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
@@ -15886,6 +15889,18 @@ function wAC() { try { actx = actx || new (window.AudioContext || window.webkitA
 #wEmpty{grid-template-columns:minmax(0,1fr)}
 .vchip{margin-top:calc(46px + env(safe-area-inset-top))}
 .wpx{position:absolute;right:10px;top:10px;width:34px;height:34px;border:0;border-radius:50%;background:rgba(255,255,255,.1);color:#fff;font:inherit;font-size:15px;cursor:pointer}
+.wsites{margin:12px 0 4px}
+.wsh{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-size:14px}
+.wsedit{border:0;background:rgba(255,255,255,.1);color:#fff;border-radius:10px;padding:5px 10px;font:inherit;font-size:12px;cursor:pointer}
+.wsg{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px}
+.wsite{position:relative;display:flex;flex-direction:column;align-items:center;gap:5px;border:0;border-radius:14px;padding:10px 4px 8px;background:rgba(255,255,255,.07);color:#fff;font:inherit;font-size:11px;cursor:pointer;min-width:0}
+.wsite:hover{background:rgba(255,255,255,.14)}
+.wsite .ic{width:34px;height:34px;border-radius:10px;background:#fff;color:#1d1340;display:grid;place-items:center;font-size:17px;font-weight:900;overflow:hidden}
+.wsite .ic img{width:24px;height:24px}
+.wsite.add .ic{background:rgba(255,255,255,.15);color:#fff}
+.wsite .nm{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wsite .del{position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;background:#ff3b6b;color:#fff;font-style:normal;font-size:12px;display:grid;place-items:center}
+.wsnext{margin-top:10px;padding:10px 12px;border-radius:12px;background:rgba(255,214,10,.14);color:#ffe680;font-size:12.5px;line-height:1.35}
 #wEmpty h3{margin:0 0 4px;font-size:19px;font-weight:900}
 #wEmpty .small{font-size:12.5px;color:rgba(255,255,255,.6);line-height:1.35;font-weight:700}
 #wEmpty .btn{width:100%;margin-top:10px;justify-content:flex-start;font-size:15px;padding:13px 16px;background:rgba(255,255,255,.1);color:#fff;box-shadow:none}
@@ -15942,6 +15957,9 @@ function wAC() { try { actx = actx || new (window.AudioContext || window.webkitA
 body.watching .toast{background:rgba(18,14,30,.88);color:#fff;font-size:13px;padding:8px 14px;max-width:78%;box-shadow:0 6px 18px rgba(0,0,0,.5)}
 #watch.viewer #wSrcBtn,#watch.viewer #wCamB,#watch.viewer #wFacesB,#watch.viewer #wFaces,#watch.viewer #wTalk{display:none!important}
 .bwatch{background:linear-gradient(135deg,#ff8a00,#f107a3)!important;color:#fff!important;box-shadow:0 5px 0 #a3006a!important}
+.bgames{background:linear-gradient(135deg,#7b2ff7,#00b4e0)!important;box-shadow:0 5px 0 #3d1a8c!important;justify-content:center}
+.bgames .chev{display:inline-block;transition:transform .25s;margin-left:6px}.bgames.open .chev{transform:rotate(180deg)}
+#gamesBox{animation:gbin .3s ease-out}@keyframes gbin{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
 `;
   document.head.append(h('style', {}, css));
   const root = h('div', { id: 'watch', hidden: true });
@@ -16006,6 +16024,42 @@ function wLabels() {
 
 /* ---------------- source picker ---------------- */
 const canScreen = () => !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) && !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+/* my movie sites: open one in a new tab, then share that tab */
+const W_SITES0 = ['https://www.youtube.com/', 'https://www.bilibili.com/video/', 'https://www.tiktok.com/', 'https://kinoknopka.plus/', 'https://go.zet-flix.online/films/normal/', 'https://tvhub.life/', 'https://fairground.tv/watch', 'https://2sub.movie/', 'https://kinonavigator.ru/films/'];
+function wSites() { if (!Array.isArray(S.wSites)) S.wSites = W_SITES0.map(u => ({ u })); return S.wSites; }
+function siteName(u) { try { const x = new URL(u); return x.hostname.replace(/^www\./, '').replace(/^(go|m)\./, ''); } catch (e) { return u; } }
+function wSitesBox() {
+  const box = h('div', { className: 'wsites' }), grid = h('div', { className: 'wsg' });
+  const draw = () => {
+    grid.innerHTML = '';
+    wSites().forEach((st, i) => {
+      const nm = st.n || siteName(st.u), ico = h('span', { className: 'ic' }, nm[0].toUpperCase());
+      const img = h('img', { alt: '', referrerPolicy: 'no-referrer', loading: 'lazy', src: 'https://www.google.com/s2/favicons?sz=64&domain=' + encodeURIComponent(siteName(st.u)) });
+      img.onload = () => { if (img.naturalWidth > 1) { ico.textContent = ''; ico.append(img); } }; img.onerror = () => {};
+      const b = h('button', { className: 'wsite', title: st.u, on: { click: () => {
+        if (W.sitesEdit) return;
+        const w = window.open(st.u, '_blank'); W.siteOpened = nm;
+        if (!w) toast(tr('Браузер не дал открыть вкладку — разреши всплывающие окна', 'The browser blocked the new tab — allow pop-ups'), 3500);
+        wRenderEmpty();
+      } } }, ico, h('span', { className: 'nm' }, nm));
+      if (W.sitesEdit) b.append(h('i', { className: 'del', on: { click: ev => { ev.stopPropagation(); wSites().splice(i, 1); save(); draw(); } } }, '✕'));
+      grid.append(b);
+    });
+    grid.append(h('button', { className: 'wsite add', on: { click: addSite } }, h('span', { className: 'ic' }, '＋'), h('span', { className: 'nm' }, tr('Добавить', 'Add'))));
+  };
+  const addSite = () => {
+    let u = (prompt(tr('Адрес сайта (например, https://example.com/films/)', 'Site address (e.g. https://example.com/films/)'), 'https://') || '').trim();
+    if (!u || u === 'https://') return; if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
+    try { new URL(u); } catch (e) { toast(tr('Это не похоже на адрес сайта', 'That does not look like a web address')); return; }
+    const n = (prompt(tr('Название (можно оставить как есть)', 'Name (you can keep it)'), siteName(u)) || '').trim().slice(0, 24);
+    wSites().push(n && n !== siteName(u) ? { u, n } : { u }); save(); draw();
+  };
+  draw();
+  const edit = h('button', { className: 'wsedit', on: { click: () => { W.sitesEdit = !W.sitesEdit; edit.textContent = W.sitesEdit ? tr('Готово', 'Done') : tr('✎ Изменить', '✎ Edit'); draw(); } } }, W.sitesEdit ? tr('Готово', 'Done') : tr('✎ Изменить', '✎ Edit'));
+  box.append(h('div', { className: 'wsh' }, h('b', {}, '⭐ ' + tr('Мои сайты', 'My sites')), edit), grid);
+  if (W.siteOpened) box.append(h('div', { className: 'wsnext' }, tr(`Открыл ${W.siteOpened} в новой вкладке. Включи там фильм, вернись сюда и нажми «🖥️ Показать экран или вкладку» → выбери эту вкладку.`, `Opened ${W.siteOpened} in a new tab. Start the movie there, come back and press "🖥️ Share a screen or tab" → pick that tab.`)));
+  return box;
+}
 function wRenderEmpty() {
   const e = $('wEmpty'); e.hidden = !!W.kind; if (W.kind) return;
   e.innerHTML = '';
@@ -16021,6 +16075,7 @@ function wRenderEmpty() {
     h('div', { className: 'small' }, online ? tr(`${ptName()} увидит фильм и услышит звук. Реакции, маски и приколы работают у обоих.`, `${ptName()} will see the movie and hear it. Reactions, masks and pranks work for both of you.`) : tr('Друг пока не в сети — можно начать, он подключится к фильму, когда зайдёт.', 'Your friend is offline — start anyway, they will join the movie when they come.')),
     scr,
     h('div', { className: 'small', style: 'margin-top:6px' }, canScreen() ? tr('Любой сайт: открой фильм в соседней вкладке, выбери её и включи «Поделиться звуком вкладки» (Chrome/Edge). Netflix, Кинопоиск и подобные покажут чёрный экран — это их защита.', 'Any site: open the movie in another tab, pick it and turn on "Share tab audio" (Chrome/Edge). Netflix and similar show a black screen — that is their protection.') : tr('Телефоны не умеют показывать экран. Фильм с сайта: запусти показ на компьютере, нажми 🎬 → «📲 Смотреть на телефоне» и открой ссылку или QR на телефоне. С телефона можно включить свой файл или ссылку.', 'Phones cannot share their screen. For a movie from a website: start sharing on a computer, press 🎬 → "📲 Watch on a phone" and open the link or QR on the phone. From a phone you can play your own file or a link.')),
+    canScreen() ? wSitesBox() : null,
     h('button', { className: 'btn c', on: { click: () => file.click() } }, '📁 ' + tr('Свой видеофайл', 'My video file')), file,
     h('div', { className: 'lnk' }, inp, h('button', { className: 'btn y', on: { click: go } }, '▶')),
     h('div', { className: 'small', style: 'margin-top:6px' }, tr('YouTube и прямые ссылки идут синхронно у обоих: пауза и перемотка — общие.', 'YouTube and direct links play in sync for both: pause and seek are shared.'))));
@@ -16579,6 +16634,14 @@ const WAPI = {
 window.WAPI = WAPI;
 
 wLabels();
+
+/* ---------------- games under one button (opens in place) ---------------- */
+function renderGamesBtn() {
+  const b = $('bGames'), open = !!S.gamesOpen; $('gamesBox').hidden = !open; b.classList.toggle('open', open);
+  b.innerHTML = ''; b.append(document.createTextNode(tr('🎮 Играть вместе · 47 игр', '🎮 Play together · 47 games')), h('span', { className: 'chev' }, '▾'));
+}
+$('bGames').onclick = () => { S.gamesOpen = !S.gamesOpen; save(); renderGamesBtn(); if (S.gamesOpen) setTimeout(() => $('bGames').scrollIntoView({ behavior: 'smooth', block: 'start' }), 60); };
+renderGamesBtn();
 
 /* ======================================================================
    ROOM: one device (usually a computer) hosts the movie for extra viewers
