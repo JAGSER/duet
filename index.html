@@ -15471,6 +15471,7 @@ setInterval(() => {
   if (actx && actx.state === 'suspended') return;
   const cur = Arcade.current(); const g = cur && Arcade.games.find(x => x.n === cur.n);
   if (g && (g.sensors || []).includes('mic')) { SCR.loud = 0; return; } // blowing/talking is the game itself
+  if (typeof W !== 'undefined' && W.open) { SCR.loud = 0; return; } // the movie sound is not a scream
   SCR.an.getFloatTimeDomainData(SCR.buf); let s = 0; for (const v of SCR.buf) s += v * v; const lvl = Math.min(1, Math.sqrt(s / 512) * 4);
   SCR.loud = lvl > .62 ? SCR.loud + 1 : 0;
   if (SCR.loud >= 3 && !S.micOff) { SCR.loud = -30; takeMoment(`${S.me.name} ${tr('кричит! 😱', 'is screaming! 😱')}`); if (online) send({ t: 'moment', k: 'scream' }); }
@@ -15774,7 +15775,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202610082309';
+const APP_VERSION = '202610090619';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
@@ -15813,84 +15814,115 @@ function wAC() { try { actx = actx || new (window.AudioContext || window.webkitA
 /* ---------------- markup ---------------- */
 (function buildWatch() {
   const css = `
-#watch{position:fixed;inset:0;z-index:35;background:#0b0618;display:flex;flex-direction:column;color:#fff;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
-.wtop{display:flex;align-items:center;gap:6px;padding:8px 10px}
-.wtop .wt{flex:1;min-width:0;font-weight:900;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.wib{width:42px;height:42px;border:0;border-radius:14px;background:rgba(255,255,255,.14);color:#fff;font-size:19px;cursor:pointer;flex:none;font-family:inherit}
-.wib.on{background:var(--yellow);color:var(--ink)}
-#wStage{position:relative;flex:1;min-height:0;overflow:hidden;background:#000;touch-action:none}
+#watch{position:fixed;inset:0;z-index:35;background:#000;color:#fff;overflow:hidden}
+#wStage{position:absolute;inset:0;overflow:hidden;background:#000;touch-action:manipulation}
 #wLayer{position:absolute;inset:0;transform-origin:50% 50%}
 #wMovie{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
 #wYT,#wYT iframe,#wYT>div{position:absolute;inset:0;width:100%;height:100%;border:0;pointer-events:none}
 #wfx{position:absolute;pointer-events:none;display:none}
 #wov{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3}
-#wFaces{position:absolute;right:8px;top:8px;display:flex;flex-direction:column;gap:6px;z-index:5;touch-action:none;cursor:grab}
-#wFaces video{position:static;display:block;width:84px;height:108px;object-fit:cover;border-radius:16px;border:3px solid #ff7ac8;background:#24124f;box-shadow:0 6px 16px rgba(0,0,0,.4)}
-#wFaces #localV{border-color:var(--cyan)}
+#wFaces{position:absolute;right:10px;top:calc(54px + env(safe-area-inset-top));display:flex;flex-direction:column;gap:8px;z-index:5;touch-action:none;cursor:grab;transition:opacity .25s}
+#wFaces video{position:static;display:block;width:64px;height:64px;object-fit:cover;border-radius:50%;border:2px solid #ff7ac8;background:#1a1230;box-shadow:0 4px 14px rgba(0,0,0,.5)}
+#wFaces #localV{border-color:#00d1ff}
 #wFaces video.hidden,#wFaces #remoteV:not(.live){display:none}
-@media (min-width:700px){#wFaces video{width:128px;height:160px}}
-#wEmpty{position:absolute;inset:0;display:grid;place-items:center;padding:14px;z-index:6;overflow:auto;background:radial-gradient(circle at 30% 20%,#3a1580,#0b0618 70%)}
-#wEmpty .card{color:var(--ink);max-width:430px;width:100%;padding:16px}
-#wEmpty h3{margin:0 0 4px;font-size:20px;font-weight:900}
-#wEmpty .small{font-size:13px;color:var(--muted);line-height:1.35;font-weight:700}
-#wEmpty .btn{width:100%;margin-top:10px;justify-content:flex-start}
-#wEmpty .btn[disabled]{opacity:.5}
+@media (min-width:700px) and (min-height:500px){#wFaces video{width:96px;height:96px}}
+#watch.ui-off #wFaces,#watch.nofaces #wFaces{opacity:0;pointer-events:none}
+#wUI{position:absolute;inset:0;z-index:6;pointer-events:none;transition:opacity .25s}
+#wUI>*{pointer-events:auto}
+#watch.ui-off #wUI{opacity:0;visibility:hidden}
+.wtop{position:absolute;left:0;right:0;top:0;display:flex;align-items:center;gap:6px;padding:calc(8px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right)) 18px calc(10px + env(safe-area-inset-left));background:linear-gradient(rgba(0,0,0,.75),rgba(0,0,0,0))}
+.wtop .wt{flex:1;min-width:0;font-weight:800;font-size:13px;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wib{width:34px;height:34px;border:0;border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:15px;cursor:pointer;flex:none;font-family:inherit;display:grid;place-items:center;padding:0}
+.wib.on{background:rgba(255,255,255,.22);box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.7)}
+.wib.off{opacity:.55}
+.wbot{position:absolute;left:0;right:0;bottom:0;padding:28px calc(8px + env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) calc(8px + env(safe-area-inset-left));background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,.82) 32%);display:flex;flex-direction:column;gap:6px}
+.wbar{display:flex;align-items:center;gap:8px;padding:0 4px}
+.wbar .wib{width:30px;height:30px;font-size:13px;background:rgba(255,255,255,.1)}
+.wbar input[type=range]{flex:1;min-width:0;accent-color:#fff;height:18px}
+.wbar .tm{font-size:11px;opacity:.75;font-variant-numeric:tabular-nums;white-space:nowrap}
+.wbar .lbl{flex:1;font-size:12px;opacity:.75;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center}
+#wCats{display:flex;justify-content:center;gap:4px}
+.wcat{width:34px;height:34px;border:0;border-radius:50%;background:transparent;font-size:17px;display:grid;place-items:center;cursor:pointer;opacity:.6;padding:0;transition:opacity .15s,background .15s}
+.wcat.on{opacity:1;background:rgba(255,255,255,.16);box-shadow:inset 0 -2px #fff}
+.wstripw{position:relative}
+#wStrip{display:flex;gap:8px;overflow-x:auto;padding:2px 22px 2px;scrollbar-width:none;scroll-behavior:smooth;justify-content:safe center}
+#wStrip::-webkit-scrollbar{display:none}
+.wit{flex:none;display:flex;flex-direction:column;align-items:center;gap:3px;width:62px;border:0;background:none;color:#fff;font:inherit;font-size:10px;line-height:1.1;text-align:center;cursor:pointer;padding:0;touch-action:manipulation}
+.wit b{width:54px;height:54px;border-radius:16px;background:rgba(255,255,255,.1);display:grid;place-items:center;font-size:27px;font-weight:400;line-height:1;transition:transform .12s,background .15s}
+.wit:active b{transform:scale(.92)}
+.wit.on b{background:rgba(255,255,255,.3);box-shadow:inset 0 0 0 2px #fff}
+.wit.dim{opacity:.4}
+.wit.back b{background:transparent;font-size:22px;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.35)}
+.wit span{max-width:62px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.warr{position:absolute;top:0;bottom:14px;width:22px;border:0;background:none;color:#fff;font-size:20px;opacity:.75;cursor:pointer;padding:0;display:grid;place-items:center}
+.warr.l{left:0;background:linear-gradient(90deg,rgba(0,0,0,.8),transparent)}.warr.r{right:0;background:linear-gradient(-90deg,rgba(0,0,0,.8),transparent)}
+.wsubt{text-align:center;font-size:11px;opacity:.7;margin-top:-2px}
+@media (orientation:landscape) and (max-height:500px){.wit{width:54px}.wit b{width:46px;height:46px;font-size:23px;border-radius:14px}.wbot{gap:4px;padding-top:18px}.wcat{width:30px;height:30px;font-size:15px}#wFaces{top:calc(46px + env(safe-area-inset-top))}#wFaces video{width:52px;height:52px}}
+#wEmpty{position:absolute;inset:0;display:grid;place-items:center;padding:60px 14px 14px;z-index:7;overflow:auto;background:radial-gradient(circle at 30% 20%,#1d1236,#000 75%)}
+#wEmpty .card{background:rgba(22,16,40,.92);color:#fff;max-width:430px;width:100%;padding:16px;box-shadow:0 10px 40px rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.08)}
+#wEmpty h3{margin:0 0 4px;font-size:19px;font-weight:900}
+#wEmpty .small{font-size:12.5px;color:rgba(255,255,255,.6);line-height:1.35;font-weight:700}
+#wEmpty .btn{width:100%;margin-top:10px;justify-content:flex-start;font-size:15px;padding:13px 16px;background:rgba(255,255,255,.1);color:#fff;box-shadow:none}
+#wEmpty .btn[disabled]{opacity:.4}
 #wEmpty .lnk{display:flex;gap:8px;margin-top:10px}
-#wEmpty .lnk input{flex:1;min-width:0;border:2px solid #e6dcff;border-radius:14px;padding:10px 12px;font:inherit;font-size:15px;color:var(--ink)}
-#wEmpty .lnk .btn{width:auto;margin:0}
-#wWait{position:absolute;inset:0;display:grid;place-items:center;z-index:2;font-size:16px;text-align:center;padding:20px;pointer-events:none}
-#wTap{position:absolute;inset:0;display:grid;place-items:center;z-index:7;background:rgba(0,0,0,.45)}
-#wTalk{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);z-index:6;border:0;border-radius:30px;padding:11px 18px;font:inherit;font-size:15px;background:rgba(255,255,255,.92);color:var(--ink);box-shadow:0 6px 18px rgba(0,0,0,.45);touch-action:none;white-space:nowrap;cursor:pointer}
-#wTalk.live{background:var(--ok);color:#fff}
-#wTalk.lock{background:var(--yellow)}
-#wTalk.open{background:rgba(255,255,255,.25);color:#fff;font-size:13px;padding:8px 14px}
-#wHint{position:absolute;left:50%;top:10px;transform:translateX(-50%);z-index:6;background:rgba(255,255,255,.95);color:var(--ink);border-radius:20px;padding:8px 14px;font-size:14px;max-width:86%;text-align:center;box-shadow:0 6px 18px rgba(0,0,0,.35);display:flex;gap:10px;align-items:center}
-#wHint button{border:0;background:var(--soft,#f3eeff);color:var(--violet);border-radius:12px;padding:4px 10px;font:inherit;cursor:pointer}
-.wbar{display:flex;align-items:center;gap:8px;padding:6px 10px 2px}
-.wbar input[type=range]{flex:1;min-width:0;accent-color:var(--yellow)}
-.wbar .tm{font-size:12px;opacity:.85;font-variant-numeric:tabular-nums;min-width:86px;text-align:right}
-.wbar .lbl{flex:1;font-size:13px;opacity:.85;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#wTools{display:flex;gap:6px;overflow-x:auto;padding:6px 10px 8px;scrollbar-width:none}
-#wTools::-webkit-scrollbar{display:none}
-.wtool{flex:none;display:flex;flex-direction:column;align-items:center;gap:3px;min-width:64px;max-width:86px;text-align:center;line-height:1.1;padding:7px 6px 6px;border:0;border-radius:14px;background:rgba(255,255,255,.12);color:#fff;font:inherit;font-size:11px;cursor:pointer;touch-action:none}
-.wtool b{font-size:24px;line-height:1;font-weight:400}
-.wtool.on{background:var(--yellow);color:var(--ink)}
-.wtool.dim{opacity:.45}
-.wtool.react{min-width:44px;font-size:24px;padding:7px 4px}
-#wPanel{position:absolute;left:0;right:0;bottom:0;z-index:9;background:#fff;color:var(--ink);border-radius:22px 22px 0 0;max-height:72%;overflow:auto;padding:12px 14px calc(14px + env(safe-area-inset-bottom));box-shadow:0 -10px 30px rgba(0,0,0,.4)}
+#wEmpty .lnk input{flex:1;min-width:0;border:1px solid rgba(255,255,255,.18);background:rgba(0,0,0,.35);border-radius:14px;padding:11px 12px;font:inherit;font-size:15px;color:#fff}
+#wEmpty .lnk .btn{width:auto;margin:0;background:#fff;color:#000}
+#wWait{position:absolute;inset:0;display:grid;place-items:center;z-index:2;font-size:15px;opacity:.8;text-align:center;padding:20px;pointer-events:none}
+#wTap{position:absolute;inset:0;display:grid;place-items:center;z-index:8;background:rgba(0,0,0,.45)}
+#wTalk{align-self:center;border:0;border-radius:24px;padding:8px 16px;font:inherit;font-size:13px;background:rgba(255,255,255,.9);color:#111;touch-action:none;white-space:nowrap;cursor:pointer;-webkit-user-select:none;user-select:none}
+#wTalk.live{background:#22d36b;color:#fff}
+#wTalk.lock{background:#ffd60a;color:#111}
+#wTalk.open{background:rgba(255,255,255,.12);color:#fff;font-size:11px;padding:5px 12px}
+#wHint{position:absolute;left:50%;top:calc(52px + env(safe-area-inset-top));transform:translateX(-50%);z-index:9;background:rgba(18,14,30,.92);color:#fff;border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:7px 8px 7px 14px;font-size:13px;max-width:90%;text-align:center;box-shadow:0 6px 18px rgba(0,0,0,.5);display:flex;gap:8px;align-items:center}
+#wHint{flex-wrap:wrap;justify-content:center;width:max-content}
+#wHint span{flex:1 1 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+#wHint button{border:0;background:rgba(255,255,255,.14);color:#fff;border-radius:12px;padding:5px 10px;font:inherit;font-size:12px;cursor:pointer;white-space:nowrap}
+#wHint button.y{background:#fff;color:#111}
+#wPanel{position:absolute;left:0;right:0;bottom:0;z-index:10;background:rgba(16,12,28,.97);color:#fff;border-radius:20px 20px 0 0;max-height:72%;overflow:auto;padding:12px calc(14px + env(safe-area-inset-right)) calc(14px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));box-shadow:0 -10px 30px rgba(0,0,0,.6);border-top:1px solid rgba(255,255,255,.08)}
+@media (orientation:landscape) and (max-height:500px){#wPanel{left:auto;width:min(420px,60%);top:0;max-height:none;border-radius:20px 0 0 20px}}
 #wPanel .wph{display:flex;align-items:center;gap:8px;margin-bottom:8px}
-#wPanel .wph h3{flex:1;margin:0;font-size:17px;font-weight:900}
-#wPanel .wph button{border:0;border-radius:12px;background:#f3eeff;color:var(--violet);font:inherit;padding:8px 12px;cursor:pointer}
+#wPanel .wph h3{flex:1;margin:0;font-size:16px;font-weight:900}
+#wPanel .wph button{border:0;border-radius:50%;width:32px;height:32px;background:rgba(255,255,255,.1);color:#fff;font:inherit;cursor:pointer}
 #wPanel label.row{display:flex;align-items:center;gap:10px;margin:10px 0;font-size:14px}
-#wPanel label.row input[type=range]{flex:1}
-#wPanel .note{font-size:12px;color:var(--muted);font-weight:700;line-height:1.35}
+#wPanel label.row input[type=range]{flex:1;accent-color:#fff}
+#wPanel .note{font-size:12px;color:rgba(255,255,255,.55);font-weight:700;line-height:1.35}
+#wPanel .btn{box-shadow:none}
+#wPanel .btn.g{background:rgba(255,255,255,.1);color:#fff}
+#wPanel input:not([type]),#wPanel input[type=text]{background:rgba(255,255,255,.08)!important;color:#fff!important;border:1px solid rgba(255,255,255,.18)!important}
+#wPanel .schips button,#wPanel .vpre button{background:rgba(255,255,255,.1)!important;color:#fff!important}
+#wPanel .sgans div{color:#1d1340}
 .wgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:8px}
-.wgrid button{border:0;border-radius:14px;background:#f3eeff;color:var(--ink);font:inherit;font-size:11px;padding:8px 4px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer}
+.wgrid button{border:0;border-radius:14px;background:rgba(255,255,255,.08);color:#fff;font:inherit;font-size:11px;padding:8px 4px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer}
 .wgrid button b{font-size:26px;font-weight:400;line-height:1}
-.wgrid button.on{background:var(--yellow)}
-#watch.snd #wFaces,#watch.snd #wTools,#watch.snd #wov,#watch.snd #wfx,#watch.snd .wfxonly{display:none!important}
+.wgrid button.on{background:rgba(255,255,255,.28);box-shadow:inset 0 0 0 2px #fff}
+#watch.snd #wFaces,#watch.snd #wov,#watch.snd #wfx,#watch.snd .wfxonly{display:none!important}
 #watch.snd #wLayer{transform:none!important;filter:none!important}
-#watch:fullscreen{padding:0}
+body.watching .toast{background:rgba(18,14,30,.88);color:#fff;font-size:13px;padding:8px 14px;max-width:78%;box-shadow:0 6px 18px rgba(0,0,0,.5)}
 .bwatch{background:linear-gradient(135deg,#ff8a00,#f107a3)!important;color:#fff!important;box-shadow:0 5px 0 #a3006a!important}
 `;
   document.head.append(h('style', {}, css));
   const root = h('div', { id: 'watch', hidden: true });
   root.innerHTML = `
-<div class="wtop"><button class="wib" id="wClose">✕</button><div class="wt" id="wTitle"></div>
-<button class="wib" id="wSrcBtn">🎬</button><button class="wib" id="wSnd">👂</button><button class="wib" id="wFs">⛶</button><button class="wib" id="wSet">⚙️</button></div>
 <div id="wStage">
   <div id="wLayer"><video id="wMovie" playsinline></video><div id="wYT"></div><canvas id="wfx"></canvas></div>
   <canvas id="wov"></canvas>
   <div id="wWait" hidden></div>
   <div id="wFaces"></div>
+  <div id="wUI">
+    <div class="wtop"><button class="wib" id="wClose">✕</button><div class="wt" id="wTitle"></div>
+      <button class="wib" id="wSrcBtn">🎬</button><button class="wib" id="wCamB">📷</button><button class="wib" id="wFacesB">👥</button><button class="wib" id="wFs">⛶</button><button class="wib" id="wSet">⚙️</button></div>
+    <div class="wbot" id="wBot">
+      <button id="wTalk" hidden></button>
+      <div class="wbar" id="wBar"><button class="wib" id="wPlay">▶</button><input type="range" id="wSeek" min="0" max="100" step="0.1" value="0"><span class="tm" id="wTime"></span><span class="lbl" id="wLbl" hidden></span></div>
+      <div id="wCats"></div>
+      <div class="wstripw" id="wStripW"><div id="wStrip"></div><button class="warr l" id="wArrL">‹</button><button class="warr r" id="wArrR">›</button></div>
+    </div>
+  </div>
   <div id="wHint" hidden></div>
-  <button id="wTalk" hidden></button>
   <div id="wTap" hidden><button class="btn y" id="wTapB">▶</button></div>
   <div id="wEmpty"></div>
-</div>
-<div class="wbar" id="wBar"><button class="wib" id="wPlay">▶</button><input type="range" id="wSeek" min="0" max="100" step="0.1" value="0"><span class="tm" id="wTime"></span><span class="lbl" id="wLbl" hidden></span></div>
-<div id="wTools"></div>
-<div id="wPanel" hidden></div>`;
+  <div id="wPanel" hidden></div>
+</div>`;
   document.body.append(root);
   const bw = h('button', { className: 'btn w bwatch', id: 'bWatch', style: 'margin:4px 0 6px', on: { click: () => openWatch() } });
   $('bFind').before(bw);
@@ -15902,9 +15934,9 @@ function openWatch(remote) {
   if (window.Arcade && Arcade.current()) arcClose();
   if (gameId) closeGame(true);
   ['maskSheet', 'shotsSheet', 'sheet', 'installSheet'].forEach(id => { const e = $(id); if (e) e.classList.add('hidden'); });
-  W.open = true; $('watch').hidden = false;
+  W.open = true; $('watch').hidden = false; document.body.classList.add('watching');
   $('wFaces').append($('remoteV'), $('localV')); [$('remoteV'), $('localV')].forEach(v => { if (v.srcObject) v.play().catch(() => {}); });
-  wLabels(); wRenderEmpty(); wRenderTools(); wRenderAll(); applyVol(); micApply();
+  wSetUI(true); wLabels(); wRenderEmpty(); wRenderAll(); applyVol(); micApply();
   if (!remote && online) send({ t: 'w', a: 'open' });
   cancelAnimationFrame(W.raf); W.raf = requestAnimationFrame(wLoop);
   clearInterval(W.hbT); W.hbT = setInterval(wTick, 250);
@@ -15914,7 +15946,7 @@ function closeWatch(remote) {
   if (!W.open) return;
   if (!remote && online) send({ t: 'w', a: 'close' });
   stopSource(true);
-  W.open = false; $('watch').hidden = true; wClosePanel(); wDisarm(); W.sndOnly = false; $('watch').classList.remove('snd');
+  W.open = false; $('watch').hidden = true; document.body.classList.remove('watching'); wClosePanel(); wDisarm(); W.sndOnly = false; $('watch').classList.remove('snd');
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   clearInterval(W.hbT); cancelAnimationFrame(W.raf);
   $('wLayer').style.cssText = ''; $('wov').style.cssText = '';
@@ -15924,8 +15956,7 @@ function closeWatch(remote) {
 function wLabels() {
   $('bWatch').textContent = tr('🍿 Смотреть фильм вместе', '🍿 Watch a movie together');
   $('wTitle').textContent = W.title ? '🍿 ' + W.title : tr('🍿 Кино вдвоём', '🍿 Movie night');
-  $('wSnd').title = tr('Только звук: скрыть лица и эффекты', 'Only sound: hide faces and effects');
-  $('wSrcBtn').title = tr('Выбрать фильм', 'Pick a movie'); $('wSet').title = tr('Громкость и микрофон', 'Volume & mic'); $('wFs').title = tr('На весь экран', 'Full screen');
+  $('wSrcBtn').title = tr('Выбрать фильм', 'Pick a movie'); $('wSet').title = tr('Настройки', 'Settings'); $('wClose').title = tr('Закрыть кино', 'Close the movie'); $('wFs').title = tr('На весь экран', 'Full screen');
   $('wTapB').textContent = tr('▶ Нажми, чтобы смотреть', '▶ Tap to watch');
   $('wFs').hidden = !document.documentElement.requestFullscreen;
 }
@@ -15992,7 +16023,7 @@ function watchAddTracks(p) {
 async function startScreen() {
   if (!canScreen()) { toast(tr('Показ экрана работает только с компьютера', 'Screen sharing works only from a computer'), 3500); return; }
   let st;
-  try { st = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30 }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }, systemAudio: 'include', selfBrowserSurface: 'exclude', surfaceSwitching: 'include' }); }
+  try { st = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30 }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, suppressLocalAudioPlayback: false }, systemAudio: 'include', selfBrowserSurface: 'exclude', surfaceSwitching: 'include', preferCurrentTab: false, displaySurface: 'browser' }); }
   catch (e) { toast(tr('Показ экрана отменён', 'Screen sharing cancelled')); return; }
   stopSource();
   W.kind = 'screen'; W.owner = true; W.stream = st;
@@ -16000,7 +16031,7 @@ async function startScreen() {
   const v = mv(); v.srcObject = st; v.muted = true; v.play().catch(() => {});
   if (vt) vt.onended = () => { if (W.stream === st) stopSource(); };
   if (!st.getAudioTracks().length) toast(tr('⚠️ Звук не захвачен. Выбери вкладку и включи «Поделиться звуком вкладки»', '⚠️ No audio captured. Pick a tab and enable "Share tab audio"'), 6000);
-  else toast(tr('🖥️ Показываю. Друг слышит звук фильма', '🖥️ Sharing. Your friend hears the movie'), 3000);
+  else if (vt && vt.getSettings && vt.getSettings().displaySurface === 'monitor') toast(tr('Совет: лучше показывать вкладку — при показе всего экрана в картинку попадает плашка Chrome «… демонстрирует экран» (нажми на ней «Скрыть»).', 'Tip: share a tab instead — sharing the whole screen puts Chrome\'s "sharing your screen" bar into the picture (press "Hide" on it).'), 6000);
   announce(); shareStream(); afterSource();
 }
 function captureFile(v) {
@@ -16034,7 +16065,10 @@ function startLink(u) {
   else { W.kind = 'url'; W.url = u; W.title = decodeURIComponent(u.split('?')[0].split('/').pop() || tr('Видео', 'Video')).slice(0, 60); loadUrl(u, 0, true); }
   setTimeout(announce, 50); afterSource();
 }
-function afterSource() { emit('source', { kind: W.kind }, true); wLabels(); wRenderEmpty(); wRenderAll(); applyVol(); micApply(); wLevelsInit(); }
+function afterSource() {
+  clearTimeout(W.autoHideT); W.lastInt = Date.now(); wSetUI(true);
+  if (W.kind) W.autoHideT = setTimeout(() => { if (W.open && W.kind && !W.panelClose && !W.armed && Date.now() - (W.lastInt || 0) > 2800) wSetUI(false); }, 3500);
+  emit('source', { kind: W.kind }, true); wLabels(); wRenderEmpty(); wRenderAll(); applyVol(); micApply(); wLevelsInit(); }
 function ytLoad() {
   if (window.YT && YT.Player) return Promise.resolve();
   if (W.ytP) return W.ytP;
@@ -16110,7 +16144,7 @@ function watchMsg(m) {
       else if (m.kind === 'url' && /^https?:\/\//i.test(m.url)) { W.url = m.url; loadUrl(m.url, +m.tm || 0, !!m.p); }
       else if (m.kind === 'screen' || m.kind === 'file') { W.remoteSid = String(m.sid || ''); const s = W.rs.get(W.remoteSid); if (s) attachRemoteMovie(s); else { $('wWait').hidden = false; $('wWait').textContent = '⏳ ' + tr('Подключаю фильм…', 'Connecting the movie…'); } }
       else { W.kind = null; break; }
-      toast(`🍿 ${ptName()}: ${W.title || tr('фильм', 'movie')}`, 2500);
+      if (m.kind !== 'screen') toast(`🍿 ${ptName()}: ${W.title || tr('фильм', 'movie')}`, 2000);
       afterSource(); break;
     case 'st': applySt(m, false); break;
     case 'hb':
@@ -16149,7 +16183,7 @@ function micApply() {
   if (localStream) localStream.getAudioTracks().forEach(t => t.enabled = on);
   if (gate && !W.gateTold && W.open) { W.gateTold = true; toast(tr('🎙 Говори, удерживая кнопку — так звук фильма не задвоится. В наушниках: ⚙️ → 🎧', '🎙 Hold the button to talk so the movie is not doubled. Headphones: ⚙️ → 🎧'), 4500); }
   const b = $('wTalk'); if (!b) return;
-  b.hidden = !W.open || !W.kind || !localStream || S.micOff;
+  b.hidden = !W.open || !W.kind || !localStream || S.micOff || !gate;
   b.className = !gate ? 'open' : W.latch ? 'lock live' : W.talk || W.dub > 0 ? 'live' : '';
   b.textContent = !gate ? '🎙 ' + tr('микрофон открыт', 'mic open') : W.latch ? '🔓 ' + tr('говорю (нажми — выкл)', 'talking (tap to stop)') : W.talk || W.dub > 0 ? '🎙 ' + tr('говорю…', 'talking…') : '🎙 ' + tr('Держи и говори', 'Hold to talk');
 }
@@ -16258,23 +16292,33 @@ function wRenderBar() {
   if (!W.kind) return;
   const scr = W.kind === 'screen';
   $('wPlay').hidden = $('wSeek').hidden = $('wTime').hidden = scr; $('wLbl').hidden = !scr;
-  if (scr) { $('wLbl').textContent = W.owner ? tr('🖥️ Ты показываешь экран · управление на вкладке фильма', '🖥️ You are sharing · control the movie in its tab') : `🖥️ ${ptName()} ${tr('показывает экран', 'is sharing the screen')}`; return; }
+  if (scr) { $('wLbl').textContent = W.owner ? tr('🖥️ Показываешь экран', '🖥️ Sharing your screen') : `🖥️ ${ptName()}`; return; }
   const d = P.dur(), t = P.time();
   $('wPlay').textContent = P.paused() ? '▶' : '⏸';
   if (!W.seeking) { $('wSeek').max = Math.max(1, d); $('wSeek').value = Math.min(t, d || t); }
   $('wTime').textContent = wFmt(t) + ' / ' + (d ? wFmt(d) : '—');
 }
-function wRenderAll() { wRenderBar(); wRenderTools(); $('wSnd').classList.toggle('on', W.sndOnly); }
+function wRenderTop() {
+  const cam = !!localStream; $('wCamB').textContent = cam ? '📷' : '🚫'; $('wCamB').classList.toggle('off', !cam);
+  $('wCamB').title = cam ? tr('Выключить мою камеру', 'Turn my camera off') : tr('Включить мою камеру', 'Turn my camera on');
+  $('wFacesB').classList.toggle('off', !!S.wFacesOff); $('wFacesB').title = S.wFacesOff ? tr('Показать видео участников', 'Show the video bubbles') : tr('Скрыть видео участников', 'Hide the video bubbles');
+  $('watch').classList.toggle('nofaces', !!S.wFacesOff);
+}
+function wRenderAll() { wRenderBar(); wRenderTools(); wRenderTop(); }
+function wSetUI(on) {
+  W.uiOff = !on; $('watch').classList.toggle('ui-off', W.uiOff);
+  if (on) { wRenderBar(); wArrows(); }
+}
 function wTick() {
   if (!W.open) return;
   W.tickN = (W.tickN || 0) + 1;
-  wRenderBar();
+  if (!W.uiOff) wRenderBar();
   if (W.owner && W.kind && W.kind !== 'screen' && W.tickN % 12 === 0) sendHb();
   // lower the movie a little while the partner is talking
   const pt = wLevel('pt');
   if (S.wTalkDuck !== false && pt != null && pt > .045 && W.kind) W.tdUntil = Date.now() + 700;
   const want = Date.now() < (W.tdUntil || 0); if (want !== W.talkDuck) { W.talkDuck = want; applyVol(); }
-  if (W.tickN % 8 === 0) { micApply(); wLevelsInit(); }
+  if (W.tickN % 8 === 0) { micApply(); wLevelsInit(); wRenderTop(); }
 }
 $('wPlay').onclick = () => wCtl('toggle');
 $('wSeek').addEventListener('input', () => { W.seeking = true; $('wTime').textContent = wFmt(+$('wSeek').value) + ' / ' + wFmt(P.dur()); });
@@ -16283,7 +16327,8 @@ $('wClose').onclick = () => closeWatch();
 $('wSrcBtn').onclick = () => { if (!W.kind) return; wPanel(tr('🎬 Фильм', '🎬 Movie'), h('div', {},
   h('p', { className: 'note' }, (W.title ? '«' + W.title + '» · ' : '') + (W.owner ? tr('включил(а) ты', 'started by you') : tr('включил(а) ', 'started by ') + ptName())),
   h('button', { className: 'btn w', on: { click: () => { wClosePanel(); stopSource(); } } }, tr('🔄 Выбрать другой фильм', '🔄 Pick another movie')))); };
-$('wSnd').onclick = () => { W.sndOnly = !W.sndOnly; $('watch').classList.toggle('snd', W.sndOnly); $('wSnd').classList.toggle('on', W.sndOnly); toast(W.sndOnly ? tr('👂 Только фильм и голоса — лица и эффекты скрыты', '👂 Just the movie and voices — faces and effects hidden') : tr('👀 Лица и эффекты снова видны', '👀 Faces and effects are back')); };
+$('wCamB').onclick = () => { $('bCam').onclick(); setTimeout(wRenderTop, 50); setTimeout(wRenderTop, 1500); };
+$('wFacesB').onclick = () => { S.wFacesOff = !S.wFacesOff; save(); wRenderTop(); };
 $('wFs').onclick = () => { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); else $('watch').requestFullscreen().catch(() => {}); };
 $('wTapB').onclick = e => { e.stopPropagation(); $('wTap').hidden = true; wAC(); if (W.kind === 'yt' && W.yt) W.yt.playVideo(); else mv().play().catch(() => {}); applyVol(); };
 $('wSet').onclick = () => {
@@ -16296,33 +16341,45 @@ $('wSet').onclick = () => {
     h('p', { className: 'note' }, tr('На iPhone громкость меняется только кнопками телефона — ползунок в ноль просто выключает звук.', 'On iPhone only the phone buttons change volume — the slider at zero mutes.')),
     h('label', { className: 'row' }, chk(W.headphones, v => { W.headphones = v; micApply(); }), h('span', {}, '🎧 ' + tr('У меня наушники — микрофон всегда открыт', 'I have headphones — keep the mic open'))),
     h('label', { className: 'row' }, chk(S.wTalkDuck !== false, v => { S.wTalkDuck = v; save(); }), h('span', {}, '🔉 ' + tr('Приглушать фильм, когда друг говорит', 'Lower the movie while my friend talks'))),
+    h('label', { className: 'row' }, chk(W.sndOnly, v => { W.sndOnly = v; $('watch').classList.toggle('snd', v); }), h('span', {}, '👂 ' + tr('Только звук: без лиц и эффектов', 'Only sound: no faces or effects'))),
     ...W.settings.map(s => h('label', { className: 'row' }, chk(wGet(s.key), v => { S.wset = S.wset || {}; S.wset[s.key] = v; save(); s.onChange && s.onChange(v); }), h('span', {}, tr(s.ru, s.en)))),
-    h('p', { className: 'note' }, tr('Без наушников микрофон включается кнопкой «Держи и говори» (или пробел на компьютере) — так звук фильма не попадает к другу второй раз. Короткое нажатие — оставить микрофон включённым.', 'Without headphones the mic opens with "Hold to talk" (or Space on a computer) so the movie sound does not reach your friend twice. A short tap keeps the mic on.')));
-  wPanel('⚙️ ' + tr('Звук', 'Sound'), body);
+    h('p', { className: 'note' }, tr('Без наушников микрофон включается кнопкой «Держи и говори» (или пробел на компьютере) — так звук фильма не попадает к другу второй раз. Короткое нажатие — оставить микрофон включённым. Тап по фильму прячет и показывает всё меню.', 'Without headphones the mic opens with "Hold to talk" (or Space on a computer) so the movie sound does not reach your friend twice. A short tap keeps the mic on. Tap the movie to hide or show the whole menu.')));
+  wPanel('⚙️ ' + tr('Настройки', 'Settings'), body);
 };
 function wGet(key) { const s = W.settings.find(x => x.key === key); const v = S.wset && S.wset[key]; return v == null ? (s ? s.def : false) : v; }
 function wPanel(title, el, onClose) {
-  wClosePanel();
+  wClosePanel(); wSetUI(true);
   const p = $('wPanel'); p.innerHTML = '';
   const close = () => { if (W.panelClose !== close) return; W.panelClose = null; p.hidden = true; p.innerHTML = ''; onClose && onClose(); };
   p.append(h('div', { className: 'wph' }, h('h3', {}, title), h('button', { on: { click: close } }, '✕')), el);
   p.hidden = false; W.panelClose = close; return close;
 }
 function wClosePanel() { if (W.panelClose) W.panelClose(); }
-function wHint(text, ms, onCancel) {
+function wHint(text, ms, onCancel, extra) {
   const e = $('wHint'); e.innerHTML = ''; e.append(h('span', {}, text));
+  (extra || []).forEach(x => e.append(h('button', { className: 'y', on: { click: ev => { ev.stopPropagation(); x.fn(); } } }, x.label)));
   if (onCancel) e.append(h('button', { on: { click: ev => { ev.stopPropagation(); onCancel(); } } }, tr('Готово', 'Done')));
   e.hidden = false; clearTimeout(W.hintT); if (ms) W.hintT = setTimeout(() => { e.hidden = true; }, ms);
 }
-function wArm(fn, hint) { W.armed = fn; if (hint) wHint(hint, 0, () => wDisarm()); return wDisarm; }
-function wDisarm() { if (W.armed && W.armed.onDisarm) W.armed.onDisarm(); W.armed = null; $('wHint').hidden = true; W.tools.forEach(t => t.armedOn && (t.armedOn = false)); wRenderTools(); }
-function wPick(hint) { return new Promise(res => { const f = p => { W.armed = null; $('wHint').hidden = true; res(p); }; f.onDisarm = () => res(null); wArm(f, hint); }); }
+function wArm(fn, hint, extra) { W.armed = fn; wSetUI(true); if (hint) wHint(hint, 0, () => wDisarm(), extra); wRenderTools(); return wDisarm; }
+function wDisarm() { if (W.armed && W.armed.onDisarm) W.armed.onDisarm(); W.armed = null; $('wHint').hidden = true; wRenderTools(); }
+function wPick(hint, extra) { return new Promise(res => { const f = p => { W.armed = null; $('wHint').hidden = true; res(p); }; f.onDisarm = () => res(null); wArm(f, hint, extra); }); }
+// taps on the movie: an armed tool gets the point; otherwise a tap shows / hides the whole interface
+const W_UI_SEL = '#wFaces,#wPanel,#wEmpty,#wTap,#wHint,.wtop,.wbot';
 $('wStage').addEventListener('pointerdown', e => {
   wAC();
-  if (e.target.closest('#wFaces,#wTalk,#wPanel,#wEmpty,#wTap,#wHint')) return;
+  if (e.target.closest(W_UI_SEL)) { W.lastInt = Date.now(); return; }
+  W.tapD = { x: e.clientX, y: e.clientY, t: Date.now(), armed: !!W.armed };
   if (!W.armed) return;
   const b = $('wStage').getBoundingClientRect(), [nx, ny] = toMovieN(e.clientX, e.clientY);
   try { W.armed({ x: e.clientX - b.left, y: e.clientY - b.top, nx, ny }); } catch (er) { console.warn(er); }
+});
+$('wStage').addEventListener('pointerup', e => {
+  const d = W.tapD; W.tapD = null; if (!d || d.armed || !W.open) return;
+  if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 12 || Date.now() - d.t > 600) return;
+  if (!W.kind) return;
+  if (W.panelClose) { wClosePanel(); return; }
+  wSetUI(W.uiOff); W.lastInt = Date.now();
 });
 (function dragFaces() {
   const f = $('wFaces'); let d = null;
@@ -16330,27 +16387,64 @@ $('wStage').addEventListener('pointerdown', e => {
   f.addEventListener('pointermove', e => { if (!d) return; if (Math.hypot(e.clientX - d.x0, e.clientY - d.y0) > 6) d.moved = true; if (!d.moved) return; const x = wClamp(e.clientX - d.s.left - d.dx, 0, d.s.width - f.offsetWidth), y = wClamp(e.clientY - d.s.top - d.dy, 0, d.s.height - f.offsetHeight); Object.assign(f.style, { left: x + 'px', top: y + 'px', right: 'auto' }); });
   const end = () => { d = null; }; f.addEventListener('pointerup', end); f.addEventListener('pointercancel', end);
 })();
-const W_REACTS = ['😂', '😱', '❤️', '🔥', '🤮', '👏'];
+
+/* ---------------- menu: small section icons + a strip of big buttons ---------------- */
+const W_CATS = [
+  { id: 'react', icon: '😂', ru: 'Реакции', en: 'Reactions' },
+  { id: 'me', icon: '🙂', ru: 'Мои маски', en: 'My masks' },
+  { id: 'actors', icon: '🎭', ru: 'Актёрам', en: 'Actors' },
+  { id: 'fx', icon: '✨', ru: 'Эффекты', en: 'Effects' },
+  { id: 'sound', icon: '🔊', ru: 'Звук', en: 'Sound' },
+  { id: 'games', icon: '🎲', ru: 'Игры', en: 'Games' },
+];
+const W_REACTS = ['😂', '🤣', '😱', '😍', '❤️', '🔥', '😭', '🤯', '👀', '🤮', '👏', '💩', '😴', '🥳'];
+function wSetMyMask(id) {
+  if (!localStream) { toast(tr('Сначала включи камеру 📷 сверху', 'Turn your camera on first (📷 at the top)')); return; }
+  setMask(id); wRenderTools();
+}
+function wItems(cat) {
+  if (cat === 'react') return W_REACTS.map(e => ({ icon: e, label: '', always: true, onClick: () => { floaty(e); if (online) send({ t: 'react', e }); } }));
+  if (cat === 'me') return [{ icon: '🚫', ru: 'Без маски', en: 'No mask', always: true, active: () => !S.mask || S.mask === 'none', onClick: () => wSetMyMask('none') }]
+    .concat(MASKS.filter(m => m[0] !== 'none').map(m => ({ icon: m[1], label: m[2], always: true, active: () => S.mask === m[0], onClick: () => wSetMyMask(m[0]) })));
+  return W.tools.filter(t => (t.cat || 'fx') === cat);
+}
+function wItemBtn(t) {
+  const dim = t.frames && !readable(), label = t.label != null ? t.label : tr(t.ru || '', t.en || '');
+  const b = h('button', { className: 'wit' + (t.active && t.active() ? ' on' : '') + (dim ? ' dim' : '') + (t.back ? ' back' : '') }, h('b', {}, t.icon), label ? h('span', {}, label) : null);
+  const blocked = () => { if (!W.kind && !t.always && !t.back) { toast(tr('Сначала включи фильм', 'Start a movie first')); return true; } if (dim) { toast(tr('Это работает при показе экрана, своём файле или прямой ссылке — кадры YouTube недоступны.', 'This works with a shared screen, your own file or a direct link — YouTube frames are not accessible.'), 4000); return true; } return false; };
+  if (t.hold) {
+    let held = false;
+    const up = () => { if (!held) return; held = false; window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up); W.holdN = Math.max(0, (W.holdN || 0) - 1); b.classList.remove('on'); try { t.hold.up(); } catch (er) { console.warn(er); } if (W.toolsDirty) setTimeout(wRenderTools, 0); };
+    b.addEventListener('pointerdown', e => { e.preventDefault(); if (blocked()) return; held = true; W.holdN = (W.holdN || 0) + 1; try { b.setPointerCapture(e.pointerId); } catch (er) {} b.classList.add('on'); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up); t.hold.down(); });
+    b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); b.addEventListener('lostpointercapture', up); b.addEventListener('contextmenu', e => e.preventDefault());
+  } else b.onclick = () => {
+    W.lastInt = Date.now();
+    if (blocked()) return;
+    if (t.sub) { W.sub = { icon: t.icon, label, items: t.sub }; W.stripX = 0; wRenderTools(); return; }
+    t.onClick && t.onClick(b);
+    if (t.after !== false) setTimeout(wRenderTools, 0);
+  };
+  return b;
+}
 function wRenderTools() {
   if (W.holdN > 0) { W.toolsDirty = true; return; } W.toolsDirty = false;
-  const box = $('wTools'); box.innerHTML = '';
-  W_REACTS.forEach(e => box.append(h('button', { className: 'wtool react', on: { click: () => { floaty(e); if (online) send({ t: 'react', e }); } } }, e)));
-  W.tools.forEach(t => {
-    const dim = t.frames && !readable();
-    const b = h('button', { className: 'wtool' + (t.active && t.active() ? ' on' : '') + (dim ? ' dim' : '') + (t.frames ? ' wfxonly' : '') }, h('b', {}, t.icon), tr(t.ru, t.en));
-    if (t.hold) {
-      let held = false;
-      b.addEventListener('pointerdown', e => { e.preventDefault(); if (!W.kind && !t.always) { toast(tr('Сначала включи фильм', 'Start a movie first')); return; } held = true; W.holdN = (W.holdN || 0) + 1; try { b.setPointerCapture(e.pointerId); } catch (er) {} b.classList.add('on'); t.hold.down(); });
-      const up = () => { if (!held) return; held = false; W.holdN = Math.max(0, W.holdN - 1); b.classList.remove('on'); t.hold.up(); if (W.toolsDirty) setTimeout(wRenderTools, 0); };
-      b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); b.addEventListener('contextmenu', e => e.preventDefault());
-    } else b.onclick = () => {
-      if (!W.kind && !t.always) { toast(tr('Сначала включи фильм', 'Start a movie first')); return; }
-      if (dim) { toast(tr('Это работает, когда фильм идёт показом экрана, своим файлом или по прямой ссылке — кадры YouTube недоступны.', 'This works with a shared screen, your own file or a direct link — YouTube frames are not accessible.'), 4500); return; }
-      t.onClick(b);
-    };
-    box.append(b);
-  });
+  if (W.cat === undefined) W.cat = S.wCat === undefined ? 'react' : S.wCat;
+  const cats = $('wCats'); cats.innerHTML = '';
+  W_CATS.forEach(c => cats.append(h('button', { className: 'wcat' + (W.cat === c.id ? ' on' : ''), title: tr(c.ru, c.en), on: { click: () => { W.lastInt = Date.now(); W.sub = null; W.cat = W.cat === c.id ? null : c.id; S.wCat = W.cat; save(); $('wStrip').scrollLeft = 0; wRenderTools(); } } }, c.icon)));
+  const strip = $('wStrip'), keep = strip.scrollLeft; strip.innerHTML = '';
+  $('wStripW').hidden = !W.cat;
+  if (!W.cat) return;
+  let items = wItems(W.cat);
+  if (W.sub) items = [{ icon: '‹', label: W.sub.icon + ' ' + W.sub.label, back: true, after: false, onClick: () => { W.sub = null; strip.scrollLeft = 0; wRenderTools(); } }].concat(W.sub.items());
+  items.forEach(t => strip.append(wItemBtn(t)));
+  strip.scrollLeft = keep; wArrows();
 }
+function wArrows() { const s = $('wStrip'); if (!s) return; $('wArrL').hidden = s.scrollLeft <= 2; $('wArrR').hidden = s.scrollLeft + s.clientWidth >= s.scrollWidth - 2; }
+$('wStrip').addEventListener('scroll', wArrows, { passive: true });
+window.addEventListener('resize', () => { if (W.open) wArrows(); });
+$('wArrL').onclick = () => { const s = $('wStrip'); s.scrollLeft -= s.clientWidth * .7; };
+$('wArrR').onclick = () => { const s = $('wStrip'); s.scrollLeft += s.clientWidth * .7; };
+$('wUI').addEventListener('pointerdown', () => { W.lastInt = Date.now(); }, true);
 
 /* ---------------- effects bus ---------------- */
 function emit(k, d, mine) { (W.handlers[k] || []).forEach(fn => { try { fn(d, mine); } catch (e) { console.warn(e); } }); }
@@ -16365,8 +16459,8 @@ const WAPI = {
   tool(def) { W.tools.push(def); if (W.open) wRenderTools(); return () => { W.tools = W.tools.filter(t => t !== def); wRenderTools(); }; },
   refreshTools: () => wRenderTools(),
   panel: (title, el, onClose) => wPanel(title, el, onClose), closePanel: () => wClosePanel(),
-  hint: (text, ms, onCancel) => wHint(text, ms, onCancel), hideHint: () => { $('wHint').hidden = true; },
-  arm: (fn, hint) => wArm(fn, hint), disarm: () => wDisarm(), pick: hint => wPick(hint), armed: () => W.armed,
+  hint: (text, ms, onCancel, extra) => wHint(text, ms, onCancel, extra), showUI: on => wSetUI(on !== false), hideHint: () => { $('wHint').hidden = true; },
+  arm: (fn, hint, extra) => wArm(fn, hint, extra), disarm: () => wDisarm(), pick: (hint, extra) => wPick(hint, extra), armed: () => W.armed,
   onFrame(fn) { W.frameFns.add(fn); return () => W.frameFns.delete(fn); },
   onMovie(fn) { W.movieFns.add(fn); return () => W.movieFns.delete(fn); },
   needFaces, faces: () => W.faces.filter(f => f.g), faceAt(nx, ny) { const c = $('wfx'); if (!c.width) return null; let best = null, bd = 1e9; W.faces.forEach(f => { if (!f.g) return; const d = Math.hypot((f.box[0] + f.box[2] / 2) / c.width - nx, (f.box[1] + f.box[3] / 2) / c.height - ny); if (d < bd) { bd = d; best = f; } }); return best; },
@@ -16413,7 +16507,7 @@ wLabels();
   const emoji = (x, s, size, X = 0, Y = 0) => { x.font = `${Math.round(size)}px ${EMO}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(s, X, Y); };
 
   document.head.append(el('style', {}, `
-.vchip{position:absolute;left:10px;z-index:6;background:#ffd60a;color:#1d1340;font:900 13px ${FONT};border-radius:16px;padding:6px 11px;box-shadow:0 5px 14px rgba(0,0,0,.4);pointer-events:none;transition:top .25s;animation:vchipIn .35s cubic-bezier(.2,1.6,.4,1)}
+.vchip{position:absolute;left:10px;z-index:6;background:rgba(18,14,30,.85);color:#fff;font:800 12px ${FONT};border-radius:16px;padding:6px 11px;box-shadow:0 5px 14px rgba(0,0,0,.4);pointer-events:none;transition:top .25s;animation:vchipIn .35s cubic-bezier(.2,1.6,.4,1)}
 @keyframes vchipIn{from{transform:scale(.3);opacity:0}to{transform:none;opacity:1}}
 .vrow{display:flex;gap:8px;margin-top:12px}.vrow .btn{flex:1;justify-content:center}
 .vin{width:100%;box-sizing:border-box;border:2px solid #e6dcff;border-radius:14px;padding:11px 12px;font:inherit;font-size:16px;color:inherit}
@@ -16530,12 +16624,12 @@ wLabels();
   }
   // armed tap mode that tracks itself (the core may replace the armed fn without telling)
   let myArm = null;
-  function armTap(tag, fn, hint, needF) {
+  function armTap(tag, fn, hint, needF, extra) {
     if (needF) warm(true);
     const f = p => fn(p); f.tag = tag; myArm = f; let done = false, iv = 0;
     const release = () => { if (done) return; done = true; clearInterval(iv); if (needF) warm(false); if (myArm === f) myArm = null; setTimeout(() => A.refreshTools(), 0); };
     f.onDisarm = release; f.release = release;
-    A.arm(f, hint); iv = setInterval(() => { if (A.armed() !== f) release(); }, 600);
+    A.arm(f, hint, extra); iv = setInterval(() => { if (A.armed() !== f) release(); }, 600);
     A.refreshTools(); return f;
   }
   const armedTag = tag => !!(myArm && A.armed() === myArm && myArm.tag === tag);
@@ -16622,7 +16716,7 @@ wLabels();
   function sparkBurst(L, f) { const g = f.g, r = g.ed * 1.2; for (let i = 0; i < 14; i++) { const a = i / 14 * TAU + Math.random() * .3, sp = r * (1.5 + Math.random() * 1.5); L.push(spr(0, { k: 'star', x: g.mid[0] + Math.cos(a) * r * .6, y: g.mid[1] + Math.sin(a) * r * .7, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, drag: .92, r: g.ed * (.1 + Math.random() * .1), c: ['#fff', '#ffd60a', '#ff7ac8', '#7cf'][i % 4], life: .6, vr: 6 })); } }
   function maskFx(d, mine, dist) {
     const m = A.masks().find(q => q[0] === d.m && (q[3] === 'filter') === dist); if (!m) return;
-    const dur = dist ? 10 : 12, e = effect('mask'), t0 = NOW(), tk = d.all ? null : tracker(nrm(d.nx), nrm(d.ny)), seen = new Map(), sp = [];
+    const dur = 10, e = effect('mask'), t0 = NOW(), tk = d.all ? null : tracker(nrm(d.nx), nrm(d.ny)), seen = new Map(), sp = [];
     let found = 0;
     e.need(); e.later(() => e.stop(), dur * 1000 + 200);
     e.later(() => { if (!found) { if (mine) A.toast(T('Не нашёл лицо 🙈', 'Could not find the face 🙈')); e.stop(); } }, 7000);
@@ -16644,23 +16738,15 @@ wLabels();
   A.on('v:mask', (d, mine) => maskFx(d, mine, false));
   A.on('v:dist', (d, mine) => maskFx(d, mine, true));
 
-  function maskPanel(dist) {
-    const list = A.masks().filter(q => (q[3] === 'filter') === dist); if (!list.length) return;
-    let sel = list[0][0]; const type = dist ? 'v:dist' : 'v:mask';
-    const grid = el('div', { className: 'wgrid' });
-    list.forEach(([id, ic, name]) => { const b = el('button', { className: id === sel ? 'on' : '', on: { click: () => { sel = id; [...grid.children].forEach(c => c.classList.toggle('on', c === b)); } } }, el('b', {}, ic), name); grid.append(b); });
-    const pickActor = () => {
-      const m = list.find(q => q[0] === sel);
-      armTap(type, p => { const n = faceNear(p.nx, p.ny); if (!n) { noFace(); return; } if (!okCool(type, 350)) return; A.fx(type, { m: sel, nx: +n.nx.toFixed(4), ny: +n.ny.toFixed(4) }); },
-        T(`Тапни по лицу актёра — ${m[1]} ${m[2]}`, `Tap an actor's face — ${m[1]} ${m[2]}`), true);
-      A.closePanel();
-    };
-    const all = () => { if (!okCool(type, 600)) return; A.closePanel(); if (!A.faces().length && NOW() - warmT > 5000) { noFace(); return; } A.fx(type, { m: sel, all: 1 }); };
-    warm(true); warmBoth();
-    A.panel(dist ? T('🌀 Искажения актёрам', '🌀 Distort actors') : T('🎭 Маски актёрам', '🎭 Masks on actors'), el('div', {}, grid,
-      el('div', { className: 'vrow' }, el('button', { className: 'btn', on: { click: pickActor } }, T('👆 На актёра', '👆 On an actor')), el('button', { className: 'btn y', on: { click: all } }, T('👥 Всем', '👥 Everyone'))),
-      el('p', { className: 'note', style: 'margin-top:8px' }, T(`Выбери и тапни по лицу в фильме — ${dist ? 'на 10 секунд' : 'на 12 секунд'}, у вас обоих.`, `Pick one and tap a face in the movie — for ${dist ? 10 : 12} seconds, for both of you.`))),
-    () => warm(false));
+  function maskItems(dist) {
+    const type = dist ? 'v:dist' : 'v:mask';
+    return A.masks().filter(q => (q[3] === 'filter') === dist).map(([id, ic, name]) => ({ icon: ic, label: name, frames: true, active: () => armedTag(type) && myArm.sel === id, onClick: () => {
+      warm(true); warmBoth(); setTimeout(() => warm(false), 4000);
+      const f = armTap(type, p => { const n = faceNear(p.nx, p.ny); if (!n) { noFace(); return; } if (!okCool(type, 350)) return; A.fx(type, { m: id, nx: +n.nx.toFixed(4), ny: +n.ny.toFixed(4) }); A.disarm(); },
+        T(`${ic} Тапни по лицу актёра`, `${ic} Tap an actor's face`), true,
+        [{ label: T('👥 Всем', '👥 Everyone'), fn: () => { if (!okCool(type, 600)) return; A.disarm(); A.fx(type, { m: id, all: 1 }); } }]);
+      f.sel = id;
+    } }));
   }
 
   /* ======================================================================
@@ -16678,7 +16764,7 @@ wLabels();
   const AVG = { c: null };
   function avgRGB(src, sx, sy, sw, sh) { AVG.c = sizeC(AVG.c, 4, 4); const c = AVG.c.getContext('2d', { willReadFrequently: true }); c.clearRect(0, 0, 4, 4); try { c.drawImage(src, sx, sy, Math.max(1, sw), Math.max(1, sh), 0, 0, 4, 4); const d = c.getImageData(0, 0, 4, 4).data; let r = 0, g = 0, b = 0, n = 0; for (let i = 0; i < 64; i += 4) if (d[i + 3] > 200) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; } return n ? [r / n, g / n, b / n] : null; } catch (e) { return null; } }
   function faceFx(d, mine) {
-    const e = effect('face'), t0 = NOW(), dur = 12, tk = tracker(nrm(d.nx), nrm(d.ny)), who = mine ? A.me() : A.partner();
+    const e = effect('face'), t0 = NOW(), dur = 10, tk = tracker(nrm(d.nx), nrm(d.ny)), who = mine ? A.me() : A.partner();
     const fc = document.createElement('canvas'); fc.width = FW; fc.height = FH;
     let found = 0, shown = 0, corr = null, corrT = 0;
     e.need(); e.later(() => e.stop(), dur * 1000 + 200);
@@ -16717,7 +16803,7 @@ wLabels();
   function facePick() {
     warmBoth();
     if (!A.myCam()) A.toast(T('📷 Камера выключена — вместо лица будет твой смайлик', '📷 Camera is off — your emoji will be used instead'), 2600);
-    armTap('v:face', p => { const n = faceNear(p.nx, p.ny); if (!n) { noFace(); return; } if (!okCool('v:face', 600)) return; A.fx('v:face', { nx: +n.nx.toFixed(4), ny: +n.ny.toFixed(4) }); },
+    armTap('v:face', p => { const n = faceNear(p.nx, p.ny); if (!n) { noFace(); return; } if (!okCool('v:face', 600)) return; A.fx('v:face', { nx: +n.nx.toFixed(4), ny: +n.ny.toFixed(4) }); A.disarm(); },
       T('🤳 Тапни по лицу актёра — туда встанет твоё лицо', '🤳 Tap an actor\'s face — your face goes there'), true);
   }
 
@@ -16892,14 +16978,13 @@ wLabels();
   }
   A.on('v:throw', throwFx);
   let lastThrow = 0;
-  function throwPanel() {
-    const grid = el('div', { className: 'wgrid' });
-    ITEMS.forEach((it, i) => grid.append(el('button', { on: { click: () => {
-      A.closePanel(); warmBoth();
-      armTap('v:throw', p => { const t = NOW(); if (t - lastThrow < 250) return; lastThrow = t; A.fx('v:throw', { i, nx: +p.nx.toFixed(4), ny: +p.ny.toFixed(4), sx: +(.2 + Math.random() * .6).toFixed(3), s: seed() }); },
+  function throwItems() {
+    return ITEMS.map((it, i) => ({ icon: it.e, label: T(it.ru, it.en), active: () => armedTag('v:throw') && myArm.sel === i, onClick: () => {
+      warmBoth();
+      const f = armTap('v:throw', p => { const t = NOW(); if (t - lastThrow < 250) return; lastThrow = t; A.fx('v:throw', { i, nx: +p.nx.toFixed(4), ny: +p.ny.toFixed(4), sx: +(.2 + Math.random() * .6).toFixed(3), s: seed() }); },
         T(`Тапай по экрану — летит ${it.e}`, `Tap the screen — throwing ${it.e}`), A.readable());
-    } } }, el('b', {}, it.e), T(it.ru, it.en))));
-    A.panel(T('🍅 Чем кидаемся?', '🍅 What do we throw?'), el('div', {}, grid, el('p', { className: 'note', style: 'margin-top:8px' }, T('Тапай сколько хочешь, потом «Готово». Попадёшь в лицо — прилипнет!', 'Tap as much as you like, then "Done". Hit a face and it sticks!'))));
+      f.sel = i;
+    } }));
   }
 
   /* ======================================================================
@@ -17017,11 +17102,7 @@ wLabels();
     }
   }
   A.on('v:filt', filterFx);
-  function filtPanel() {
-    const grid = el('div', { className: 'wgrid vbig' });
-    FILTERS.forEach(f => grid.append(el('button', { on: { click: () => { if (!okCool('filt', 800)) return; A.closePanel(); A.fx('v:filt', { f: f.id, s: seed() }); } } }, el('b', {}, f.e), T(f.ru, f.en))));
-    A.panel(T('🎞️ Фильтры на фильм', '🎞️ Movie filters'), el('div', {}, grid, el('p', { className: 'note', style: 'margin-top:8px' }, T('На 10 секунд у вас обоих. Работает и с YouTube.', 'For 10 seconds for both of you. Works with YouTube too.'))));
-  }
+  const filtItems = () => FILTERS.map(f => ({ icon: f.e, label: T(f.ru, f.en), cat: 'fx', onClick: () => { if (!okCool('filt', 800)) return; A.fx('v:filt', { f: f.id, s: seed() }); } }));
 
   /* ======================================================================
      7. MEME MOMENTS
@@ -17106,24 +17187,19 @@ wLabels();
     }
   }
   A.on('v:meme', memeFx);
-  function memePanel() {
-    const grid = el('div', { className: 'wgrid vbig' });
-    MEMES.forEach(m => grid.append(el('button', { on: { click: async () => {
-      if (!okCool('meme', 900)) return; A.closePanel();
-      let p = null; if (m.pick) p = await A.pick(T('Тапни точку (или «Готово» — центр)', 'Tap a spot (or "Done" for the centre)'));
-      A.fx('v:meme', p ? { k: m.id, nx: +p.nx.toFixed(4), ny: +p.ny.toFixed(4), s: seed() } : { k: m.id, s: seed() });
-    } } }, el('b', {}, m.e), T(m.ru, m.en))));
-    A.panel(T('💥 Мем-момент', '💥 Meme moment'), el('div', {}, grid, el('p', { className: 'note', style: 'margin-top:8px' }, T('Большой мем-эффект на пару секунд — у вас обоих.', 'A big meme effect for a few seconds — for both of you.'))));
-  }
+  const memeItems = () => MEMES.map(m => ({ icon: m.e, label: T(m.ru, m.en), cat: 'fx', onClick: async () => {
+    if (!okCool('meme', 900)) return;
+    let p = null; if (m.pick) { let centre = false; p = await A.pick(T('Тапни, где будет эффект', 'Tap where it happens'), [{ label: T('◎ Центр', '◎ Centre'), fn: () => { centre = true; A.disarm(); } }]); if (!p && !centre) return; }
+    A.fx('v:meme', p ? { k: m.id, nx: +p.nx.toFixed(4), ny: +p.ny.toFixed(4), s: seed() } : { k: m.id, s: seed() });
+  } }));
 
   /* ---------------- tools ---------------- */
-  A.tool({ icon: '🎭', ru: 'Маски актёрам', en: 'Masks on actors', frames: true, active: () => armedTag('v:mask'), onClick: () => maskPanel(false) });
-  A.tool({ icon: '🌀', ru: 'Искажения', en: 'Distort actors', frames: true, active: () => armedTag('v:dist'), onClick: () => maskPanel(true) });
-  A.tool({ icon: '🤳', ru: 'Моё лицо актёру', en: 'My face on an actor', frames: true, active: () => armedTag('v:face'), onClick: () => armedTag('v:face') ? A.disarm() : facePick() });
-  A.tool({ icon: '💬', ru: 'Реплика', en: 'Speech bubble', onClick: sayPanel });
-  A.tool({ icon: '🍅', ru: 'Кидаться', en: 'Throw stuff', active: () => armedTag('v:throw'), onClick: () => armedTag('v:throw') ? A.disarm() : throwPanel() });
-  A.tool({ icon: '🎞️', ru: 'Фильтры', en: 'Movie filters', onClick: filtPanel });
-  A.tool({ icon: '💥', ru: 'Мем-момент', en: 'Meme moment', onClick: memePanel });
+  A.tool({ cat: 'actors', icon: '🎭', ru: 'Маски', en: 'Masks', frames: true, sub: () => maskItems(false) });
+  A.tool({ cat: 'actors', icon: '🌀', ru: 'Искажения', en: 'Distort', frames: true, sub: () => maskItems(true) });
+  A.tool({ cat: 'actors', icon: '🤳', ru: 'Моё лицо', en: 'My face', frames: true, active: () => armedTag('v:face'), onClick: () => armedTag('v:face') ? A.disarm() : facePick() });
+  A.tool({ cat: 'actors', icon: '💬', ru: 'Реплика', en: 'Speech', onClick: sayPanel });
+  A.tool({ cat: 'actors', icon: '🍅', ru: 'Кидаться', en: 'Throw', sub: throwItems });
+  filtItems().concat(memeItems()).forEach(t => A.tool(t));
 
   /* ---------------- cleanup ---------------- */
   let closing = false;
@@ -17183,7 +17259,7 @@ wLabels();
 .sgchip{position:absolute;left:10px;bottom:62px;z-index:6;border:0;border-radius:18px;background:linear-gradient(135deg,#7b2ff7,#f107a3);color:#fff;font:inherit;font-weight:900;font-size:14px;padding:9px 14px;box-shadow:0 6px 16px rgba(0,0,0,.45);cursor:pointer;animation:sgc 1.6s ease-in-out infinite}
 @keyframes sgc{50%{transform:translateY(-3px)}}
 .sflash{position:absolute;inset:0;z-index:7;pointer-events:none;background:#fff;animation:sfla .55s ease-out forwards;display:grid;place-items:center}
-.sflash b{font-size:74px;font-weight:400;animation:sflb .9s cubic-bezier(.2,.9,.3,1.4) forwards}
+.sflash b{font-size:34px;font-weight:400;animation:sflb .9s cubic-bezier(.2,.9,.3,1.4) forwards}
 @keyframes sfla{0%{background:rgba(255,255,255,.9)}100%{background:rgba(255,255,255,0)}}
 @keyframes sflb{0%{transform:scale(.2) rotate(-20deg);opacity:1}60%{transform:scale(1.15) rotate(6deg);opacity:1}100%{transform:scale(1) rotate(0);opacity:0}}
 .smeme canvas{width:100%;max-height:34vh;object-fit:contain;border-radius:14px;display:block;background:#000}
@@ -17610,7 +17686,7 @@ wLabels();
   }
 
   /* ================= auto reactions ================= */
-  A.setting({ key: 's_auto', ru: '🤯 Авто-реакции: сам ловить громкие и смешные моменты', en: '🤯 Auto reactions: catch loud and funny moments', def: true });
+  A.setting({ key: 's_auto', ru: '🤯 Авто-реакции: сам ловить громкие и смешные моменты', en: '🤯 Auto reactions: catch loud and funny moments', def: false });
   const AUTO = {
     loud: [['😱 Громкий момент!', '😱 Loud moment!'], ['💥 Вот это поворот!', '💥 What a twist!'], ['🙀 Аж подпрыгнули!', '🙀 We jumped!']],
     both: [['😂 Ржём вдвоём', '😂 Laughing together'], ['🤣 Истерика на двоих', '🤣 Double hysterics'], ['😱 Орём вместе', '😱 Screaming together']],
@@ -17643,7 +17719,7 @@ wLabels();
     const now = Date.now(); if (!mine && now - au.lastRecv < 30000) return; au.lastRecv = now;
     const c = set[clamp(d.i | 0, 0, set.length - 1)];
     if (A.get('s_auto') || mine) A.moment(T(c[0], c[1]));
-    stageFlash('📸'); floatLabel(c[0].split(' ')[0], T(c[0], c[1]).replace(/^\S+\s/, ''));
+    stageFlash('📸');
   });
   function autoStart() { if (!au.iv) { au.avg = 0; au.n = 0; au.spike = 0; au.both.length = 0; au.iv = setInterval(autoTick, 100); } }
   function autoStop() { clearInterval(au.iv); au.iv = 0; }
@@ -17815,11 +17891,12 @@ wLabels();
   });
 
   /* ================= tools ================= */
-  A.tool({ icon: '🎙️', ru: 'Озвучка', en: 'Dub it', hold: { down: startDub, up: () => stopDub() } });
-  A.tool({ icon: '🎛️', ru: 'Голос', en: 'Voice', always: true, onClick: voicePanel });
-  A.tool({ icon: '🥁', ru: 'Звуки', en: 'Sounds', always: true, onClick: soundPanel });
-  A.tool({ icon: '🖼️', ru: 'Мем', en: 'Meme', onClick: memePanel });
-  A.tool({ icon: '🔮', ru: 'Угадай', en: 'Guess', active: () => !!G, onClick: () => gStart() });
+  const setVoice = id => { voice = id; ls.set('duet-s-voice', id); if (dub.me && VG) { routeVoice(); try { A.setVoice(voice === 'normal' ? null : VG.track); dub.voiceOn = voice !== 'normal'; } catch (e) {} } };
+  A.tool({ cat: 'sound', icon: '🎙️', ru: 'Озвучка (держи)', en: 'Dub it (hold)', hold: { down: startDub, up: () => stopDub() } });
+  A.tool({ cat: 'sound', icon: '🎛️', ru: 'Голос', en: 'Voice', always: true, sub: () => VOICES.map(([id, em, ru, en]) => ({ icon: em, ru, en, always: true, active: () => voice === id, onClick: () => setVoice(id) })) });
+  SND_ORDER.forEach(id => { const x = SND[id]; A.tool({ cat: 'sound', icon: x.e, ru: x.ru, en: x.en, always: true, onClick: () => { const now = Date.now(); if (now - lastTap < 280) return; lastTap = now; A.fx('s:snd', { id }); } }); });
+  A.tool({ cat: 'games', icon: '🖼️', ru: 'Мем из кадра', en: 'Meme', onClick: memePanel });
+  A.tool({ cat: 'games', icon: '🔮', ru: 'Угадай, что дальше', en: 'Guess what\'s next', active: () => !!G, onClick: () => gStart() });
 
   /* ================= lifecycle ================= */
   function cleanup() {
