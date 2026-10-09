@@ -15804,7 +15804,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202610091946';
+const APP_VERSION = '202610092042';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
@@ -16740,6 +16740,18 @@ function renderGamesBtn() {
 }
 $('bGames').onclick = () => { S.gamesOpen = !S.gamesOpen; save(); renderGamesBtn(); if (S.gamesOpen) setTimeout(() => $('bGames').scrollIntoView({ behavior: 'smooth', block: 'start' }), 60); };
 renderGamesBtn();
+
+/* ---------------- video watchdog: revive a frozen picture (seen on iPhone) ---------------- */
+setInterval(() => {
+  [$('remoteV'), mv()].forEach(v => {
+    const st = v && v.srcObject; if (!st || typeof st.getVideoTracks !== 'function') return;
+    const t = st.getVideoTracks()[0]; if (!t || t.readyState !== 'live' || t.muted) { v._wd = null; return; }
+    if (v.paused) { v.play().catch(() => {}); return; }
+    const ct = v.currentTime, now = Date.now();
+    if (!v._wd || v._wd.ct !== ct) { v._wd = { ct, at: now }; return; }
+    if (now - v._wd.at > 4000) { v._wd = { ct, at: now }; const s0 = v.srcObject; v.srcObject = null; v.srcObject = s0; v.play().catch(() => {}); } // re-attach: restarts the decoder
+  });
+}, 2000);
 
 /* ======================================================================
    ROOM: one device (usually a computer) hosts the movie for extra viewers
