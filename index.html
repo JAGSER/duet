@@ -14364,6 +14364,9 @@ function onWire(topic, str) {
     return;
   }
   let w; try { w = JSON.parse(str); } catch (e) { return; }
+  onEnvelope(w);
+}
+function onEnvelope(w) {
   if (!w || !w.i || !w.f || w.f === S.dev) return;
   if (seen.has(w.i)) return;
   seen.set(w.i, Date.now()); if (seen.size > 800) { const cut = Date.now() - 60000; for (const [k, t] of seen) if (t < cut) seen.delete(k); }
@@ -14374,19 +14377,23 @@ function onWire(topic, str) {
   onData(w.p);
 }
 function adopt(dev, sess) { if (ptDev && ptDev !== dev && online) setOnline(false); ptDev = dev; ptSess = sess || null; closePC(); }
-function sessionChanged(sess) { ptSess = sess; closePC(); if (online) { sendHello(); if (localStream) ensurePC(); } }
+function sessionChanged(sess) { ptSess = sess; closePC(); if (online) { sendHello(); if (isA() || localStream) ensurePC(); } }
 function sayHi(force) { if (!ptDev) return; if (!force && Date.now() - lastHi < 5000) return; lastHi = Date.now(); send({ t: 'hi' }); }
 function send(m) {
   if (!ptDev) return;
   const w = JSON.stringify({ i: SESS + '.' + (++seq), f: S.dev, s: SESS, p: m });
-  connectedClients().forEach(c => { try { c.publish(topicM(ptDev), w, { qos: 0 }); } catch (e) {} });
+  let viaDc = false;
+  if (dc && dc.readyState === 'open') { try { dc.send(w); viaDc = true; } catch (e) {} }
+  if (!viaDc || m.t === 'sig' || m.t === 'hello' || m.t === 'bye') connectedClients().forEach(c => { try { c.publish(topicM(ptDev), w, { qos: 0 }); } catch (e) {} });
   lastSent = Date.now();
 }
 function sendHello() { send({ t: 'hello', name: S.me.name, emoji: S.me.emoji, cam: !!localStream, lang: LANG }); }
 setInterval(() => {
   if (!started) return;
   if (pc && pc.connectionState === 'connected' && online) lastSeen = Math.max(lastSeen, Date.now() - 20000);
-  if (online) { if (Date.now() - lastSent > 7000) send({ t: 'ping' }); if (Date.now() - lastSeen > 25000) setOnline(false); }
+  // ICE watchdog: a link stuck in 'new' / 'failed' / 'disconnected' gets fresh ICE credentials and candidates
+  if (pc && online) { const cs = pc.connectionState; if (cs === 'connected') pc._bad = 0; else if (pc.signalingState === 'stable' && (pc._bad = (pc._bad || 0) + 1) >= 3) { pc._bad = 0; if (isA()) { try { pc.restartIce(); } catch (e) {} } else send({ t: 'kick' }); } }
+  if (online) { if (Date.now() - lastSent > (dc ? 3000 : 7000)) send({ t: 'ping' }); if (Date.now() - lastSeen > 25000) setOnline(false); }
   else if (ptPresent) sayHi();
   renderNet();
 }, 3000);
@@ -14400,7 +14407,7 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('pagehide', () => { try { send({ t: 'bye' }); publishPresence(false); } catch (e) {} });
 function setOnline(v) {
   if (online === v) return; online = v;
-  if (v) { lastSeen = Date.now(); sendHello(); if (localStream && outTracks().length) ensurePC(); checkPending(); tune(523, 659, 784); vibrate(80); toast(ptEmoji() + ' ' + T.cameOnline(ptName())); }
+  if (v) { lastSeen = Date.now(); sendHello(); if (isA() || (localStream && outTracks().length)) ensurePC(); checkPending(); tune(523, 659, 784); vibrate(80); toast(ptEmoji() + ' ' + T.cameOnline(ptName())); }
   else { closePC(); if (LOB.match) setTimeout(() => { if (LOB.match && !online) { toast(tr('Соперник ушёл — ищем нового', 'Opponent left — finding a new one')); leaveMatch(true); } }, 6000); if (gameId) { closeGame(true); toast(T.lost); } else if (Arcade.current() && arcNet) { arcClose(); toast(T.lost); } else toast(T.wentOffline(ptName())); }
   renderStatus(); renderVideo(); renderGrid(); renderNet();
 }
@@ -14413,6 +14420,7 @@ function renderNet() {
   clients.forEach(c => d.append(h('div', {}, (c.connected ? '✅ ' : '❌ ') + c.url.replace(/^wss?:\/\//, '').replace(/[:/].*$/, ''))));
   d.append(h('div', {}, (online ? '✅ ' : ptPresent ? '⏳ ' : '❌ ') + T.diagPartner + ': ' + (online ? T.diagOnline : ptPresent ? T.diagSeen : T.diagNotSeen)));
   d.append(h('div', {}, (pc && pc.connectionState === 'connected' ? '✅ ' : pc ? '⏳ ' : '➖ ') + T.diagVideo + ': ' + (pc ? pc.connectionState : T.diagNoVideo)));
+  if (pc && !$('sheet').classList.contains('hidden')) { const x = h('div', {}, '📶 …'); d.append(x); netStats().then(n => { x.textContent = '📶 ' + netText(n); }); }
 }
 
 /* ================= video (WebRTC, "perfect negotiation") ================= */
@@ -14420,9 +14428,16 @@ const ICE = [
   { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
   { urls: 'stun:stun.cloudflare.com:3478' },
   { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' },
-  { urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp'], username: 'openrelayproject', credential: 'openrelayproject' },
 ];
-let localStream = null, remoteStream = null, facing = 'user', pc = null, makingOffer = false, ignoreOffer = false;
+(async function turnCreds() {
+  try {
+    const enc = t => new TextEncoder().encode(t), user = (Math.floor(Date.now() / 1000) + 3 * 86400) + ':duet';
+    const key = await crypto.subtle.importKey('raw', enc('openrelayprojectsecret'), { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
+    const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, enc(user)));
+    ICE.unshift({ urls: ['turn:staticauth.openrelay.metered.ca:80', 'turn:staticauth.openrelay.metered.ca:443', 'turn:staticauth.openrelay.metered.ca:80?transport=tcp', 'turns:staticauth.openrelay.metered.ca:443?transport=tcp'], username: user, credential: btoa(String.fromCharCode(...sig)) });
+  } catch (e) {}
+})();
+let localStream = null, remoteStream = null, facing = 'user', pc = null, makingOffer = false, ignoreOffer = false, dc = null, candQ = [];
 function ensurePC() {
   if (pc) return pc;
   const q = new URLSearchParams(location.search);
@@ -14430,9 +14445,15 @@ function ensurePC() {
   p.onicecandidate = e => { if (pc === p && e.candidate) send({ t: 'sig', c: e.candidate.toJSON() }); };
   p.ontrack = e => { if (pc !== p) return; if (watchTrack(e)) return; remoteStream = e.streams[0] || new MediaStream([e.track]); const v = $('remoteV'); v.srcObject = remoteStream; v.muted = false; v.play().then(() => $('bSound').classList.add('hidden')).catch(() => $('bSound').classList.remove('hidden')); renderVideo(); };
   p.onnegotiationneeded = async () => { if (pc !== p) return; try { makingOffer = true; await p.setLocalDescription(); send({ t: 'sig', d: p.localDescription.toJSON() }); } catch (e) {} finally { makingOffer = false; } };
-  p.onconnectionstatechange = () => { if (pc !== p) return; if (p.connectionState === 'failed') { try { p.restartIce(); } catch (e) {} p.fails = (p.fails || 0) + 1; if (p.fails === 3) toast(tr('Видео не проходит через эту сеть — попробуйте Wi-Fi или другой интернет', 'Video cannot get through this network — try Wi-Fi or another connection'), 5000); } else if (p.connectionState === 'connected') p.fails = 0; renderNet(); };
+  p.onconnectionstatechange = () => { if (pc !== p) return; if (p.connectionState === 'failed') { try { p.restartIce(); } catch (e) {} p.fails = (p.fails || 0) + 1; if (p.fails === 3) toast(tr('Видео не проходит через эту сеть — попробуйте Wi-Fi или другой интернет', 'Video cannot get through this network — try Wi-Fi or another connection'), 5000); } else if (p.connectionState === 'connected') { p.fails = 0; prioAudio(p); } renderNet(); };
   if (localStream) outTracks().forEach(t => p.addTrack(t, localStream));
   watchAddTracks(p);
+  try {
+    const d = p.createDataChannel('duet', { negotiated: true, id: 0 });
+    d.onopen = () => { if (pc === p) { dc = d; renderNet(); } };
+    d.onclose = () => { if (dc === d) dc = null; renderNet(); };
+    d.onmessage = ev => { if (pc !== p) return; let w; try { w = JSON.parse(ev.data); } catch (e) { return; } onEnvelope(w); };
+  } catch (e) {}
   return p;
 }
 async function onSig(m) {
@@ -14442,11 +14463,13 @@ async function onSig(m) {
       const collision = m.d.type === 'offer' && (makingOffer || p.signalingState !== 'stable');
       ignoreOffer = !polite && collision; if (ignoreOffer) return;
       await p.setRemoteDescription(m.d);
+      const q = candQ; candQ = []; for (const c of q) { try { await p.addIceCandidate(c); } catch (e) {} }
       if (m.d.type === 'offer') { await p.setLocalDescription(); send({ t: 'sig', d: p.localDescription.toJSON() }); }
-    } else if (m.c) { try { await p.addIceCandidate(m.c); } catch (e) { if (!ignoreOffer) throw e; } }
+    } else if (m.c) { if (!p.remoteDescription) { candQ.push(m.c); return; } try { await p.addIceCandidate(m.c); } catch (e) {} }
   } catch (e) {}
 }
-function closePC() { if (pc) { try { pc.close(); } catch (e) {} } pc = null; makingOffer = ignoreOffer = false; remoteStream = null; $('remoteV').srcObject = null; renderVideo(); }
+function prioAudio(p) { try { p.getSenders().forEach(sd => { if (!sd.track || sd.track.kind !== 'audio') return; const prm = sd.getParameters(); if (!prm.encodings || !prm.encodings.length) return; prm.encodings.forEach(e => { e.priority = 'high'; e.networkPriority = 'high'; }); sd.setParameters(prm).catch(() => {}); }); } catch (e) {} }
+function closePC() { if (pc) { try { pc.close(); } catch (e) {} } pc = null; dc = null; candQ = []; makingOffer = ignoreOffer = false; remoteStream = null; $('remoteV').srcObject = null; renderVideo(); }
 async function getCam() { return navigator.mediaDevices.getUserMedia({ video: { facingMode: facing, width: { ideal: 640 }, height: { ideal: 480 } }, audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
 let camTry = 0;
 async function startCam(silent) {
@@ -14530,6 +14553,7 @@ function onData(m) {
   if (!m || typeof m !== 'object') return;
   switch (m.t) {
     case 'ping': case 'hi': break;
+    case 'kick': if (pc && pc.connectionState !== 'connected') { try { pc.restartIce(); } catch (e) {} } break;
     case 'sig': onSig(m); break;
     case 'hello': if (m.lang === 'ru' || m.lang === 'en') Arcade.partnerLang = m.lang; if (!LOB.match) S.friend = true; S.partner = { name: String(m.name || T.friend).slice(0, 16), emoji: String(m.emoji || '🙂').slice(0, 4) }; save(); renderStatus(); renderVideo(); renderGrid(); if (gameId) send({ t: 'open', g: gameId }); else if (Arcade.current() && arcNet) send({ t: 'open', g: 'a' + Arcade.current().n }); watchHello(); break;
     case 'cam': if (!m.on) { remoteStream = null; $('remoteV').srcObject = null; renderVideo(); } break;
@@ -15780,7 +15804,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202610091754';
+const APP_VERSION = '202610091821';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
@@ -15833,6 +15857,35 @@ async function wFull() {
   toast(tr('Поверни телефон боком — фильм развернётся на весь экран', 'Turn the phone sideways — the movie fills the screen'), 3000);
 }
 document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) { try { screen.orientation.unlock(); } catch (e) {} } });
+function wNoAudio(mine) {
+  const old = $('wNoA'); if (old) old.remove();
+  const txt = mine ? tr('🔇 Друг не слышит звук фильма: при выборе вкладки включи «Поделиться звуком вкладки» (или «Также поделиться аудио»). Нажми сюда, чтобы выбрать вкладку заново.', '🔇 Your friend cannot hear the movie: when picking the tab, turn on "Share tab audio" (or "Also share audio"). Tap here to pick the tab again.')
+    : tr('🔇 Фильм пришёл без звука — попроси включить «Поделиться звуком вкладки» при показе.', '🔇 The movie came without sound — ask to turn on "Share tab audio" when sharing.');
+  const b = h('div', { id: 'wNoA', className: 'wnoa', on: { click: () => { b.remove(); if (mine) startScreen(); } } }, txt);
+  $('wStage').append(b); if (!mine) setTimeout(() => b.remove(), 9000);
+}
+async function netStats(p) {
+  p = p || pc; if (!p) return null;
+  try {
+    const st = await p.getStats(); let pair = null, loc = null, rem = null, inB = 0, outB = 0, lost = 0, recv = 0; const by = {};
+    st.forEach(r => { by[r.id] = r; });
+    st.forEach(r => { if (r.type === 'transport' && r.selectedCandidatePairId) pair = by[r.selectedCandidatePairId]; });
+    if (!pair) st.forEach(r => { if (r.type === 'candidate-pair' && r.nominated && r.state === 'succeeded') pair = r; });
+    if (pair) { loc = by[pair.localCandidateId]; rem = by[pair.remoteCandidateId]; }
+    st.forEach(r => { if (r.type === 'inbound-rtp') { inB += r.bytesReceived || 0; lost += r.packetsLost || 0; recv += r.packetsReceived || 0; } if (r.type === 'outbound-rtp') outB += r.bytesSent || 0; });
+    const now = performance.now(), prev = p._ns || null; p._ns = { t: now, inB, outB, lost, recv };
+    const dt = prev ? (now - prev.t) / 1000 : 0;
+    const relay = (loc && loc.candidateType === 'relay') || (rem && rem.candidateType === 'relay');
+    return { state: p.connectionState, type: !pair ? '—' : relay ? 'relay' : 'direct', rtt: pair && pair.currentRoundTripTime != null ? Math.round(pair.currentRoundTripTime * 1000) : null,
+      inK: dt ? Math.round((inB - prev.inB) * 8 / dt / 1000) : null, outK: dt ? Math.round((outB - prev.outB) * 8 / dt / 1000) : null,
+      loss: dt && (recv - prev.recv + lost - prev.lost) > 0 ? Math.round((lost - prev.lost) * 100 / (recv - prev.recv + lost - prev.lost)) : 0, dc: !!(dc && dc.readyState === 'open') };
+  } catch (e) { return null; }
+}
+function netText(n) {
+  if (!n) return tr('нет видеосвязи', 'no video link');
+  const type = n.type === 'direct' ? tr('напрямую', 'direct') : n.type === 'relay' ? tr('через сервер', 'via relay') : tr('соединяюсь…', 'connecting…');
+  return `${n.state === 'connected' ? '🟢' : '🟡'} ${type}` + (n.rtt != null ? ` · ${n.rtt} ${tr('мс', 'ms')}` : '') + (n.inK != null ? ` · ⬇ ${(n.inK / 1000).toFixed(1)} ⬆ ${(n.outK / 1000).toFixed(1)} ${tr('Мбит/с', 'Mbit/s')}` : '') + (n.loss ? ` · ${tr('потери', 'loss')} ${n.loss}%` : '');
+}
 function isWT(t) { return !!(t && W.wt.has(t)); }
 function wsend(m) { if (W.viewer) { roomUp(m); return; } if (online) send(m); roomDown(m); }
 const wSleep = ms => new Promise(r => setTimeout(r, ms));
@@ -15952,6 +16005,7 @@ function wAC() { try { actx = actx || new (window.AudioContext || window.webkitA
 .wsw i::after{content:"";position:absolute;left:3px;top:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:transform .2s;box-shadow:0 2px 6px rgba(0,0,0,.4)}
 .wsw input:checked+i{background:#22d36b}.wsw input:checked+i::after{transform:translateX(18px)}
 .wqs{display:flex;gap:6px;padding:8px 0 2px}.wqs button{flex:1;border:0;border-radius:12px;padding:9px 4px;background:rgba(255,255,255,.08);color:#fff;font:inherit;font-size:13px;cursor:pointer}.wqs button.on{background:#fff;color:#111}
+.wnoa{position:absolute;left:50%;top:calc(56px + env(safe-area-inset-top));transform:translateX(-50%);z-index:9;width:min(92%,520px);background:#ffd60a;color:#1d1340;border-radius:16px;padding:10px 14px;font-size:13px;font-weight:800;line-height:1.35;box-shadow:0 8px 24px rgba(0,0,0,.5);cursor:pointer}
 .wcred{font-size:10.5px;color:rgba(255,255,255,.35);text-align:center;margin:8px 0 2px;line-height:1.4}
 #wPanel .note{font-size:12px;color:rgba(255,255,255,.55);font-weight:700;line-height:1.35}
 #wPanel .btn{box-shadow:none}
@@ -16103,6 +16157,7 @@ function stopSource(silent) {
   W.stream = null; W.wt.clear();
   if (W.yt) { try { W.yt.destroy(); } catch (e) {} W.yt = null; } $('wYT').innerHTML = '';
   resetMovieEl(); if (W.blob) { URL.revokeObjectURL(W.blob); W.blob = null; }
+  { const nb = $('wNoA'); if (nb) nb.remove(); }
   W.kind = null; W.owner = false; W.remoteSid = null; W.rem = null; W.title = ''; W.unreadable = false; W.faces = [];
   $('wTap').hidden = true; $('wWait').hidden = true;
   if (had && !silent) wsend({ t: 'w', a: 'stop' });
@@ -16139,7 +16194,8 @@ async function startScreen() {
   const vt = st.getVideoTracks()[0]; W.title = tr('Экран', 'Screen') + ' · ' + S.me.name;
   const v = mv(); v.srcObject = st; v.muted = true; v.play().catch(() => {});
   if (vt) vt.onended = () => { if (W.stream === st) stopSource(); };
-  if (!st.getAudioTracks().length) toast(tr('⚠️ Звук не захвачен. Выбери вкладку и включи «Поделиться звуком вкладки»', '⚠️ No audio captured. Pick a tab and enable "Share tab audio"'), 6000);
+  if (!st.getAudioTracks().length) wNoAudio(true);
+  if (false) toast(tr('⚠️ Звук не захвачен. Выбери вкладку и включи «Поделиться звуком вкладки»', '⚠️ No audio captured. Pick a tab and enable "Share tab audio"'), 6000);
   else if (vt && vt.getSettings && vt.getSettings().displaySurface === 'monitor') toast(tr('Совет: лучше показывать вкладку — при показе всего экрана в картинку попадает плашка Chrome «… демонстрирует экран» (нажми на ней «Скрыть»).', 'Tip: share a tab instead — sharing the whole screen puts Chrome\'s "sharing your screen" bar into the picture (press "Hide" on it).'), 6000);
   announce(); shareStream(); afterSource();
 }
@@ -16175,6 +16231,7 @@ function startLink(u) {
   setTimeout(announce, 50); afterSource();
 }
 function afterSource() {
+  { const nb = $('wNoA'); if (nb && W.kind !== 'screen') nb.remove(); }
   setTimeout(roomSrc, 400);
   clearTimeout(W.autoHideT); W.lastInt = Date.now(); wSetUI(true);
   if (W.kind) W.autoHideT = setTimeout(() => { if (W.open && W.kind && !W.panelClose && !W.armed && Date.now() - (W.lastInt || 0) > 2800) wSetUI(false); }, 3500);
@@ -16285,10 +16342,11 @@ function attachRemoteMovie(s) {
   const v = mv(); if (v.srcObject !== s) { v.removeAttribute('src'); v.srcObject = s; }
   v.muted = false; applyVol(); v.play().catch(() => { $('wTap').hidden = false; });
   $('wWait').hidden = true; wLevelsInit(); setTimeout(roomSrc, 400); setTimeout(wAskQ, 1500);
+  clearTimeout(W.noAT); W.noAT = setTimeout(() => { if (W.kind === 'screen' && mv().srcObject === s && !s.getAudioTracks().length) wNoAudio(false); }, 4000);
 }
 
 /* ---------------- microphone: push-to-talk while the movie plays aloud ---------------- */
-function gateOn() { return W.open && !!W.kind && online && !W.headphones && !(W.kind !== 'screen' && P.paused()); }
+function gateOn() { return W.open && !!W.kind && online && !!S.wPTT && !(W.kind !== 'screen' && P.paused()); }
 function micApply() {
   const gate = gateOn();
   const on = !S.micOff && (!gate || W.talk || W.latch || W.dub > 0);
@@ -16344,7 +16402,7 @@ async function wCamToggle() {
 }
 (function talkButton() {
   const b = $('wTalk'); let t0 = 0;
-  b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); if (!gateOn()) { W.headphones = false; return; } t0 = Date.now(); W.talk = true; micApply(); try { b.setPointerCapture(e.pointerId); } catch (er) {} });
+  b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); if (!gateOn()) return; t0 = Date.now(); W.talk = true; micApply(); try { b.setPointerCapture(e.pointerId); } catch (er) {} });
   const up = e => { if (!W.talk) return; W.talk = false; if (Date.now() - t0 < 260) W.latch = !W.latch; micApply(); };
   b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up);
   b.addEventListener('click', e => e.stopPropagation());
@@ -16499,9 +16557,10 @@ $('wSet').onclick = () => {
       h('div', { className: 'wqs' }, ...[['auto', tr('Авто', 'Auto')], ['high', tr('Высокое', 'High')], ['mid', tr('Среднее', 'Medium')], ['low', tr('Низкое', 'Low')]].map(([k, l]) => h('button', { className: (S.wQ || 'auto') === k ? 'on' : '', on: { click: e => { S.wQ = k; save(); [...e.target.parentNode.children].forEach(b => b.classList.toggle('on', b === e.target)); if (W.kind && !W.owner && (W.kind === 'screen' || W.kind === 'file')) wsend({ t: 'w', a: 'q', q: k }); toast(tr('Качество: ', 'Quality: ') + l, 1500); } } }, l))),
       h('small', { className: 'note', style: 'display:block;margin:6px 0 8px' }, tr('Слабый интернет — выбери «Низкое»: картинка проще, зато без зависаний. Работает, когда фильм показывает другой человек (экран или файл). YouTube подбирает качество сам.', 'Weak internet? Pick "Low": a simpler picture without freezes. Works when someone else shows the movie (screen or file). YouTube picks its quality itself.'))),
     h('div', { className: 'wsec' }, h('h4', {}, tr('Микрофон', 'Microphone')),
-      sw('🎧 ' + tr('У меня наушники', 'I have headphones'), tr('Микрофон открыт всегда — кнопка «Держи и говори» не нужна.', 'The mic stays open — no need to hold the talk button.'), W.headphones, v => { W.headphones = v; micApply(); }),
-      sw('🔊 ' + tr('Фильм на полную громкость', 'Movie at full volume'), tr('Пока молчишь, микрофон отключается полностью — телефон не переходит в режим звонка и не приглушает фильм.', 'While you are silent the mic is fully released, so the phone does not switch to call mode and quiet the movie.'), S.wFullVol !== false, v => { S.wFullVol = v; save(); micApply(); }),
+      sw('🎙️ ' + tr('Говорить только по кнопке', 'Talk only with the button'), tr('Обычно выключено: друг слышит тебя всё время. Включи, если у друга фильм звучит дважды (у тебя нет наушников) — тогда говори, удерживая «Держи и говори».', 'Normally off: your friend hears you all the time. Turn on if your friend hears the movie twice (no headphones) — then hold "Hold to talk".'), !!S.wPTT, v => { S.wPTT = v; save(); W.gateTold = true; micApply(); }),
+      sw('🔊 ' + tr('Фильм на полную громкость', 'Movie at full volume'), tr('Только вместе с «по кнопке»: пока молчишь, микрофон отключается полностью и телефон не приглушает фильм.', 'Only with "by the button": while you are silent the mic is fully released and the phone does not quiet the movie.'), S.wFullVol !== false, v => { S.wFullVol = v; save(); micApply(); }),
       sw('🔉 ' + tr('Тише, когда друг говорит', 'Quieter while my friend talks'), tr('Фильм немного притихает, пока звучит голос друга.', 'The movie dips a little while your friend speaks.'), S.wTalkDuck !== false, v => { S.wTalkDuck = v; save(); })),
+    (() => { const el = h('div', { className: 'note', style: 'padding:8px 0;color:#fff;font-size:13px' }, '…'); const upd = async () => { if (!el.isConnected) return clearInterval(iv); el.textContent = netText(await netStats()); }; const iv = setInterval(upd, 1500); upd(); return h('div', { className: 'wsec' }, h('h4', {}, tr('Связь', 'Connection')), el); })(),
     W.settings.length ? h('div', { className: 'wsec' }, h('h4', {}, tr('Эффекты', 'Effects')), ...W.settings.map(x => sw(tr(x.ru, x.en), null, wGet(x.key), v => { S.wset = S.wset || {}; S.wset[x.key] = v; save(); x.onChange && x.onChange(v); }))) : null,
     h('p', { className: 'note' }, tr('Тап по фильму прячет и показывает меню. 👥 сверху скрывает кружки с камерами, 📷 — выключает твою камеру (микрофон остаётся).', 'Tap the movie to hide or show the menu. 👥 at the top hides the camera bubbles, 📷 turns your camera off (the mic stays).')),
     h('div', { className: 'wcred' }, tr('Звуки: FluidR3 GM (MIT), OpenRCT2 OpenSoundEffects (CC BY 4.0)', 'Sounds: FluidR3 GM (MIT), OpenRCT2 OpenSoundEffects (CC BY 4.0)')));
@@ -16765,7 +16824,7 @@ function roomFromViewer(env, m) {
   }
   const p = RM.peers.get(vid); if (!p) return; p.last = Date.now();
   if (m.t === 'bye') { try { p.pc.close(); } catch (e) {} RM.peers.delete(vid); roomRenderCount(); return; }
-  if (m.t === 'sig') { (async () => { try { if (m.d) await p.pc.setRemoteDescription(m.d); else if (m.c) await p.pc.addIceCandidate(m.c); } catch (e) {} })(); return; }
+  if (m.t === 'sig') { (async () => { try { if (m.d) { await p.pc.setRemoteDescription(m.d); const q = p.cq || []; p.cq = []; for (const c of q) { try { await p.pc.addIceCandidate(c); } catch (e) {} } } else if (m.c) { if (!p.pc.remoteDescription) (p.cq = p.cq || []).push(m.c); else await p.pc.addIceCandidate(m.c); } } catch (e) {} })(); return; }
   if (m.t === 'q') { p.q = W_Q[m.q] ? m.q : 'auto'; p.pc.getSenders().forEach(sd => wTune(sd, p.q)); return; }
   if (m.t === 'w' && m.a === 'q') { p.q = W_Q[m.q] ? m.q : 'auto'; p.pc.getSenders().forEach(sd => wTune(sd, p.q)); return; }
   if (m.t === 'react') { floaty(String(m.e || '').slice(0, 4)); if (online) send(m); roomPub(roomBase() + 'all', Object.assign({}, m, { o: vid })); return; }
@@ -16826,8 +16885,8 @@ function roomViewerPC() {
 async function roomViewerSig(m) {
   const p = roomViewerPC();
   try {
-    if (m.d) { await p.setRemoteDescription(m.d); if (m.d.type === 'offer') { await p.setLocalDescription(); roomUp({ t: 'sig', d: p.localDescription.toJSON() }); } }
-    else if (m.c) await p.addIceCandidate(m.c);
+    if (m.d) { await p.setRemoteDescription(m.d); const q = RM.cq || []; RM.cq = []; for (const c of q) { try { await p.addIceCandidate(c); } catch (e) {} } if (m.d.type === 'offer') { await p.setLocalDescription(); roomUp({ t: 'sig', d: p.localDescription.toJSON() }); } }
+    else if (m.c) { if (!p.remoteDescription) (RM.cq = RM.cq || []).push(m.c); else await p.addIceCandidate(m.c); }
   } catch (e) {}
 }
 function roomViewerMsg(text) { RM.msg = text; if (W.open) wRenderEmpty(); }
