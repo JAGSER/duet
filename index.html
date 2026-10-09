@@ -14355,7 +14355,7 @@ function onWire(topic, str) {
   const parts = topic.split('/');
   if (parts[2] === 'p') {
     const dev = parts[3]; if (!dev || dev === S.dev) return;
-    if (!str) { if (dev === ptDev) { ptPresent = false; if (online) setOnline(false); } return; }
+    if (!str) { if (dev === ptDev) { const alive = (pc && pc.connectionState === 'connected') || Date.now() - lastSeen < 15000; if (!alive) { ptPresent = false; if (online) setOnline(false); } } return; }
     let m; try { m = JSON.parse(str); } catch (e) { return; }
     S.partner = { name: String(m.name || T.friend).slice(0, 16), emoji: String(m.emoji || '🙂').slice(0, 4) }; save();
     if (dev !== ptDev) adopt(dev, m.s); else if (m.s && m.s !== ptSess) sessionChanged(m.s);
@@ -14385,13 +14385,14 @@ function send(m) {
 function sendHello() { send({ t: 'hello', name: S.me.name, emoji: S.me.emoji, cam: !!localStream, lang: LANG }); }
 setInterval(() => {
   if (!started) return;
+  if (pc && pc.connectionState === 'connected' && online) lastSeen = Math.max(lastSeen, Date.now() - 20000);
   if (online) { if (Date.now() - lastSent > 7000) send({ t: 'ping' }); if (Date.now() - lastSeen > 25000) setOnline(false); }
   else if (ptPresent) sayHi();
   renderNet();
 }, 3000);
 document.addEventListener('visibilitychange', () => {
   if (!started) return;
-  if (document.visibilityState === 'hidden') { send({ t: 'bye' }); publishPresence(false); return; }
+  if (document.visibilityState === 'hidden') { send({ t: 'ping' }); return; } // another tab / app in front: stay connected (pagehide says bye)
   clients.forEach(c => { if (c.connected) { try { c.publish(topicP(S.dev), presencePayload(), { qos: 0, retain: true }); } catch (e) {} } else if (c.reconnect && !c.reconnecting) { try { c.reconnect(); } catch (e) {} } });
   if (online && Date.now() - lastSeen > 25000) setOnline(false);
   sayHi(true);
@@ -14429,7 +14430,7 @@ function ensurePC() {
   p.onicecandidate = e => { if (pc === p && e.candidate) send({ t: 'sig', c: e.candidate.toJSON() }); };
   p.ontrack = e => { if (pc !== p) return; if (watchTrack(e)) return; remoteStream = e.streams[0] || new MediaStream([e.track]); const v = $('remoteV'); v.srcObject = remoteStream; v.muted = false; v.play().then(() => $('bSound').classList.add('hidden')).catch(() => $('bSound').classList.remove('hidden')); renderVideo(); };
   p.onnegotiationneeded = async () => { if (pc !== p) return; try { makingOffer = true; await p.setLocalDescription(); send({ t: 'sig', d: p.localDescription.toJSON() }); } catch (e) {} finally { makingOffer = false; } };
-  p.onconnectionstatechange = () => { if (pc !== p) return; if (p.connectionState === 'failed') { try { p.restartIce(); } catch (e) {} } renderNet(); };
+  p.onconnectionstatechange = () => { if (pc !== p) return; if (p.connectionState === 'failed') { try { p.restartIce(); } catch (e) {} p.fails = (p.fails || 0) + 1; if (p.fails === 3) toast(tr('Видео не проходит через эту сеть — попробуйте Wi-Fi или другой интернет', 'Video cannot get through this network — try Wi-Fi or another connection'), 5000); } else if (p.connectionState === 'connected') p.fails = 0; renderNet(); };
   if (localStream) outTracks().forEach(t => p.addTrack(t, localStream));
   watchAddTracks(p);
   return p;
@@ -15779,7 +15780,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202610091334';
+const APP_VERSION = '202610091754';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
@@ -15796,6 +15797,14 @@ async function checkUpdate() {
 setTimeout(checkUpdate, 6000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkUpdate(); });
 
+// a hidden tab stops drawing the mask canvas (no animation frames): send the plain camera meanwhile
+document.addEventListener('visibilitychange', () => {
+  if (!FX.on || !pc) return;
+  const raw = fxRaw(); if (!raw) return;
+  const vt = document.visibilityState === 'hidden' ? raw : fxOutVideo();
+  pc.getSenders().forEach(s => { if (s.track && s.track.kind === 'video' && !isWT(s.track) && s.track !== vt) s.replaceTrack(vt).catch(() => {}); });
+});
+
 /* ======================================================================
    WATCH TOGETHER: a shared movie (screen share / own file / YouTube /
    direct link), push-to-talk against doubled sound, separate movie and
@@ -15809,9 +15818,9 @@ const W = {
   handlers: {}, tools: [], frameFns: new Set(), movieFns: new Set(), faceNeed: 0, faces: [], fLoop: false, nextFid: 1,
   panelClose: null, armed: null, settings: [], an: {}, hbT: 0, gateTold: false, raf: 0,
 };
-const W_Q = { auto: [2500000, 1, 30], high: [4000000, 1, 30], mid: [1000000, 1.5, 30], low: [350000, 2.5, 24] };
+const W_Q = { auto: [1500000, 1, 30], high: [4000000, 1, 30], mid: [1000000, 1.5, 30], low: [350000, 2.5, 24] };
 function wTune(sd, q) { // bitrate / resolution of one outgoing movie video track
-  try { if (!sd || !sd.track || sd.track.kind !== 'video') return; const [br, sc, fr] = W_Q[q] || W_Q.auto, prm = sd.getParameters(); if (!prm.encodings || !prm.encodings.length) prm.encodings = [{}]; prm.encodings[0].maxBitrate = br; prm.encodings[0].scaleResolutionDownBy = sc; prm.encodings[0].maxFramerate = fr; prm.degradationPreference = 'maintain-framerate'; sd.setParameters(prm).catch(() => {}); } catch (e) {}
+  try { if (!sd || !sd.track || sd.track.kind !== 'video') return; const [br, sc, fr] = W_Q[q] || W_Q.auto, prm = sd.getParameters(); if (!prm.encodings || !prm.encodings.length) prm.encodings = [{}]; prm.encodings[0].maxBitrate = br; prm.encodings[0].scaleResolutionDownBy = sc; prm.encodings[0].maxFramerate = fr; prm.degradationPreference = q === 'high' ? 'maintain-framerate' : 'balanced'; sd.setParameters(prm).catch(() => {}); } catch (e) {}
 }
 function wAskQ() { if (S.wQ && S.wQ !== 'auto' && W.kind && !W.owner && (W.kind === 'screen' || W.kind === 'file')) wsend({ t: 'w', a: 'q', q: S.wQ }); }
 async function wFull() {
@@ -16123,7 +16132,7 @@ function watchAddTracks(p) {
 async function startScreen() {
   if (!canScreen()) { toast(tr('Показ экрана работает только с компьютера', 'Screen sharing works only from a computer'), 3500); return; }
   let st;
-  try { st = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30 }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, suppressLocalAudioPlayback: false }, systemAudio: 'include', selfBrowserSurface: 'exclude', surfaceSwitching: 'include', preferCurrentTab: false, displaySurface: 'browser' }); }
+  try { st = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30, max: 30 }, width: { ideal: 1280, max: 1920 }, height: { ideal: 720, max: 1080 } }, audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, suppressLocalAudioPlayback: false }, systemAudio: 'include', selfBrowserSurface: 'exclude', surfaceSwitching: 'include', preferCurrentTab: false, displaySurface: 'browser' }); }
   catch (e) { toast(tr('Показ экрана отменён', 'Screen sharing cancelled')); return; }
   stopSource();
   W.kind = 'screen'; W.owner = true; W.stream = st;
