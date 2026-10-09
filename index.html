@@ -15399,7 +15399,7 @@ async function fxDetect() {
         }
       }
     } catch (e) {}
-    await new Promise(r => setTimeout(r, Math.max(10, 70 - (performance.now() - t0))));
+    await new Promise(r => setTimeout(r, Math.max(10, ((typeof W !== 'undefined' && W.open) ? 160 : 70) - (performance.now() - t0))));
   }
   FX.detecting = false;
 }
@@ -15804,7 +15804,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202610091821';
+const APP_VERSION = '202610091930';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
@@ -16443,44 +16443,72 @@ function fromMovieN(nx, ny) { const r = movieRect(); return [r.x + nx * r.w, r.y
 function readable() { if (W.kind === 'screen' || W.kind === 'file') return true; if (W.kind === 'url') return !W.unreadable; return false; }
 
 /* ---------------- render loop: overlay canvases + face tracking smoothing ---------------- */
+// performance: weaker devices (or a slow frame rate) switch to a lighter mode automatically
+const WP = { ema: 16, slowT: 0, low: false };
+function wLow() { return S.wLite === true || (S.wLite !== false && WP.low); }
+function wFxW() { return wLow() ? 540 : 720; } // movie effects canvas width
+(function initLow() { const cores = navigator.hardwareConcurrency || 4, mem = navigator.deviceMemory || 4; WP.low = cores <= 4 || mem <= 3 || /Android|iPhone|iPad/i.test(navigator.userAgent); })();
 function wLoop(now) {
   if (!W.open) return; W.raf = requestAnimationFrame(wLoop);
   const dt = Math.min(.1, (now - (W.lastNow || now)) / 1000); W.lastNow = now;
-  const ov = $('wov'), dpr = Math.min(2, devicePixelRatio || 1), sw = ov.clientWidth, sh = ov.clientHeight;
-  if (ov.width !== Math.round(sw * dpr) || ov.height !== Math.round(sh * dpr)) { ov.width = Math.round(sw * dpr); ov.height = Math.round(sh * dpr); }
-  const x = ov.getContext('2d'); x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, ov.width, ov.height); x.setTransform(dpr, 0, 0, dpr, 0, 0);
-  W.frameFns.forEach(fn => { try { x.save(); fn(x, now, dt, sw, sh); x.restore(); } catch (e) { console.warn(e); } });
+  // watch the real frame rate: below ~35 fps for 2 s while effects run -> lighter mode
+  if (W.frameFns.size || W.movieFns.size) { WP.ema += (dt * 1000 - WP.ema) * .05; if (WP.ema > 29) { if (!WP.slowT) WP.slowT = now; else if (now - WP.slowT > 2000 && !WP.low) { WP.low = true; } } else WP.slowT = 0; }
+  const low = wLow();
+  W.fr = (W.fr || 0) + 1; const skip = low && dt < .025 && (W.fr & 1); // ~30 fps for effects in light mode
+  const ov = $('wov');
+  if (W.frameFns.size || W.ovDirty) {
+    if (!skip) {
+      const dpr = low ? 1 : Math.min(1.5, devicePixelRatio || 1), sw = ov.clientWidth, sh = ov.clientHeight;
+      if (ov.width !== Math.round(sw * dpr) || ov.height !== Math.round(sh * dpr)) { ov.width = Math.round(sw * dpr); ov.height = Math.round(sh * dpr); }
+      const x = ov.getContext('2d'); x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, ov.width, ov.height); x.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const fdt = low ? Math.min(.1, dt * 2) : dt;
+      W.frameFns.forEach(fn => { try { x.save(); fn(x, now, fdt, sw, sh); x.restore(); } catch (e) { console.warn(e); } });
+      W.ovDirty = W.frameFns.size > 0;
+    }
+  }
   const fx = $('wfx'), v = mv();
   if (W.movieFns.size && readable() && v.videoWidth && v.readyState >= 2) {
-    const r = movieRect(), k = Math.min(1, 960 / v.videoWidth), cw = Math.round(v.videoWidth * k), ch = Math.round(v.videoHeight * k);
-    if (fx.width !== cw || fx.height !== ch) { fx.width = cw; fx.height = ch; }
+    if (skip && fx.style.display === 'block') return;
+    const r = movieRect(), k = Math.min(1, wFxW() / v.videoWidth), cw = Math.round(v.videoWidth * k), ch = Math.round(v.videoHeight * k);
+    if (fx.width !== cw || fx.height !== ch) { fx.width = cw; fx.height = ch; W.faces = []; }
     Object.assign(fx.style, { display: 'block', left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px' });
-    const c = fx.getContext('2d', { willReadFrequently: true }); c.setTransform(1, 0, 0, 1, 0, 0);
+    const c = fx.getContext('2d'); c.setTransform(1, 0, 0, 1, 0, 0);
     try { c.drawImage(v, 0, 0, cw, ch); } catch (e) { W.unreadable = true; }
     W.faces.forEach(f => { if (!f.lm || f.lm.length !== f.tgt.length) f.lm = f.tgt.map(p => p.slice()); else for (let i = 0; i < f.lm.length; i++) { f.lm[i][0] += (f.tgt[i][0] - f.lm[i][0]) * .5; f.lm[i][1] += (f.tgt[i][1] - f.lm[i][1]) * .5; } try { f.g = faceGeom(f.lm); } catch (e) {} });
-    W.movieFns.forEach(fn => { try { c.save(); fn(c, now, dt, cw, ch); c.restore(); } catch (e) { console.warn(e); } });
+    const mdt = low ? Math.min(.1, dt * 2) : dt;
+    W.movieFns.forEach(fn => { try { c.save(); fn(c, now, mdt, cw, ch); c.restore(); } catch (e) { console.warn(e); } });
   } else if (fx.style.display !== 'none') fx.style.display = 'none';
 }
 async function wFaceLoop() {
   if (W.fLoop) return; W.fLoop = true;
   try { await loadFaceApi(); } catch (e) { W.fLoop = false; toast(tr('Распознавание лиц не загрузилось', 'Face detection failed to load')); return; }
-  const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: .4 });
   while (W.open && W.faceNeed > 0) {
+    const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: .5 });
     const t0 = performance.now(), v = mv();
     if (readable() && v.videoWidth && v.readyState >= 2) {
       try {
-        const r = await faceapi.detectAllFaces(v, opts).withFaceLandmarks(true);
-        const k = Math.min(1, 960 / v.videoWidth), now = performance.now();
+        // detect on a small copy of the frame: much cheaper than reading the full-size video
+        const dw = Math.min(v.videoWidth, 512), dh = Math.round(v.videoHeight * dw / v.videoWidth);
+        const dc2 = W.detC || (W.detC = document.createElement('canvas')); if (dc2.width !== dw || dc2.height !== dh) { dc2.width = dw; dc2.height = dh; }
+        dc2.getContext('2d').drawImage(v, 0, 0, dw, dh);
+        const r = await faceapi.detectAllFaces(dc2, opts).withFaceLandmarks(true);
+        const k = Math.min(1, wFxW() / v.videoWidth) * v.videoWidth / dw, now = performance.now();
         const found = r.slice(0, 6).map(d => { const b = d.detection.box; return { box: [b.x * k, b.y * k, b.width * k, b.height * k], tgt: d.landmarks.positions.map(p => [p.x * k, p.y * k]) }; });
         const old = W.faces.slice(), next = [];
         found.forEach(n => { const cx = n.box[0] + n.box[2] / 2, cy = n.box[1] + n.box[3] / 2; let best = null, bd = 1e9; old.forEach(o => { const d = Math.hypot(o.box[0] + o.box[2] / 2 - cx, o.box[1] + o.box[3] / 2 - cy); if (d < bd) { bd = d; best = o; } }); if (best && bd < Math.max(n.box[2], best.box[2]) * .9) { old.splice(old.indexOf(best), 1); best.box = n.box; best.tgt = n.tgt; best.seen = now; next.push(best); } else next.push({ id: W.nextFid++, box: n.box, tgt: n.tgt, lm: null, g: null, seen: now }); });
-        old.forEach(o => { if (now - o.seen < 600) next.push(o); });
+        W.detMs = (W.detMs || 100) * .7 + (now - t0) * .3; const keep = Math.max(600, W.detMs * 3);
+        old.forEach(o => { if (now - o.seen < keep) next.push(o); });
         W.faces = next;
       } catch (e) {}
     }
-    await wSleep(Math.max(25, 110 - (performance.now() - t0)));
+    const took = performance.now() - t0; await wSleep(Math.max(wLow() ? 120 : 40, (wLow() ? 260 : 150) - took));
   }
   W.fLoop = false;
+}
+// load the face models and run one small detection ahead of time, so the first actor effect starts quickly
+function wWarmFaces() {
+  if (W.warmed || !readable()) return; W.warmed = true;
+  loadFaceApi().then(async () => { const v = mv(); if (!v.videoWidth) return; const c = document.createElement('canvas'); c.width = 320; c.height = Math.round(v.videoHeight * 320 / v.videoWidth); c.getContext('2d').drawImage(v, 0, 0, c.width, c.height); try { await faceapi.detectAllFaces(c, new faceapi.TinyFaceDetectorOptions({ inputSize: 320 })).withFaceLandmarks(true); } catch (e) {} }).catch(() => { W.warmed = false; });
 }
 function needFaces(on) { W.faceNeed = Math.max(0, W.faceNeed + (on ? 1 : -1)); if (W.faceNeed > 0) wFaceLoop(); else W.faces = []; }
 async function detectOne(el) {
@@ -16561,6 +16589,7 @@ $('wSet').onclick = () => {
       sw('🔊 ' + tr('Фильм на полную громкость', 'Movie at full volume'), tr('Только вместе с «по кнопке»: пока молчишь, микрофон отключается полностью и телефон не приглушает фильм.', 'Only with "by the button": while you are silent the mic is fully released and the phone does not quiet the movie.'), S.wFullVol !== false, v => { S.wFullVol = v; save(); micApply(); }),
       sw('🔉 ' + tr('Тише, когда друг говорит', 'Quieter while my friend talks'), tr('Фильм немного притихает, пока звучит голос друга.', 'The movie dips a little while your friend speaks.'), S.wTalkDuck !== false, v => { S.wTalkDuck = v; save(); })),
     (() => { const el = h('div', { className: 'note', style: 'padding:8px 0;color:#fff;font-size:13px' }, '…'); const upd = async () => { if (!el.isConnected) return clearInterval(iv); el.textContent = netText(await netStats()); }; const iv = setInterval(upd, 1500); upd(); return h('div', { className: 'wsec' }, h('h4', {}, tr('Связь', 'Connection')), el); })(),
+    h('div', { className: 'wsec' }, h('h4', {}, tr('Скорость', 'Performance')), sw('⚡ ' + tr('Облегчённые эффекты', 'Light effects'), tr('Для слабых ноутбуков и телефонов: эффекты рисуются проще и реже, распознавание лиц — экономнее. Включается само, если начинает тормозить.', 'For older laptops and phones: effects are drawn simpler and less often, face detection is lighter. Turns on by itself if things slow down.'), wLow(), v => { S.wLite = v; save(); })),
     W.settings.length ? h('div', { className: 'wsec' }, h('h4', {}, tr('Эффекты', 'Effects')), ...W.settings.map(x => sw(tr(x.ru, x.en), null, wGet(x.key), v => { S.wset = S.wset || {}; S.wset[x.key] = v; save(); x.onChange && x.onChange(v); }))) : null,
     h('p', { className: 'note' }, tr('Тап по фильму прячет и показывает меню. 👥 сверху скрывает кружки с камерами, 📷 — выключает твою камеру (микрофон остаётся).', 'Tap the movie to hide or show the menu. 👥 at the top hides the camera bubbles, 📷 turns your camera off (the mic stays).')),
     h('div', { className: 'wcred' }, tr('Звуки: FluidR3 GM (MIT), OpenRCT2 OpenSoundEffects (CC BY 4.0)', 'Sounds: FluidR3 GM (MIT), OpenRCT2 OpenSoundEffects (CC BY 4.0)')));
@@ -16650,7 +16679,7 @@ function wRenderTools() {
   if (W.holdN > 0) { W.toolsDirty = true; return; } W.toolsDirty = false;
   if (W.cat === undefined) W.cat = S.wCat === undefined ? 'react' : S.wCat;
   const cats = $('wCats'); cats.innerHTML = '';
-  W_CATS.forEach(c => cats.append(h('button', { className: 'wcat' + (W.cat === c.id ? ' on' : ''), title: tr(c.ru, c.en), on: { click: () => { W.lastInt = Date.now(); if (W.armed) wDisarm(); W.sub = null; W.cat = W.cat === c.id ? null : c.id; S.wCat = W.cat; save(); $('wStrip').scrollLeft = 0; wRenderTools(); } } }, c.icon)));
+  W_CATS.forEach(c => cats.append(h('button', { className: 'wcat' + (W.cat === c.id ? ' on' : ''), title: tr(c.ru, c.en), on: { click: () => { W.lastInt = Date.now(); if (W.armed) wDisarm(); W.sub = null; if (c.id === 'actors') wWarmFaces(); W.cat = W.cat === c.id ? null : c.id; S.wCat = W.cat; save(); $('wStrip').scrollLeft = 0; wRenderTools(); } } }, c.icon)));
   const strip = $('wStrip'), keep = strip.scrollLeft; strip.innerHTML = '';
   $('wStripW').hidden = !W.cat;
   if (!W.cat) return;
@@ -16693,7 +16722,7 @@ const WAPI = {
   needFaces, faces: () => W.faces.filter(f => f.g), faceAt(nx, ny) { const c = $('wfx'); if (!c.width) return null; let best = null, bd = 1e9; W.faces.forEach(f => { if (!f.g) return; const d = Math.hypot((f.box[0] + f.box[2] / 2) / c.width - nx, (f.box[1] + f.box[3] / 2) / c.height - ny); if (d < bd) { bd = d; best = f; } }); return best; },
   detectOne, myCam: () => (fxEnsureVideo() ? FX.video : null), ptCam: () => (online && remoteStream && remoteStream.getVideoTracks().some(t => t.readyState === 'live')) ? $('remoteV') : null,
   drawMask: (x, id, G, v) => drawMask(x, id, G, v), faceGeom: lm => faceGeom(lm), masks: () => MASKS.filter(m => m[0] !== 'none'),
-  ac: () => wAC(), sfxVolume: () => S.wSfxVol == null ? .35 : S.wSfxVol, levels: () => ({ me: wLevel('me'), pt: wLevel('pt'), movie: wLevel('movie') }),
+  ac: () => wAC(), lowPower: () => wLow(), sfxVolume: () => S.wSfxVol == null ? .35 : S.wSfxVol, levels: () => ({ me: wLevel('me'), pt: wLevel('pt'), movie: wLevel('movie') }),
   duck: on => wDuck(on), talk(on) { W.dub = Math.max(0, W.dub + (on ? 1 : -1)); micApply(); }, setVoice: t => setVoiceTrack(t), micTrack: () => localStream && localStream.getAudioTracks()[0], micReady: () => micReady(),
   play: () => wCtl('play'), pause: () => wCtl('pause'), seek: t => wCtl('seek', t), time: () => P.time(), paused: () => P.paused(), canControl: () => !!W.kind && W.kind !== 'screen',
   frame: maxW => movieShot(maxW), moment: caption => takeMoment(caption, true), points: (n, res) => addPoints(n, res),
@@ -17041,7 +17070,7 @@ window.DUET_SFX = {
   function lApply() {
     const L = A.layer(), O = A.overlay(); if (!L || !O) return;
     if (!LF.size && !LT.size && !lTouched) return;
-    L.style.filter = [...LF.values()].join(' ');
+    L.style.filter = [...LF.values()].join(' ').replace(A.lowPower && A.lowPower() ? /blur\([^)]*\)/g : /$^/, '');
     let m = null; LT.forEach(v => { m = m ? m.multiply(v) : v; }); LM = m;
     const s = m ? m.toString() : ''; L.style.transform = s; O.style.transform = s;
     lTouched = LF.size > 0 || LT.size > 0;
@@ -17099,7 +17128,7 @@ window.DUET_SFX = {
   const warmTimers = new Set();
   function warmFor(ms) { warm(true); const t = setTimeout(() => { warmTimers.delete(t); warm(false); }, ms); warmTimers.add(t); }
   function warmBoth() { if (A.readable() && A.online() && okCool('warm', 6000)) A.fx('v:warm', {}); }
-  A.on('v:warm', (d, mine) => { if (!mine && A.readable()) warmFor(15000); });
+  A.on('v:warm', (d, mine) => { if (!mine && A.readable()) warmFor(7000); });
   function noFace() {
     if (!A.faces().length && NOW() - warmT < 5000) A.toast(T('🔎 Ищу лица в фильме… тапни ещё раз через секунду', '🔎 Looking for faces in the movie… tap again in a second'), 2200);
     else A.toast(T('Тут нет лица — тапни прямо по лицу актёра', 'No face here — tap right on an actor\'s face'), 2200);
@@ -17231,7 +17260,7 @@ window.DUET_SFX = {
     const dur = 10, e = effect('mask'), t0 = NOW(), tk = d.all ? null : tracker(nrm(d.nx), nrm(d.ny)), seen = new Map(), sp = [];
     let found = 0;
     e.need(); e.later(() => e.stop(), dur * 1000 + 200);
-    e.later(() => { if (!found) { if (mine) A.toast(T('Не нашёл лицо 🙈', 'Could not find the face 🙈')); e.stop(); } }, 7000);
+    e.later(() => { if (!found) { if (mine) A.toast(T('Не нашёл лицо 🙈', 'Could not find the face 🙈')); e.stop(); } }, 9500);
     e.mv((x, t, dt) => {
       const age = (NOW() - t0) / 1000; let L;
       if (tk) { const f = track(tk); L = f ? [f] : []; } else L = A.faces();
@@ -17280,7 +17309,7 @@ window.DUET_SFX = {
     const fc = document.createElement('canvas'); fc.width = FW; fc.height = FH;
     let found = 0, shown = 0, corr = null, corrT = 0;
     e.need(); e.later(() => e.stop(), dur * 1000 + 200);
-    e.later(() => { if (!found) { if (mine) A.toast(T('Не нашёл лицо 🙈', 'Could not find the face 🙈')); e.stop(); } }, 7000);
+    e.later(() => { if (!found) { if (mine) A.toast(T('Не нашёл лицо 🙈', 'Could not find the face 🙈')); e.stop(); } }, 9500);
     e.mv((x, t, dt) => {
       const f = track(tk); if (!f) return; const g = f.g, age = (NOW() - t0) / 1000;
       if (!found) { found = NOW(); sfx.whoosh(); }
