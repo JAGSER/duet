@@ -334,7 +334,7 @@ canvas#cvDraw{width:100%;aspect-ratio:3/4;border-radius:18px;background:#fffdf5;
       <button class="btn w bwatch bgames" id="bGames" style="margin:4px 0 6px"></button>
       <div class="pending hidden" id="pendingBar"><span id="pendingText"></span><button class="btn g" id="pendingCancel">✕</button></div>
       <div id="gamesBox" hidden>
-      <div class="sect"><b id="arcTitle">🕹️ Аркада · 41 игра</b> <span id="arcHint"></span></div>
+      <div class="sect"><b id="arcTitle">🕹️ Аркада · 42 игры</b> <span id="arcHint"></span></div>
       <div class="lvlrow"><div class="seg big" id="modeSeg"><button data-m="duo">💞 Вдвоём</button><button data-m="hotseat">📱 На одном</button><button data-m="bot">🤖 С ботом</button></div></div>
       <div class="lvlrow" id="lvlRow"><span id="lvlLbl">Бот:</span><div class="seg" id="lvl"><button data-l="0">лёгкий</button><button data-l="1">нормальный</button><button data-l="2">сильный</button></div></div>
       <div class="grid" id="arcGrid"></div>
@@ -14089,6 +14089,125 @@ registerGame({
 
 })();
 
+/* ---- 42-boat.js ---- */
+(function(){
+/* 42. Лодка — co-op rowing. 'you' rows the LEFT oar, 'bot' (partner or bot) the RIGHT oar.
+   One oar turns the boat; both within a split second shoot it straight ahead. Reach the finish together. */
+registerGame({
+  n: 42, id: 'boat', net: true, flip: false, title: TR('Лодка', 'Rowing Boat'), icon: '⛵', mode: 'вместе', coop: true, bg: 'linear-gradient(135deg,#0077b6,#00d1ff)',
+  desc: TR('У каждого своё весло — плывите в такт', 'One oar each — row in sync'),
+  help: TR('Тапай по экрану — гребёт твоё весло (у одного левое, у другого правое). Одно весло поворачивает лодку, оба сразу — мощный рывок вперёд. Обходите камни и доплывите до финиша. 3 жизни.',
+    'Tap to pull your oar (one of you has the left, the other the right). One oar turns the boat, both together — a big push forward. Dodge the rocks and reach the finish. 3 lives.'),
+  make(api) {
+    const { W, H, C } = api;
+    const lvl = api.level, GOAL = [4200, 5400, 6600][lvl], RIVER = 250, BY = 360, SYNC = .24;
+    const botDelay = [[.05, .2], [.03, .14], [.02, .08]][lvl], botMiss = [.22, .12, .05][lvl];
+    const S = { x: W / 2, a: 0, v: 0, va: 0, dist: 0, lives: 3, rocks: [], last: { you: -9, bot: -9 }, n: { you: 0, bot: 0 }, sync: 0, inv: 0, t: 0, over: false };
+    let msg = null, botQ = [], tgt = null, splash = [];
+    const cx = d => W / 2 + Math.sin(d / 260) * 42 + Math.sin(d / 97) * 14; // river centre at a given distance
+    const sy = d => BY - (d - S.dist);                                      // screen y of a distance
+    function addRocks() { while (!S.rocks.length || S.rocks[S.rocks.length - 1].d < S.dist + 700) { const d = (S.rocks.length ? S.rocks[S.rocks.length - 1].d : 420) + api.rand(150, 240) - lvl * 15; if (d > GOAL - 120) break; S.rocks.push({ d, o: api.rand(-.38, .38) }); } }
+    addRocks(); api.setScore(0, 0); api.setInfo(TR('Гребите вместе — в такт!', 'Row together — in sync!'));
+
+    function stroke(side) {
+      if (S.over) return;
+      const other = side === 'you' ? 'bot' : 'you', both = S.t - S.last[other] < SYNC && S.used !== S.last[other]; // each pair of strokes counts once
+      S.last[side] = S.t; S.n[side]++; api.setScore(S.n.you, S.n.bot);
+      if (both) { S.used = S.t; S.v += 115; S.va *= .25; S.sync++; msg = { k: 'sync', t: .9 }; api.sfx('score'); api.vibrate(15); api.float(TR('Синхронно! 💪', 'In sync! 💪'), S.x, BY - 60, C.yellow, 22); }
+      else { S.v += 42; S.va += side === 'you' ? 1.5 : -1.5; api.sfx('tap'); }
+      splash.push({ x: S.x + (side === 'you' ? -34 : 34), y: BY + 6, t: 0 });
+      if (api.isBot && side === 'you' && Math.random() > botMiss) botQ.push(S.t + api.rand(botDelay[0], botDelay[1])); // the bot follows your rhythm
+    }
+    function botThink() {
+      while (botQ.length && botQ[0] <= S.t) { botQ.shift(); stroke('bot'); }
+      // the bot also steers on its own when the boat drifts towards the left bank or a rock on the left
+      if (S.t - S.last.bot > .7 && S.t - S.last.you > .5) {
+        const c = cx(S.dist + 60), off = S.x - c, ahead = S.rocks.find(r => r.d > S.dist && r.d < S.dist + 140);
+        const rockX = ahead ? cx(ahead.d) + ahead.o * RIVER : null;
+        if ((S.a > .35) || off > RIVER * .3 || (rockX != null && Math.abs(rockX - S.x) < 34 && rockX >= S.x)) stroke('bot');
+      }
+    }
+    function hitRock() {
+      S.lives--; S.v = 0; S.va = 0; S.inv = 1.4; msg = { k: 'rock', t: 1.4 };
+      api.sfx('lose'); api.shake(9); api.vibrate(50); api.burst(S.x, BY - 20, '#c9c9c9', 16, 180);
+      if (S.lives <= 0) { S.over = true; api.after(.8, () => api.end('lose', TR(`Лодка разбилась на ${Math.round(S.dist / 10)} м из ${GOAL / 10}`, `The boat broke at ${Math.round(S.dist / 10)} of ${GOAL / 10} m`))); }
+    }
+    return {
+      update(dt) {
+        S.t += dt; if (msg) { msg.t -= dt; if (msg.t <= 0) msg = null; }
+        splash.forEach(s => s.t += dt); splash = splash.filter(s => s.t < .6);
+        if (S.over) return;
+        if (api.isBot) botThink();
+        S.v *= Math.pow(.5, dt); S.va *= Math.pow(.3, dt); S.a += S.va * dt; S.a *= Math.pow(.55, dt); S.a = api.clamp(S.a, -1.1, 1.1);
+        S.x += Math.sin(S.a) * S.v * dt; S.dist += Math.max(0, Math.cos(S.a)) * S.v * dt + 6 * dt; // the current carries you slowly
+        const c = cx(S.dist), half = RIVER / 2 - 18;
+        if (S.x < c - half || S.x > c + half) { S.x = api.clamp(S.x, c - half, c + half); S.v *= .4; S.va = (S.x < c ? -1 : 1) * 1.1; api.sfx('bounce'); }
+        S.inv -= dt;
+        if (S.inv <= 0) for (const r of S.rocks) { const rx = cx(r.d) + r.o * RIVER; if (Math.abs(r.d - S.dist) < 26 && Math.abs(rx - S.x) < 30) { hitRock(); break; } }
+        S.rocks = S.rocks.filter(r => r.d > S.dist - 260); addRocks();
+        if (S.dist >= GOAL) { S.over = true; api.sfx('win'); api.after(.4, () => api.end('win', TR(`Доплыли! Синхронных гребков: ${S.sync}`, `You made it! Strokes in sync: ${S.sync}`))); }
+      },
+      draw(g) {
+        g.fillStyle = '#3f8f2e'; g.fillRect(0, 0, W, H);
+        // grass dots
+        g.fillStyle = 'rgba(255,255,255,.08)'; for (let i = 0; i < 40; i++) { const d = Math.floor(S.dist / 40) * 40 + i * 40 - 400, y = sy(d); g.fillRect((i * 97) % W, y, 3, 3); }
+        // river
+        g.fillStyle = '#1e88c7'; g.beginPath();
+        for (let y = -10; y <= H + 10; y += 10) g.lineTo(cx(S.dist + (BY - y)) - RIVER / 2, y);
+        for (let y = H + 10; y >= -10; y -= 10) g.lineTo(cx(S.dist + (BY - y)) + RIVER / 2, y);
+        g.fill();
+        g.strokeStyle = 'rgba(255,255,255,.22)'; g.lineWidth = 2;
+        for (let i = 0; i < 16; i++) { const d = Math.floor(S.dist / 50) * 50 + i * 50 - 250, y = sy(d); const xx = cx(d) + ((i * 37) % 160) - 80; g.beginPath(); g.moveTo(xx, y); g.lineTo(xx + 18, y); g.stroke(); }
+        // finish line
+        const fy = sy(GOAL); if (fy > -40 && fy < H) { for (let i = 0; i < 12; i++) { g.fillStyle = i % 2 ? '#fff' : '#111'; g.fillRect(cx(GOAL) - RIVER / 2 + i * RIVER / 12, fy - 6, RIVER / 12, 12); } api.emoji('🏁', cx(GOAL) + RIVER / 2 + 14, fy - 10, 26); }
+        // rocks
+        for (const r of S.rocks) { const y = sy(r.d); if (y > -30 && y < H + 30) api.emoji('🪨', cx(r.d) + r.o * RIVER, y, 34); }
+        // splashes
+        splash.forEach(s => { g.globalAlpha = 1 - s.t / .6; api.circle(s.x, s.y + s.t * 40, 6 + s.t * 18, null, '#fff', 2); g.globalAlpha = 1; });
+        // boat
+        g.save(); g.translate(S.x, BY); g.rotate(S.a); if (S.inv > 0 && Math.floor(S.t * 10) % 2) g.globalAlpha = .45;
+        const pl = Math.max(0, .35 - (S.t - S.last.you)) / .35, pr = Math.max(0, .35 - (S.t - S.last.bot)) / .35;
+        g.strokeStyle = '#ffd60a'; g.lineWidth = 5; g.lineCap = 'round';
+        g.beginPath(); g.moveTo(-12, 0); g.lineTo(-44, 10 - pl * 24); g.stroke(); g.beginPath(); g.moveTo(12, 0); g.lineTo(44, 10 - pr * 24); g.stroke();
+        g.fillStyle = '#8b4a1c'; g.beginPath(); g.ellipse(0, 0, 17, 36, 0, 0, 6.283); g.fill();
+        g.fillStyle = '#6b3510'; g.beginPath(); g.ellipse(0, 2, 11, 28, 0, 0, 6.283); g.fill();
+        api.circle(-6, 4, 7, C.you); api.circle(6, -6, 7, C.bot);
+        g.restore(); g.globalAlpha = 1;
+        // progress + lives
+        api.rr(20, 20, W - 40, 12, 6); g.fillStyle = 'rgba(0,0,0,.25)'; g.fill();
+        api.rr(20, 20, (W - 40) * Math.min(1, S.dist / GOAL), 12, 6); g.fillStyle = C.yellow; g.fill();
+        api.text(`${Math.round(S.dist / 10)} / ${GOAL / 10} м`, W / 2, 46, 14, '#fff');
+        for (let i = 0; i < 3; i++) api.emoji(i < S.lives ? '❤️' : '🖤', 30 + i * 22, 48, 16);
+        api.text('💪 ' + S.sync, W - 30, 48, 14, '#fff', 'right');
+        // oar buttons (whole half of the screen works; these show who is who)
+        for (const side of ['you', 'bot']) {
+          const left = side === 'you', bx = left ? 14 : W / 2 + 7, bw = W / 2 - 21, hot = Math.max(0, .2 - (S.t - S.last[side])) / .2, col = left ? C.you : C.bot;
+          g.globalAlpha = api.mine(side) || api.hotseat ? .95 : .55; api.rr(bx, H - 74 + hot * 4, bw, 58, 18); g.fillStyle = col; g.fill(); g.globalAlpha = 1;
+          api.text((left ? '🚣 ' : '') + (api.mine(side) && !api.hotseat ? TR('Твоё весло', 'Your oar') : api.name(side) + (api.isBot && side === 'bot' ? ' 🤖' : '')) + (left ? '' : ' 🚣'), bx + bw / 2, H - 45 + hot * 4, 15, '#fff');
+        }
+        if (msg && msg.k === 'rock') { g.globalAlpha = Math.min(1, msg.t); api.rr(30, 150, W - 60, 50, 16); g.fillStyle = 'rgba(255,61,90,.9)'; g.fill(); api.text(TR('Бум о камень! 🪨', 'Crashed into a rock! 🪨'), W / 2, 175, 18, '#fff'); g.globalAlpha = 1; }
+        if (S.n.you + S.n.bot === 0) api.text(TR('Тапайте по очереди — лодка поворачивает. Вместе — летит вперёд!', 'Tap alone — the boat turns. Together — it flies!'), W / 2, 100, 13, '#fff');
+      },
+      // any tap pulls this player's own oar; in single-phone mode the screen halves are the two oars
+      down(p) { const side = api.hotseat ? (p.x < W / 2 ? 'you' : 'bot') : (p.side || 'you'); if (api.isBot && side === 'bot') return; stroke(side); },
+      move() {}, up() {},
+      snap() { const r = Math.round; return { x: r(S.x), a: +S.a.toFixed(3), d: r(S.dist), l: S.lives, i: S.inv > 0 ? 1 : 0, L: +(S.t - S.last.you).toFixed(2), R: +(S.t - S.last.bot).toFixed(2), n: [S.n.you, S.n.bot], s: S.sync, k: S.rocks.map(q => [r(q.d), +q.o.toFixed(2)]), m: msg ? [msg.k, +msg.t.toFixed(1)] : 0 }; },
+      load(s) {
+        if (!tgt) { S.x = s.x; S.dist = s.d; }
+        tgt = s; S.a = s.a; S.lives = s.l; S.inv = s.i ? .5 : 0; S.n.you = s.n[0]; S.n.bot = s.n[1]; S.sync = s.s; S.rocks = s.k.map(q => ({ d: q[0], o: q[1] }));
+        if (S.t - S.last.you > s.L + .05) S.last.you = S.t - s.L; if (S.t - S.last.bot > s.R + .05) S.last.bot = S.t - s.R;
+        msg = s.m ? { k: s.m[0], t: s.m[1] } : null;
+      },
+      guestUpdate(dt) {
+        S.t += dt; splash.forEach(q => q.t += dt); splash = splash.filter(q => q.t < .6); if (!tgt) return;
+        const k = Math.min(1, dt * 14); S.x += (tgt.x - S.x) * k; S.dist += (tgt.d - S.dist) * k;
+      },
+    };
+  },
+});
+
+})();
+
 window.Arcade = Arcade;
 })();
 </script>
@@ -15867,7 +15986,7 @@ $('bFind').onclick = () => { lobbyStart(); toast('🔍 ' + tr('Ищем случ
 /* ---------------- translations for the newer UI ---------------- */
 function applyExtrasLang() {
   const set = (id, ru, en) => { const e = $(id); if (e) e.textContent = tr(ru, en); };
-  set('arcTitle', '🕹️ Аркада · 41 игра', '🕹️ Arcade · 41 games'); set('classicTitle', '💞 Классика', '💞 Classics');
+  set('arcTitle', '🕹️ Аркада · 42 игры', '🕹️ Arcade · 42 games'); set('classicTitle', '💞 Классика', '💞 Classics');
   document.querySelectorAll('#modeSeg button').forEach(b => { b.textContent = { duo: tr('💞 Вдвоём', '💞 Together'), hotseat: tr('📱 На одном', '📱 One phone'), bot: tr('🤖 С ботом', '🤖 vs Bot') }[b.dataset.m]; });
   set('lvlLbl', 'Бот:', 'Bot:'); const lv = document.querySelectorAll('#lvl button'); [['лёгкий', 'easy'], ['нормальный', 'normal'], ['сильный', 'strong']].forEach((p, i) => lv[i] && (lv[i].textContent = tr(p[0], p[1])));
   set('maskTitle', '🎭 Маски', '🎭 Masks'); set('maskNote', 'Маска рисуется прямо в видео — друг тоже её видит. Смотри на себя в маленьком окошке сверху.', 'The mask is drawn right into your video — your friend sees it too. Watch yourself in the small window above.');
@@ -15901,7 +16020,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202610101946';
+const APP_VERSION = '202610102027';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
@@ -16853,7 +16972,7 @@ wLabels();
 /* ---------------- games under one button (opens in place) ---------------- */
 function renderGamesBtn() {
   const b = $('bGames'), open = !!S.gamesOpen; $('gamesBox').hidden = !open; b.classList.toggle('open', open);
-  b.innerHTML = ''; b.append(document.createTextNode(tr('🎮 Играть вместе · 47 игр', '🎮 Play together · 47 games')), h('span', { className: 'chev' }, '▾'));
+  b.innerHTML = ''; b.append(document.createTextNode(tr('🎮 Играть вместе · 48 игр', '🎮 Play together · 48 games')), h('span', { className: 'chev' }, '▾'));
 }
 $('bGames').onclick = () => { S.gamesOpen = !S.gamesOpen; save(); renderGamesBtn(); if (S.gamesOpen) setTimeout(() => $('bGames').scrollIntoView({ behavior: 'smooth', block: 'start' }), 60); };
 renderGamesBtn();
@@ -17112,10 +17231,6 @@ function roomBoot() {
 #scrMain.callfull #bFull{right:auto;left:62px}
 #scrMain.callfull.uioff .ctrls,#scrMain.callfull.uioff .reacts,#scrMain.callfull.uioff .stbtn{opacity:0;pointer-events:none}
 .tile .rt{position:absolute;right:10px;bottom:10px;z-index:1;font-size:11px;background:rgba(0,0,0,.28);padding:3px 7px;border-radius:9px;color:#ffe66d}
-.rateCard{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 24px);z-index:52;width:min(92vw,380px);background:#fff;color:var(--ink);border-radius:22px;box-shadow:0 12px 40px rgba(20,0,60,.5);padding:14px 16px 12px;text-align:center;animation:chin .25s ease-out;font-family:Nunito,system-ui,sans-serif;font-weight:800}
-.rateCard .rq{font-size:16px;margin-bottom:6px}
-.rstars{display:flex;justify-content:center;gap:4px}.rstars button{border:0;background:none;font-size:38px;line-height:1;color:#e3dcf5;cursor:pointer;padding:2px 4px;transition:transform .1s,color .1s}.rstars button.on{color:#ffc400}.rstars button:active{transform:scale(1.2)}
-.rlater{border:0;background:none;color:var(--muted);font:inherit;font-size:13px;margin-top:4px;cursor:pointer}
 .tile .hot{position:absolute;top:8px;right:36px;font-size:14px;z-index:1}
 .setchk{display:flex;gap:10px;align-items:flex-start;margin:8px 0}.setchk input{margin-top:2px;flex:0 0 auto;width:18px;height:18px}
 .shot.clip{position:relative}.shot .play{position:absolute;left:6px;top:6px;background:rgba(0,0,0,.55);color:#fff;font-style:normal;font-size:11px;padding:2px 7px;border-radius:9px}
@@ -17209,37 +17324,34 @@ function isHot(k) {
 }
 function bumpPlay(k) { S.plays = S.plays || {}; S.plays[k] = (S.plays[k] || 0) + 1; save(); }
 
-/* ================= game ratings (1–5 stars, from all players) ================= */
-const RATE = { sum: {}, asking: false, loaded: false };
+/* ================= game popularity: from the time all players spend in each game ================= */
+const PT = { sum: {}, cur: null, hidAt: 0 };
 function relayHttp() { const q = new URLSearchParams(location.search).get('mq'); if (q && /\/mqtt$/.test(q.split(',')[0])) return q.split(',')[0].replace(/^ws/, 'http').replace(/\/mqtt$/, ''); return 'https://relay.duetplay.app'; }
-function rateLoad() {
-  try { RATE.sum = JSON.parse(localStorage.getItem('duet-rates') || '{}'); } catch (e) {}
-  fetch(relayHttp() + '/ratings', { cache: 'no-store' }).then(r => r.json()).then(d => { if (d && typeof d === 'object') { RATE.sum = d; RATE.loaded = true; try { localStorage.setItem('duet-rates', JSON.stringify(d)); } catch (e) {} if (started) renderGrid(); } }).catch(() => {});
+function ptLoad() {
+  try { PT.sum = JSON.parse(localStorage.getItem('duet-playtime') || '{}'); } catch (e) {}
+  fetch(relayHttp() + '/stats', { cache: 'no-store' }).then(r => r.json()).then(d => { if (d && typeof d === 'object' && !d.error) { PT.sum = d; try { localStorage.setItem('duet-playtime', JSON.stringify(d)); } catch (e) {} if (started) renderGrid(); } }).catch(() => {});
 }
-function rateOf(k) { const v = RATE.sum[k]; return v && v[1] ? { avg: v[0] / v[1], n: v[1] } : null; }
-// better rated first; a game with few votes is pulled towards the middle so one 5★ does not jump to the top
-function rateScore(k) { const v = RATE.sum[k] || [0, 0]; return (v[0] + 3.5 * 3) / (v[1] + 3); }
-function rateBadge(k) { const r = rateOf(k); return r ? h('span', { className: 'rt' }, '★ ' + r.avg.toFixed(1) + ' · ' + r.n) : null; }
-function rateAsk(k, title) {
-  if (!k || RATE.asking || (typeof LOB !== 'undefined' && LOB.match && false)) return;
-  S.rates = S.rates || {}; S.rateLater = S.rateLater || {};
-  if (S.rates[k]) return; // already rated this game
-  if ((S.rateLater[k] || 0) > 0) { S.rateLater[k]--; save(); return; } // «later»: ask again after a few more games
-  RATE.asking = true;
-  const close = () => { RATE.asking = false; card.remove(); };
-  const stars = h('div', { className: 'rstars' }, [1, 2, 3, 4, 5].map(n => h('button', { type: 'button', on: { click: () => { stars.querySelectorAll('button').forEach((b, i) => b.classList.toggle('on', i < n)); setTimeout(() => { close(); rateSend(k, n); }, 350); }, pointerenter: () => stars.querySelectorAll('button').forEach((b, i) => b.classList.toggle('on', i < n)) } }, '★')));
-  const card = h('div', { className: 'rateCard' }, h('div', { className: 'rq' }, tr('Как тебе игра', 'How was') + ' «' + title + '»?'), stars,
-    h('button', { type: 'button', className: 'rlater', on: { click: () => { S.rateLater[k] = 3; save(); close(); } } }, tr('Позже', 'Later')));
-  document.body.append(card);
-  setTimeout(() => { if (card.isConnected) close(); }, 20000);
+// rating 1–5 from total play time (log scale: the most played game gets 5)
+function ptStars(k) {
+  const v = PT.sum[k]; if (!v || !v[0]) return 0;
+  const max = Math.max(...Object.values(PT.sum).map(x => x[0] || 0)); if (!max) return 0;
+  return 1 + 4 * Math.log(1 + v[0] / 60) / Math.log(1 + max / 60);
 }
-function rateSend(k, n) {
-  S.rates = S.rates || {}; const old = S.rates[k]; S.rates[k] = n; save();
-  const v = RATE.sum[k] || [0, 0]; RATE.sum[k] = old ? [v[0] - old + n, v[1]] : [v[0] + n, v[1] + 1]; // show it right away
-  toast('⭐ ' + tr('Спасибо за оценку!', 'Thanks for rating!'), 1600); if (started) renderGrid();
-  track('rate', { game: k, stars: n }, true);
-  fetch(relayHttp() + '/rate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ dev: S.dev, g: k, r: n }) }).then(r => r.json()).then(d => { if (d && d.avg) { RATE.sum[k] = d.avg; if (started) renderGrid(); } }).catch(() => {});
+function rateScore(k) { const v = PT.sum[k]; return v ? v[0] || 0 : 0; } // games are sorted by total time played
+function rateBadge(k) {
+  const s = ptStars(k); if (!s) return null; const v = PT.sum[k], hrs = v[0] / 3600;
+  return h('span', { className: 'rt', title: tr(`Сыграно ${hrs >= 1 ? hrs.toFixed(1) + ' ч' : Math.round(v[0] / 60) + ' мин'} · игроков: ${v[1]}`, `Played ${hrs >= 1 ? hrs.toFixed(1) + ' h' : Math.round(v[0] / 60) + ' min'} · players: ${v[1]}`) }, '★ ' + s.toFixed(1));
 }
+function ptStart(k) { ptStop(); PT.cur = { k, t: Date.now(), hid: 0 }; }
+function ptStop() {
+  const c = PT.cur; if (!c) return; PT.cur = null;
+  if (PT.hidAt) { c.hid += Date.now() - PT.hidAt; }
+  const sec = Math.min(3600, Math.round((Date.now() - c.t - c.hid) / 1000)); if (sec < 10) return;
+  const v = PT.sum[c.k] || [0, 0]; PT.sum[c.k] = [v[0] + sec, v[1] || 1];
+  try { fetch(relayHttp() + '/time', { method: 'POST', keepalive: true, headers: { 'content-type': 'text/plain' }, body: JSON.stringify({ dev: S.dev, g: c.k, s: sec }) }).catch(() => {}); } catch (e) {}
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) PT.hidAt = Date.now(); else { if (PT.cur && PT.hidAt) PT.cur.hid += Date.now() - PT.hidAt; PT.hidAt = 0; } });
+window.addEventListener('pagehide', ptStop);
 
 /* ================= short video clips ================= */
 const CLIP = { busy: false, last: 0, n: 0, sup: null, mime: null };
@@ -17581,15 +17693,15 @@ function plusLang() {
   set('setClipsL', '🎬 Видео-клипы: иногда записывать смешные моменты по 5 сек', '🎬 Video clips: sometimes record funny 5-second moments');
   chatLaunchers().forEach(b => { b.title = tr('Чат', 'Chat'); });
   $('bInstall2').textContent = '📲 ' + tr('Установить ярлык на рабочий стол', 'Install a desktop shortcut');
-  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 31 · 10.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
+  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 33 · 10.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
 }
 plusLang();
 
 /* ================= hooks into the rest of the app ================= */
 (() => {
   // these are plain global functions, so re-pointing the name is enough
-  openArc = wrapFn('openArc', a => { bumpPlay('a' + a[0]); const g = Arcade.games.find(x => x.n === a[0]); if (!a[1]) track('game', { game: (g ? g.title : 'a' + a[0]), mode: a[2] === 'hotseat' ? 'one phone' : online ? 'together' : 'bot' }); }, () => { stageFull(false); if (CHAT.st === 'open') chatShow('dock'); });
-  openGame = wrapFn('openGame', a => { if (!GAMES[a[0]]) return; bumpPlay(a[0]); if (!a[1]) track('game', { game: GAMES[a[0]].title, mode: 'together' }); renderGrid(); }, () => { stageFull(false); if (CHAT.st === 'open') chatShow('dock'); });
+  openArc = wrapFn('openArc', a => { bumpPlay('a' + a[0]); ptStart('a' + a[0]); const g = Arcade.games.find(x => x.n === a[0]); if (!a[1]) track('game', { game: (g ? g.title : 'a' + a[0]), mode: a[2] === 'hotseat' ? 'one phone' : online ? 'together' : 'bot' }); }, () => { stageFull(false); if (CHAT.st === 'open') chatShow('dock'); });
+  openGame = wrapFn('openGame', a => { if (!GAMES[a[0]]) return; bumpPlay(a[0]); ptStart(a[0]); if (!a[1]) track('game', { game: GAMES[a[0]].title, mode: 'together' }); renderGrid(); }, () => { stageFull(false); if (CHAT.st === 'open') chatShow('dock'); });
   openWatch = wrapFn('openWatch', a => { if (!a[0]) track('watch'); }, () => { stageFull(false); if (CHAT.st === 'open') chatShow('dock'); });
   startScreen = wrapFn('startScreen', () => track('movie', { source: 'screen' }));
   startFile = wrapFn('startFile', () => track('movie', { source: 'file' }));
@@ -17598,8 +17710,10 @@ plusLang();
   roomStart = wrapFn('roomStart', () => track('room', { as: 'host' }));
   openInstall = wrapFn('openInstall', a => track('install', { how: a[0] ? 'auto' : 'button' }));
   lobbyStart = wrapFn('lobbyStart', () => track('random_player'));
+  arcClose = wrapFn('arcClose', () => ptStop()); closeGame = wrapFn('closeGame', () => ptStop());
+  { const oc = Arcade.onClose; Arcade.onClose = (...a) => { ptStop(); return oc && oc(...a); }; }
   setOnline = wrapFn('setOnline', a => { if (a[0]) { chatFlush(); if (!PLUS.session) { PLUS.session = true; track('call', { with: (typeof LOB !== 'undefined' && LOB.match) ? 'random' : 'friend' }); } } });
-  startMain = wrapFn('startMain', () => { chatLoad(); chatBadge(); rateLoad(); });
+  startMain = wrapFn('startMain', () => { chatLoad(); chatBadge(); ptLoad(); });
   roomBoot = wrapFn('roomBoot', (a, r) => { if (r) track('room', { as: 'guest' }); });
   takeMoment = wrapFn('takeMoment', a => { track('photo', { how: a[1] ? 'button' : 'auto' }); if (!a[1] && /😱/.test(a[0] || '')) maybeClip(a[0]); });
   // effects in the movie: count which ones people like (only the person who sent it)
@@ -17621,10 +17735,9 @@ plusLang();
     const t = info && info.title ? ` «${info.title}»` : '';
     if (kind === 'drama') maybeClip('🔥 ' + tr('Напряжённый момент', 'Intense moment') + t);
     else if (kind === 'photo') maybeClip((info && info.caption) || ('📸' + t));
-    if (kind === 'end') { const cur = Arcade.current(), g = cur && Arcade.games.find(x => x.n === cur.n); if (g && info && info.mode !== 'hotseat') setTimeout(() => rateAsk('a' + g.n, g.title), 2500); }
     else if (kind === 'end' && info && (info.result === 'win' || info.result === 'lose')) setTimeout(() => maybeClip((info.result === 'win' ? '🏆 ' + tr('Победа!', 'Victory!') : '😭 ' + tr('Эх…', 'Oh no…')) + t), 300);
   };
-  win = wrapFn('win', a => { const gid = gameId, gt = GAMES[gameId] && GAMES[gameId].title; setTimeout(() => rateAsk(gid, gt), 2500); setTimeout(() => maybeClip(a[0] ? '🏆 ' + tr('Победа!', 'Victory!') : '😭 ' + tr('Эх…', 'Oh no…')), 300); });
+  win = wrapFn('win', a => { setTimeout(() => maybeClip(a[0] ? '🏆 ' + tr('Победа!', 'Victory!') : '😭 ' + tr('Эх…', 'Oh no…')), 300); });
   $('bInstall2').onclick = () => openInstall();
   const sa = matchMedia('(display-mode: standalone)').matches || navigator.standalone; if (sa) $('bInstall2').hidden = true;
 })();
