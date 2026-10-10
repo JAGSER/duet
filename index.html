@@ -345,6 +345,7 @@ canvas#cvDraw{width:100%;aspect-ratio:3/4;border-radius:18px;background:#fffdf5;
     <div id="panel" class="panel card hidden"></div>
     <div class="net" id="net"></div>
   </section>
+  <div class="foot" id="foot"><button class="btn g" id="bInstall2">📲 Установить ярлык на рабочий стол</button><div id="verFoot">Дуэт</div></div>
 </div>
 
 <div id="view" hidden>
@@ -353,7 +354,7 @@ canvas#cvDraw{width:100%;aspect-ratio:3/4;border-radius:18px;background:#fffdf5;
     <div id="stageBox2"><canvas id="cv2"></canvas><div class="ov" id="ov2"></div></div>
     <div id="info2"></div>
   </div>
-  <div class="vtop"><button class="btn g" id="back">←</button><h2 id="vtitle"></h2><div id="vvid"></div></div>
+  <div class="vtop"><button class="btn g" id="back">←</button><h2 id="vtitle"></h2><button class="btn g chatl" id="gChatB">💬</button><div id="vvid"></div></div>
   <div class="score"><span class="you" id="lYou">🙂 Ты</span><b class="you" id="sYou">0</b><span>:</span><b class="bot" id="sBot">0</b><span class="bot" id="lBot">Бот 🤖</span></div>
   <div id="stageBox"><canvas id="cv"></canvas><div class="ov" id="ov"></div></div>
   <div id="info"></div>
@@ -14107,7 +14108,6 @@ window.Arcade = Arcade;
     <button class="btn g w" id="bUnpair" data-i="unpair"></button>
     <label class="l" id="setMoreL">Ещё</label>
     <label class="small setchk"><input type="checkbox" id="setClips" checked> <span id="setClipsL">🎬 Видео-клипы: иногда записывать смешные моменты по 5 сек</span></label>
-    <label class="small setchk"><input type="checkbox" id="setStats" checked> <span id="setStatsL">📊 Анонимная статистика (без имён, переписки и фото) — помогает улучшать Дуэт</span></label>
     <label class="l" data-i="diagTitle"></label>
     <div id="diag" class="small" style="line-height:1.8;background:#f6f3ff;border-radius:14px;padding:10px 14px"></div>
     <p class="small" style="text-align:center;margin-top:14px" id="verLbl">Duet</p>
@@ -15472,7 +15472,7 @@ function dbOpen() { if (DB.p) return DB.p; DB.p = new Promise((res, rej) => { tr
 async function dbAll() { const db = await dbOpen(); return new Promise(res => { const out = []; const q = db.transaction('shots').objectStore('shots').openCursor(null, 'prev'); q.onsuccess = () => { const c = q.result; if (c) { out.push(c.value); c.continue(); } else res(out); }; q.onerror = () => res(out); }); }
 async function dbPut(v) { const db = await dbOpen(); return new Promise(res => { const tx = db.transaction('shots', 'readwrite'); tx.objectStore('shots').add(v); tx.oncomplete = res; tx.onerror = res; }); }
 async function dbDel(id) { const db = await dbOpen(); return new Promise(res => { const tx = db.transaction('shots', 'readwrite'); tx.objectStore('shots').delete(id); tx.oncomplete = res; tx.onerror = res; }); }
-const CLIP_MAX = 12; // video clips are big: keep only the latest few
+const CLIP_MAX = Infinity; // clips are kept without a limit for now
 async function dbTrim(max = 120) { const all = await dbAll(); const ph = all.filter(v => v.kind !== 'clip'), cl = all.filter(v => v.kind === 'clip'); for (const v of ph.slice(max)) await dbDel(v.id); for (const v of cl.slice(CLIP_MAX)) await dbDel(v.id); }
 // small, unobtrusive brand mark: two dots + "duetplay.app" in a corner
 function duetMark(x, Wd, Hh, o) {
@@ -15896,7 +15896,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202610101606';
+const APP_VERSION = '202610101742';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
@@ -16110,7 +16110,7 @@ function wAC() { try { actx = actx || new (window.AudioContext || window.webkitA
 .wgrid button b{font-size:26px;font-weight:400;line-height:1}
 .wgrid button.on{background:rgba(255,255,255,.28);box-shadow:inset 0 0 0 2px #fff}
 body.watching .toast{background:rgba(18,14,30,.88);color:#fff;font-size:13px;padding:8px 14px;max-width:78%;box-shadow:0 6px 18px rgba(0,0,0,.5)}
-#watch.viewer #wSrcBtn,#watch.viewer #wCamB,#watch.viewer #wFacesB,#watch.viewer #wFaces,#watch.viewer #wTalk{display:none!important}
+#watch.viewer #wSrcBtn,#watch.viewer #wCamB,#watch.viewer #wFacesB,#watch.viewer #wFaces,#watch.viewer #wTalk,#watch.viewer #wChatB{display:none!important}
 .bwatch{background:linear-gradient(135deg,#ff8a00,#f107a3)!important;color:#fff!important;box-shadow:0 5px 0 #a3006a!important}
 .bgames{background:linear-gradient(135deg,#7b2ff7,#00b4e0)!important;box-shadow:0 5px 0 #3d1a8c!important;justify-content:center}
 .bgames .chev{display:inline-block;transition:transform .25s;margin-left:6px}.bgames.open .chev{transform:rotate(180deg)}
@@ -16126,7 +16126,7 @@ body.watching .toast{background:rgba(18,14,30,.88);color:#fff;font-size:13px;pad
   <div id="wFaces"></div>
   <div id="wUI">
     <div class="wtop"><button class="wib" id="wClose">✕</button><div class="wt" id="wTitle"></div><span id="wRoomN" style="font-size:12px;opacity:.8"></span>
-      <button class="wib" id="wSrcBtn">🎬</button><button class="wib" id="wCamB">📷</button><button class="wib" id="wFacesB">👥</button><button class="wib" id="wSet">⚙️</button></div>
+      <button class="wib" id="wSrcBtn">🎬</button><button class="wib" id="wCamB">📷</button><button class="wib" id="wFacesB">👥</button><button class="wib chatl" id="wChatB">💬</button><button class="wib" id="wSet">⚙️</button></div>
     <div class="wbot" id="wBot">
       <button id="wTalk" hidden></button>
       <div class="wbar" id="wBar"><button class="wib" id="wPlay">▶</button><input type="range" id="wSeek" min="0" max="100" step="0.1" value="0"><span class="tm" id="wTime"></span><span class="lbl" id="wLbl" hidden></span><button class="wib" id="wFs">⛶</button></div>
@@ -17092,21 +17092,46 @@ function roomBoot() {
 .shot .noposter{width:100%;aspect-ratio:3/4;border-radius:12px;display:grid;place-items:center;background:#24124f;font-size:30px}
 .clipRec{position:fixed;left:12px;top:calc(env(safe-area-inset-top,0px) + 12px);z-index:70;background:rgba(0,0,0,.55);color:#fff;font-size:12px;padding:5px 10px;border-radius:12px;pointer-events:none;font-weight:800}
 .clipRec b{color:#ff3b6b;animation:recb 1s infinite}@keyframes recb{50%{opacity:.2}}
-#chatBox{position:fixed;left:0;right:0;bottom:0;z-index:45;display:flex;justify-content:center;pointer-events:none}
-#chatBox .cb{pointer-events:auto;width:100%;max-width:560px;height:min(58vh,520px);background:#fff;border-radius:24px 24px 0 0;box-shadow:0 -10px 40px rgba(40,0,80,.35);display:flex;flex-direction:column;padding:12px 12px calc(env(safe-area-inset-bottom,0px) + 10px);animation:chin .22s ease-out}
-@keyframes chin{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
-#chatBox .ch{display:flex;align-items:center;gap:8px;padding:2px 4px 8px;font-size:16px;color:var(--ink)}#chatBox .ch b{flex:1}
-#chatBox .ch button{border:0;background:#f1ecff;border-radius:12px;padding:8px 12px;font:inherit;cursor:pointer}
-#chatList{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding:4px 2px 8px;-webkit-user-select:text;user-select:text}
-.cm{max-width:78%;padding:8px 12px;border-radius:18px;font-weight:700;font-size:15px;line-height:1.35;word-wrap:break-word;overflow-wrap:anywhere;white-space:pre-wrap}
-.cm.me{align-self:flex-end;background:linear-gradient(135deg,var(--violet),var(--pink));color:#fff;border-bottom-right-radius:6px}
+.chatbox{position:fixed;z-index:46;display:flex;flex-direction:column;background:#fff;border-radius:22px;box-shadow:0 12px 40px rgba(20,0,60,.45);padding:8px 10px 10px;color:var(--ink);font-family:Nunito,system-ui,sans-serif;font-weight:800}
+.chatbox.open{animation:chin .18s ease-out}
+@keyframes chin{from{transform:translateY(14px);opacity:0}to{transform:none;opacity:1}}
+.chatbox .ch{display:flex;align-items:center;gap:8px;padding:2px 2px 8px;font-size:15px;cursor:pointer;-webkit-user-select:none;user-select:none;touch-action:none}
+.chatbox .ctitle{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chatbox .cgrip{cursor:grab;opacity:.45;font-size:18px;padding:0 2px}
+.chatbox .cx{border:0;background:#f1ecff;color:inherit;border-radius:10px;padding:6px 10px;font:inherit;cursor:pointer}
+.crz{position:absolute;top:-7px;left:-7px;width:24px;height:24px;cursor:nwse-resize;touch-action:none;z-index:2;border-radius:50%;background:radial-gradient(circle,#7b2ff7 4px,rgba(123,47,247,.25) 5px,transparent 11px)}
+.chatbox.left .crz{left:auto;right:-7px;cursor:nesw-resize}
+#chatList{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding:4px 2px 8px;-webkit-user-select:text;user-select:text}
+.cm{max-width:82%;padding:7px 11px;border-radius:17px;font-weight:700;font-size:15px;line-height:1.35;overflow-wrap:anywhere;white-space:pre-wrap}
+.cm.me{align-self:flex-end;background:linear-gradient(135deg,var(--violet),var(--pink));color:#fff;border-bottom-right-radius:6px;cursor:pointer}
 .cm.pt{align-self:flex-start;background:#f1ecff;color:var(--ink);border-bottom-left-radius:6px}
+.cm.sel{outline:3px solid #ffd60a}
 .cm small{display:block;font-size:10px;opacity:.65;margin-top:2px;text-align:right}
 .cm.pend{opacity:.6}
+.cact{display:flex;gap:6px;align-self:flex-end;margin:-2px 0 4px}.cact button{border:0;background:#f1ecff;color:var(--ink);border-radius:10px;padding:6px 10px;font:inherit;font-size:12px;cursor:pointer}
 .cempty{margin:auto;color:var(--muted);font-size:13px;text-align:center}
-#chatBox form{display:flex;gap:8px;margin:0}
-#chatIn{flex:1;min-width:0;border:2px solid #e6defc;border-radius:16px;padding:11px 14px;font:inherit;font-size:16px;outline:none;color:var(--ink)}#chatIn:focus{border-color:var(--violet)}
-#chatBox form button{border:0;border-radius:16px;width:50px;background:linear-gradient(135deg,var(--violet),var(--pink));color:#fff;font-size:20px;cursor:pointer}
+.cemo{display:grid;grid-template-columns:repeat(8,1fr);gap:2px;max-height:128px;overflow:auto;padding:2px 0 6px}
+.cemo button{border:0;background:none;font-size:22px;padding:4px 0;cursor:pointer;border-radius:8px}.cemo button:active{background:#f1ecff}
+.cedit{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--violet);padding:2px 4px 6px}.cedit button{border:0;background:none;cursor:pointer;font-size:14px;color:inherit}
+.chatbox form{display:flex;gap:6px;margin:0}
+.cemoB{border:0;background:#f1ecff;border-radius:14px;width:42px;flex:0 0 42px;font-size:20px;cursor:pointer}
+#chatIn{flex:1;min-width:0;border:2px solid #e6defc;border-radius:14px;padding:10px 12px;font:inherit;font-size:16px;outline:none;color:var(--ink);background:#fff}#chatIn:focus{border-color:var(--violet)}
+.csend{border:0;border-radius:14px;width:46px;flex:0 0 46px;background:linear-gradient(135deg,var(--violet),var(--pink));color:#fff;font-size:19px;cursor:pointer}
+.chatbox.dock{background:transparent;box-shadow:none;pointer-events:none;padding:0}
+.chatbox.dock #chatList{overflow:hidden;justify-content:flex-end;padding:0 0 6px;-webkit-mask-image:linear-gradient(transparent,#000 35%);mask-image:linear-gradient(transparent,#000 35%)}
+.chatbox.dock .cm{font-size:13px;padding:5px 10px;max-width:94%;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.chatbox.dock .cm.pt{background:rgba(255,255,255,.93)}
+.chatbox.dock .cm:not(:nth-last-child(-n+5)){display:none}
+.chatbox.dock form,.chatbox.dock .cemo,.chatbox.dock .cedit,.chatbox.dock .cact,.chatbox.dock .cempty{display:none!important}
+.chatbox.dock .ch{order:3;pointer-events:auto;align-self:flex-end;background:rgba(20,0,50,.7);color:#fff;border-radius:16px;padding:5px 6px 5px 10px;font-size:13px;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);max-width:100%}
+.chatbox.left.dock .ch{align-self:flex-start}
+.chatbox.dock .ch .cx{background:rgba(255,255,255,.2);color:#fff;padding:4px 8px}
+.chatbox.dock .crz{pointer-events:auto;opacity:.55}
+.chatl[data-n]:not([data-n=""]),#bChat[data-n]:not([data-n=""]){position:relative}
+.chatl[data-n]:not([data-n=""])::after{content:attr(data-n);position:absolute;top:-5px;right:-5px;min-width:18px;height:18px;border-radius:9px;background:#ff3b6b;color:#fff;font-size:11px;line-height:18px;text-align:center;padding:0 4px}
+#view .vtop .chatl{padding:8px 12px}
+.foot{margin:26px 0 6px;text-align:center}.foot .btn{font-size:14px;padding:10px 16px}
+#verFoot{color:rgba(255,255,255,.75);font-size:12px;margin-top:12px}
 .chatPop{position:fixed;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 70px);z-index:55;max-width:min(90vw,420px);background:#fff;color:var(--ink);border-radius:18px;padding:10px 14px;box-shadow:0 10px 30px rgba(0,0,0,.3);font-size:14px;cursor:pointer;animation:chin .22s ease-out;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 `;
   document.head.append(h('style', {}, css));
@@ -17123,22 +17148,24 @@ function wrapFn(name, after, before) {
 }
 
 /* ================= analytics (Umami, anonymous) ================= */
-const STATS = { id: '__UMAMI_ID__', q: [], n: 0, rl: {} };
-function statsOn() { return STATS.id && STATS.id.indexOf('__') !== 0 && S.stats !== false && location.hostname.indexOf('duetplay.app') >= 0; }
+const STATS = { id: 'cb0ec999-076a-4bd0-ad61-49313a08c950', q: [], n: 0, rl: {} };
+function statsOn() { return STATS.id && STATS.id.indexOf('__') !== 0 && location.hostname.indexOf('duetplay.app') >= 0; }
 function track(ev, data, every) {
   if (!statsOn() || STATS.n >= 250) return;
   const key = ev + '|' + (data ? JSON.stringify(data) : ''), now = Date.now();
   if (!every && STATS.rl[key] && now - STATS.rl[key] < 90e3) return; // the same thing twice in a row is noise
   STATS.rl[key] = now; STATS.n++;
-  const go = () => { try { window.umami.track(ev, data || undefined); } catch (e) {} };
+  const go = () => { try { window.umami.track(p => Object.assign({}, p, statsClean(), { name: ev, data: data || undefined })); } catch (e) {} };
   if (window.umami && window.umami.track) go(); else STATS.q.push(go);
 }
+// pair and room codes live in the link (?p=, ?room=): never send the query or our own referrer
+function statsClean() { let ref = ''; try { const r = new URL(document.referrer); if (r.hostname.indexOf('duetplay.app') < 0) ref = r.origin + r.pathname; } catch (e) {} return { url: location.pathname || '/', referrer: ref }; }
 function statsInit() {
   if (!statsOn() || STATS.loaded) return; STATS.loaded = true;
   const s = document.createElement('script'); s.defer = true; s.src = 'https://cloud.umami.is/script.js';
   s.setAttribute('data-website-id', STATS.id);
-  s.setAttribute('data-exclude-search', 'true'); s.setAttribute('data-exclude-hash', 'true'); // pair and room codes live in the link: never send them
-  s.onload = () => { const q = STATS.q.splice(0); setTimeout(() => q.forEach(f => f()), 400); };
+  s.setAttribute('data-auto-track', 'false'); s.setAttribute('data-exclude-search', 'true'); s.setAttribute('data-exclude-hash', 'true');
+  s.onload = () => { try { window.umami.track(p => Object.assign({}, p, statsClean())); } catch (e) {} const q = STATS.q.splice(0); setTimeout(() => q.forEach(f => f()), 400); };
   document.head.append(s);
   const pwa = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
   track('launch', { app: pwa ? 'installed' : 'browser', lang: LANG, returning: S.me ? 'yes' : 'no' });
@@ -17154,7 +17181,7 @@ function bumpPlay(k) { S.plays = S.plays || {}; S.plays[k] = (S.plays[k] || 0) +
 
 /* ================= short video clips ================= */
 const CLIP = { busy: false, last: 0, n: 0, sup: null, mime: null };
-const CLIP_GAP = 6 * 60e3, CLIP_PER_SESSION = 3, CLIP_SEC = 5;
+const CLIP_COOL = 15e3, CLIP_SEC = 5; // 15 s pause only so two clips do not overlap
 function clipMime() {
   if (CLIP.mime != null) return CLIP.mime;
   CLIP.mime = '';
@@ -17166,14 +17193,13 @@ function clipSupported() {
   return CLIP.sup;
 }
 function camLive(v) { return v && v.srcObject && v.videoWidth > 0; }
-// automatic clips are rare: at most one every 6 minutes, 3 per visit, never with strangers
+// automatic clips: on the same interesting moments as photos (no count limits)
 function maybeClip(caption) {
   if (!clipSupported() || CLIP.busy || !plusOn('autoClips')) return;
-  if ((typeof LOB !== 'undefined' && LOB.match) || !online || document.hidden) return;
-  const now = Date.now();
-  if (now - CLIP.last < CLIP_GAP || CLIP.n >= CLIP_PER_SESSION || now - PLUS.boot < 90e3) return;
-  const watching = typeof W !== 'undefined' && W.open && W.kind;
-  if (!watching && !camLive($('remoteV')) && !camLive($('localV'))) return;
+  if ((typeof LOB !== 'undefined' && LOB.match) || document.hidden) return; // never record strangers
+  if (Date.now() - CLIP.last < CLIP_COOL) return;
+  const watching = typeof W !== 'undefined' && W.open && W.kind, inGame = !$('view').hidden;
+  if (!watching && !inGame && !camLive($('remoteV')) && !camLive($('localV'))) return;
   CLIP.n++; recordClip(caption, false);
 }
 function clipCam(x, v, X, Y, w, hh, mirror, label, col, emoji, s) {
@@ -17282,52 +17308,127 @@ function clipNotice() {
   document.body.append(n); setTimeout(() => n.remove(), CLIP_SEC * 1000);
 }
 
-/* ================= chat ================= */
-const CHAT = { open: false, unread: 0, list: [] };
+/* ================= chat: floating window that docks to a screen edge ================= */
+const CHAT = { st: 'closed', unread: 0, list: [], ops: [], edit: null, sel: null };
+const CHAT_EMOJI = '😂 🤣 😍 🥰 😘 😊 😉 😎 🤔 😮 😱 😭 😡 🥺 😴 🤤 👍 👎 👏 🙏 💪 🤝 ❤️ 💔 🔥 ✨ 🎉 💯 🍿 🎬 🎮 🏆 😈 👀 🙈 💋 🌹 ☕ 🍕 🍷'.split(' ');
 function chatKey() { return 'duet-chat-' + ((S.pair && S.pair.id) || 'x'); }
-function chatLoad() { try { CHAT.list = JSON.parse(localStorage.getItem(chatKey()) || '[]'); } catch (e) { CHAT.list = []; } }
-function chatSave() { if (typeof LOB !== 'undefined' && LOB.match) return; try { localStorage.setItem(chatKey(), JSON.stringify(CHAT.list.slice(-200))); } catch (e) {} }
-function chatBadge() { const b = $('bChat'); if (b) b.dataset.n = CHAT.unread ? (CHAT.unread > 9 ? '9+' : CHAT.unread) : ''; }
+function chatLoad() { try { const d = JSON.parse(localStorage.getItem(chatKey()) || '[]'); CHAT.list = Array.isArray(d) ? d : (d.list || []); CHAT.ops = Array.isArray(d) ? [] : (d.ops || []); } catch (e) { CHAT.list = []; CHAT.ops = []; } }
+function chatSave() { if (typeof LOB !== 'undefined' && LOB.match) return; try { localStorage.setItem(chatKey(), JSON.stringify({ list: CHAT.list.slice(-300), ops: CHAT.ops.slice(-100) })); } catch (e) {} }
+function chatLaunchers() { return [$('bChat'), $('wChatB'), $('gChatB')].filter(Boolean); }
+function chatBadge() { const n = CHAT.unread ? (CHAT.unread > 9 ? '9+' : String(CHAT.unread)) : ''; chatLaunchers().forEach(b => { b.dataset.n = n; }); }
 function chatTime(ts) { try { return new Date(ts).toLocaleTimeString(LANG === 'en' ? 'en-GB' : 'ru-RU', { hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } }
+function chatUI() { const m = innerWidth < 600; return Object.assign({ side: 'right', w: m ? Math.min(330, innerWidth - 40) : 340, h: m ? Math.round(innerHeight * .5) : 460, b: m ? 96 : 24 }, S.chatUI || {}); }
+function chatSaveUI(u) { S.chatUI = { side: u.side, w: Math.round(u.w), h: Math.round(u.h), b: Math.round(u.b) }; save(); }
+function chatPlace(kbBottom) {
+  const box = $('chatBox'); if (!box) return; const u = chatUI();
+  const w = Math.max(200, Math.min(u.w, innerWidth - 16));
+  let b = kbBottom != null ? kbBottom : u.b; const hh = Math.max(150, Math.min(u.h, innerHeight - b - 16));
+  b = Math.max(8, Math.min(b, innerHeight - hh - 8));
+  Object.assign(box.style, { width: w + 'px', height: hh + 'px', bottom: b + 'px', top: 'auto', left: u.side === 'left' ? '8px' : 'auto', right: u.side === 'right' ? '8px' : 'auto' });
+  box.classList.toggle('left', u.side === 'left');
+}
+function insAt(inp, t) { const a = inp.selectionStart == null ? inp.value.length : inp.selectionStart, b = inp.selectionEnd == null ? a : inp.selectionEnd; inp.value = (inp.value.slice(0, a) + t + inp.value.slice(b)).slice(0, 500); const p = Math.min(500, a + t.length); try { inp.setSelectionRange(p, p); } catch (e) {} }
+function chatBuild() {
+  let box = $('chatBox'); if (box) return box;
+  const coarse = matchMedia('(pointer: coarse)').matches;
+  const inp = h('input', { id: 'chatIn', maxLength: 500, placeholder: tr('Сообщение…', 'Message…'), autocomplete: 'off', enterKeyHint: 'send' });
+  const emo = h('div', { className: 'cemo', hidden: true }, CHAT_EMOJI.map(e => h('button', { type: 'button', on: { click: () => { insAt(inp, e); if (!coarse) inp.focus(); } } }, e)));
+  const editBar = h('div', { className: 'cedit', id: 'chatEditBar', hidden: true }, h('span', {}, '✏️ ' + tr('Редактирование сообщения', 'Editing a message')), h('button', { type: 'button', on: { click: () => chatEditCancel() } }, '✕'));
+  const form = h('form', { on: { submit: e => { e.preventDefault(); const t = inp.value.trim(); if (!t) return; inp.value = ''; if (CHAT.edit) chatEditDo(CHAT.edit, t); else chatSend(t); emo.hidden = true; } } },
+    h('button', { type: 'button', className: 'cemoB', on: { click: () => { emo.hidden = !emo.hidden; } } }, '😊'), inp, h('button', { type: 'submit', className: 'csend' }, '➤'));
+  const head = h('div', { className: 'ch' }, h('span', { className: 'cgrip', title: tr('Перетащи к другому краю', 'Drag to the other edge') }, '⠿'), h('b', { className: 'ctitle' }), h('button', { type: 'button', className: 'cx', title: tr('Закрыть чат', 'Close chat'), on: { click: e => { e.stopPropagation(); chatClose(); } } }, '✕'));
+  const rz = h('div', { className: 'crz', title: tr('Потяни, чтобы изменить размер', 'Drag to resize') });
+  box = h('div', { id: 'chatBox', className: 'chatbox' }, rz, head, h('div', { id: 'chatList' }), editBar, emo, form);
+  document.body.append(box);
+  // header: tap = open/dock, drag = move to the other edge
+  let d = null;
+  head.addEventListener('pointerdown', e => { if (e.target.closest('.cx')) return; const r = box.getBoundingClientRect(); d = { x: e.clientX, y: e.clientY, ox: e.clientX - r.left, oy: e.clientY - r.top, moved: false }; try { head.setPointerCapture(e.pointerId); } catch (_) {} });
+  head.addEventListener('pointermove', e => { if (!d) return; if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 7) return; d.moved = true; Object.assign(box.style, { left: (e.clientX - d.ox) + 'px', top: (e.clientY - d.oy) + 'px', right: 'auto', bottom: 'auto' }); });
+  const up = () => { if (!d) return; const moved = d.moved; d = null;
+    if (!moved) { chatShow(CHAT.st === 'open' ? 'dock' : 'open'); return; }
+    const r = box.getBoundingClientRect(), u = chatUI(); u.side = r.left + r.width / 2 < innerWidth / 2 ? 'left' : 'right'; u.b = innerHeight - r.bottom; chatSaveUI(u); chatPlace(); };
+  head.addEventListener('pointerup', up); head.addEventListener('pointercancel', up);
+  // corner handle: resize width + height
+  let z = null;
+  rz.addEventListener('pointerdown', e => { e.stopPropagation(); const r = box.getBoundingClientRect(); z = { x: e.clientX, y: e.clientY, w: r.width, h: r.height }; try { rz.setPointerCapture(e.pointerId); } catch (_) {} });
+  rz.addEventListener('pointermove', e => { if (!z) return; const u = chatUI(), dx = e.clientX - z.x, dy = e.clientY - z.y; u.w = Math.max(200, Math.min(innerWidth - 16, z.w + (u.side === 'right' ? -dx : dx))); u.h = Math.max(150, Math.min(innerHeight - 24, z.h - dy)); S.chatUI = u; chatPlace(); });
+  const rup = () => { if (!z) return; z = null; chatSaveUI(chatUI()); };
+  rz.addEventListener('pointerup', rup); rz.addEventListener('pointercancel', rup);
+  // phone keyboard: keep the input above it
+  const vv = window.visualViewport;
+  const kb = () => { if (document.activeElement !== inp || !vv) return; const hidden = innerHeight - (vv.height + vv.offsetTop); chatPlace(hidden > 80 ? hidden + 8 : null); };
+  inp.addEventListener('focus', () => { setTimeout(kb, 300); }); inp.addEventListener('blur', () => setTimeout(() => chatPlace(), 100));
+  if (vv) vv.addEventListener('resize', kb);
+  return box;
+}
+function chatShow(st) {
+  if (typeof W !== 'undefined' && W.viewer) return;
+  const box = chatBuild(); CHAT.st = st; CHAT.sel = null;
+  box.className = 'chatbox ' + st + (chatUI().side === 'left' ? ' left' : '');
+  box.querySelector('.ctitle').textContent = '💬 ' + ptName() + (st === 'dock' ? ' ▴' : '');
+  if (st === 'open') { CHAT.unread = 0; chatBadge(); document.querySelectorAll('.chatPop').forEach(e => e.remove()); }
+  else { const inp = $('chatIn'); if (inp) inp.blur(); }
+  chatPlace(); chatRender();
+}
+function chatToggle() { chatShow(CHAT.st === 'open' ? 'dock' : 'open'); }
+function chatClose() { CHAT.st = 'closed'; CHAT.edit = null; const b = $('chatBox'); if (b) b.remove(); }
 function chatRender() {
   const l = $('chatList'); if (!l) return; l.innerHTML = '';
   if (!CHAT.list.length) l.append(h('div', { className: 'cempty' }, tr(`Напиши ${ptName()} что-нибудь 💬`, `Say something to ${ptName()} 💬`)));
-  CHAT.list.forEach(m => l.append(h('div', { className: 'cm ' + (m.me ? 'me' : 'pt') + (m.pend ? ' pend' : '') }, m.x, h('small', {}, (m.pend ? '⏳ ' : '') + chatTime(m.ts)))));
+  CHAT.list.forEach(m => {
+    l.append(h('div', { className: 'cm ' + (m.me ? 'me' : 'pt') + (m.pend ? ' pend' : '') + (CHAT.sel === m.id ? ' sel' : ''), on: m.me ? { click: () => { if (CHAT.st !== 'open') return; CHAT.sel = CHAT.sel === m.id ? null : m.id; chatRender(); } } : {} },
+      m.x, h('small', {}, (m.pend ? '⏳ ' : '') + chatTime(m.ts) + (m.ed ? ' · ' + tr('изм.', 'edited') : ''))));
+    if (CHAT.sel === m.id && CHAT.st === 'open') l.append(h('div', { className: 'cact' },
+      h('button', { type: 'button', on: { click: () => chatEditStart(m.id) } }, '✏️ ' + tr('Изменить', 'Edit')),
+      h('button', { type: 'button', on: { click: () => chatDelete(m.id) } }, '🗑 ' + tr('Удалить у обоих', 'Delete for both'))));
+  });
   l.scrollTop = l.scrollHeight;
 }
-function chatOpen() {
-  if (CHAT.open) { chatClose(); return; }
-  CHAT.open = true; CHAT.unread = 0; chatBadge(); document.querySelectorAll('.chatPop').forEach(e => e.remove());
-  const inp = h('input', { id: 'chatIn', maxLength: 500, placeholder: tr('Сообщение…', 'Message…'), autocomplete: 'off', enterKeyHint: 'send' });
-  const form = h('form', { on: { submit: e => { e.preventDefault(); const t = inp.value.trim(); if (!t) return; inp.value = ''; chatSend(t); inp.focus(); } } }, inp, h('button', { type: 'submit' }, '➤'));
-  const box = h('div', { id: 'chatBox' }, h('div', { className: 'cb' },
-    h('div', { className: 'ch' }, h('span', {}, '💬'), h('b', {}, ptName()), h('button', { type: 'button', on: { click: chatClose } }, '✕')),
-    h('div', { id: 'chatList' }), form));
-  document.body.append(box); chatRender();
-  if (!matchMedia('(pointer: coarse)').matches) setTimeout(() => inp.focus(), 50);
-}
-function chatClose() { CHAT.open = false; const b = $('chatBox'); if (b) b.remove(); }
+function chatOp(op) { if (online) send(Object.assign({ t: 'chat' }, op)); else { CHAT.ops.push(op); } }
 function chatSend(text) {
   const m = { id: S.dev + '.' + Date.now().toString(36), x: text.slice(0, 500), ts: Date.now(), me: true };
   if (online) send({ t: 'chat', id: m.id, x: m.x, ts: m.ts }); else { m.pend = true; toast(tr(`${ptName()} не в сети — доставим, когда появится`, `${ptName()} is offline — we'll deliver it later`), 2200); }
   CHAT.list.push(m); chatSave(); chatRender(); track('chat');
 }
+function chatEditStart(id) { const m = CHAT.list.find(x => x.id === id); if (!m) return; CHAT.edit = id; CHAT.sel = null; const inp = $('chatIn'); inp.value = m.x; $('chatEditBar').hidden = false; chatRender(); inp.focus(); }
+function chatEditCancel() { CHAT.edit = null; const b = $('chatEditBar'); if (b) b.hidden = true; const inp = $('chatIn'); if (inp) inp.value = ''; }
+function chatEditDo(id, text) {
+  const m = CHAT.list.find(x => x.id === id); chatEditCancel(); if (!m || m.x === text) return;
+  m.x = text.slice(0, 500); m.ed = true;
+  if (!m.pend) chatOp({ op: 'edit', id, x: m.x });
+  chatSave(); chatRender();
+}
+function chatDelete(id) {
+  const m = CHAT.list.find(x => x.id === id); if (!m) return;
+  CHAT.list = CHAT.list.filter(x => x.id !== id); CHAT.sel = null; if (CHAT.edit === id) chatEditCancel();
+  if (!m.pend) chatOp({ op: 'del', id });
+  chatSave(); chatRender();
+}
 function chatFlush() {
   let any = false;
   CHAT.list.forEach(m => { if (m.me && m.pend) { send({ t: 'chat', id: m.id, x: m.x, ts: m.ts }); delete m.pend; any = true; } });
+  CHAT.ops.splice(0).forEach(op => { send(Object.assign({ t: 'chat' }, op)); any = true; });
   if (any) { chatSave(); chatRender(); }
 }
 function chatRecv(m) {
-  if (!m || typeof m.x !== 'string' || !m.id) return;
-  if (CHAT.list.some(x => x.id === m.id)) return;
-  CHAT.list.push({ id: String(m.id).slice(0, 40), x: m.x.slice(0, 500), ts: Date.now(), me: false }); chatSave();
-  if (CHAT.open) { chatRender(); return; }
+  if (!m || !m.id) return;
+  const id = String(m.id).slice(0, 40);
+  if (m.op === 'del') { CHAT.list = CHAT.list.filter(x => x.id !== id); chatSave(); chatRender(); return; }
+  if (m.op === 'edit') { const x = CHAT.list.find(v => v.id === id); if (x && typeof m.x === 'string') { x.x = m.x.slice(0, 500); x.ed = true; chatSave(); chatRender(); } return; }
+  if (typeof m.x !== 'string' || CHAT.list.some(x => x.id === id)) return;
+  CHAT.list.push({ id, x: m.x.slice(0, 500), ts: Date.now(), me: false }); chatSave();
+  if (CHAT.st !== 'closed') { chatRender(); if (CHAT.st === 'dock') { try { beep(990, .05, 'sine', .04); } catch (e) {} } return; }
   CHAT.unread++; chatBadge();
   try { beep(990, .06, 'sine', .05); } catch (e) {}
   document.querySelectorAll('.chatPop').forEach(e => e.remove());
-  const pop = h('div', { className: 'chatPop', on: { click: () => { pop.remove(); if (typeof W !== 'undefined' && W.open) return; chatOpen(); } } }, '💬 ' + ptName() + ': ' + m.x.slice(0, 120));
+  const pop = h('div', { className: 'chatPop', on: { click: () => { pop.remove(); chatShow('open'); } } }, '💬 ' + ptName() + ': ' + m.x.slice(0, 120));
   document.body.append(pop); setTimeout(() => pop.remove(), 4500);
 }
+// a tap anywhere else tucks the open chat to its edge (messages stay readable there)
+document.addEventListener('pointerdown', e => { if (CHAT.st !== 'open') return; if (e.target.closest('#chatBox,.chatl,#bChat,.chatPop')) return; chatShow('dock'); }, true);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && CHAT.st === 'open') chatShow('dock'); });
+window.addEventListener('resize', () => { if (CHAT.st !== 'closed') chatPlace(); });
+chatLaunchers().forEach(b => { b.addEventListener('click', e => { e.stopPropagation(); chatToggle(); }); });
 
 /* ================= full-screen call ================= */
 let fullByUs = false;
@@ -17344,33 +17445,32 @@ function stageFull(on) {
   } else if (fullByUs && document.fullscreenElement && document.exitFullscreen) { document.exitFullscreen().catch(() => {}); fullByUs = false; }
 }
 $('bFull').onclick = e => { e.stopPropagation(); stageFull(); };
-$('bChat').onclick = e => { e.stopPropagation(); chatOpen(); };
 $('stage').addEventListener('click', e => { if (!$('scrMain').classList.contains('callfull') || e.target.closest('button')) return; $('scrMain').classList.toggle('uioff'); });
 document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && fullByUs) { fullByUs = false; stageFull(false); } });
 
 /* ================= settings ================= */
 $('autoClips').onchange = e => { S.autoClips = e.target.checked; save(); const s2 = $('setClips'); if (s2) s2.checked = e.target.checked; };
 $('setClips').onchange = e => { S.autoClips = e.target.checked; save(); };
-$('setStats').onchange = e => { S.stats = e.target.checked; save(); if (S.stats) statsInit(); };
 $('bClipNow').onclick = async () => { $('shotsSheet').classList.add('hidden'); if (await recordClip('🎬 ' + tr('Наш момент', 'Our moment'), true)) openShots(); };
-$('bSettings').addEventListener('click', () => { $('setClips').checked = plusOn('autoClips'); $('setStats').checked = S.stats !== false; });
+$('bSettings').addEventListener('click', () => { $('setClips').checked = plusOn('autoClips'); });
 function plusLang() {
   const set = (id, ru, en) => { const e = $(id); if (e) e.textContent = tr(ru, en); };
   set('autoClipsL', '🎬 Иногда записывать короткие клипы (5 сек)', '🎬 Sometimes record short clips (5 s)');
   set('bClipNow', '🎬 Записать клип 5 сек', '🎬 Record a 5 s clip');
   set('setMoreL', 'Ещё', 'More');
   set('setClipsL', '🎬 Видео-клипы: иногда записывать смешные моменты по 5 сек', '🎬 Video clips: sometimes record funny 5-second moments');
-  set('setStatsL', '📊 Анонимная статистика (без имён, переписки и фото) — помогает улучшать Дуэт', '📊 Anonymous statistics (no names, messages or photos) — helps improve Duet');
-  $('bChat').title = tr('Чат', 'Chat'); $('bFull').title = tr('На весь экран', 'Full screen');
+  chatLaunchers().forEach(b => { b.title = tr('Чат', 'Chat'); });
+  $('bInstall2').textContent = '📲 ' + tr('Установить ярлык на рабочий стол', 'Install a desktop shortcut');
+  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 26 · 10.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
 }
 plusLang();
 
 /* ================= hooks into the rest of the app ================= */
 (() => {
   // these are plain global functions, so re-pointing the name is enough
-  openArc = wrapFn('openArc', a => { bumpPlay('a' + a[0]); const g = Arcade.games.find(x => x.n === a[0]); if (!a[1]) track('game', { game: (g ? g.title : 'a' + a[0]), mode: a[2] === 'hotseat' ? 'one phone' : online ? 'together' : 'bot' }); }, () => { stageFull(false); });
-  openGame = wrapFn('openGame', a => { if (!GAMES[a[0]]) return; bumpPlay(a[0]); if (!a[1]) track('game', { game: GAMES[a[0]].title, mode: 'together' }); renderGrid(); }, () => { stageFull(false); });
-  openWatch = wrapFn('openWatch', a => { if (!a[0]) track('watch'); }, () => { stageFull(false); chatClose(); });
+  openArc = wrapFn('openArc', a => { bumpPlay('a' + a[0]); const g = Arcade.games.find(x => x.n === a[0]); if (!a[1]) track('game', { game: (g ? g.title : 'a' + a[0]), mode: a[2] === 'hotseat' ? 'one phone' : online ? 'together' : 'bot' }); }, () => { stageFull(false); if (CHAT.st === 'open') chatShow('dock'); });
+  openGame = wrapFn('openGame', a => { if (!GAMES[a[0]]) return; bumpPlay(a[0]); if (!a[1]) track('game', { game: GAMES[a[0]].title, mode: 'together' }); renderGrid(); }, () => { stageFull(false); if (CHAT.st === 'open') chatShow('dock'); });
+  openWatch = wrapFn('openWatch', a => { if (!a[0]) track('watch'); }, () => { stageFull(false); if (CHAT.st === 'open') chatShow('dock'); });
   startScreen = wrapFn('startScreen', () => track('movie', { source: 'screen' }));
   startFile = wrapFn('startFile', () => track('movie', { source: 'file' }));
   startLink = wrapFn('startLink', a => track('movie', { source: ytId(a[0]) ? 'youtube' : 'link' }));
@@ -17381,14 +17481,31 @@ plusLang();
   setOnline = wrapFn('setOnline', a => { if (a[0]) { chatFlush(); if (!PLUS.session) { PLUS.session = true; track('call', { with: (typeof LOB !== 'undefined' && LOB.match) ? 'random' : 'friend' }); } } });
   startMain = wrapFn('startMain', () => { chatLoad(); chatBadge(); });
   roomBoot = wrapFn('roomBoot', (a, r) => { if (r) track('room', { as: 'guest' }); });
-  takeMoment = wrapFn('takeMoment', a => { track('photo', { how: a[1] ? 'button' : 'auto' }); });
+  takeMoment = wrapFn('takeMoment', a => { track('photo', { how: a[1] ? 'button' : 'auto' }); if (!a[1] && /😱/.test(a[0] || '')) maybeClip(a[0]); });
   // effects in the movie: count which ones people like (only the person who sent it)
   const fx0 = WAPI.fx; WAPI.fx = function (k, d) { const r = fx0.call(this, k, d); if (!/^s:(g|duck|auto)$/.test(k)) { const sub = d && (d.id || d.kind || d.e || d.name || d.k); track('effect', { fx: k + (typeof sub === 'string' && sub.length < 24 ? ' ' + sub : '') }); } return r; };
   ['bCreate', 'bJoin', 'bRandom', 'bShare', 'bShare2'].forEach(id => { const b = $(id); if (b) b.addEventListener('click', () => track({ bCreate: 'pair_create', bJoin: 'pair_join', bRandom: 'random_start', bShare: 'invite', bShare2: 'invite' }[id])); });
   // clip moments: things people throw at each other in a movie, masks on actors, game endings, screams
-  WAPI.on('v:throw', () => maybeClip('🎯 ' + tr('Прямо в цель!', 'Bullseye!')));
-  WAPI.on('v:face', () => maybeClip('🎭 ' + tr('Новая роль', 'New role')));
-  const om = Arcade.onMoment; Arcade.onMoment = (kind, info) => { om(kind, info); if (kind === 'end') setTimeout(() => maybeClip(info && info.result === 'win' ? '🏆 ' + tr('Победа!', 'Victory!') : info && info.result === 'lose' ? '😭 ' + tr('Эх…', 'Oh no…') : '🤝 ' + tr('Ничья', 'Draw')), 300); };
+  // clips: the same moments that make photos, but only the lively ones
+  const C = (ru, en) => () => maybeClip(tr(ru, en));
+  WAPI.on('v:throw', C('🎯 Прямо в цель!', '🎯 Bullseye!'));
+  WAPI.on('v:face', C('🎭 Новая роль', '🎭 New role'));
+  WAPI.on('v:say', C('💬 Сказано — сделано', '💬 Well said'));
+  WAPI.on('v:meme', C('😂 Мем', '😂 Meme'));
+  WAPI.on('s:snd', C('🥁 Звуковой эффект', '🥁 Sound effect'));
+  WAPI.on('s:meme', C('🖼️ Мем из кадра', '🖼️ Meme from a frame'));
+  WAPI.on('s:auto', C('🤯 Вот это момент!', '🤯 What a moment!'));
+  const wm = WAPI.moment; WAPI.moment = caption => { const r = wm(caption); maybeClip(caption); return r; }; // guess-the-plot results etc.
+  const om = Arcade.onMoment; Arcade.onMoment = (kind, info) => {
+    om(kind, info);
+    const t = info && info.title ? ` «${info.title}»` : '';
+    if (kind === 'drama') maybeClip('🔥 ' + tr('Напряжённый момент', 'Intense moment') + t);
+    else if (kind === 'photo') maybeClip((info && info.caption) || ('📸' + t));
+    else if (kind === 'end' && info && (info.result === 'win' || info.result === 'lose')) setTimeout(() => maybeClip((info.result === 'win' ? '🏆 ' + tr('Победа!', 'Victory!') : '😭 ' + tr('Эх…', 'Oh no…')) + t), 300);
+  };
+  win = wrapFn('win', a => { setTimeout(() => maybeClip(a[0] ? '🏆 ' + tr('Победа!', 'Victory!') : '😭 ' + tr('Эх…', 'Oh no…')), 300); });
+  $('bInstall2').onclick = () => openInstall();
+  const sa = matchMedia('(display-mode: standalone)').matches || navigator.standalone; if (sa) $('bInstall2').hidden = true;
 })();
 setTimeout(statsInit, 0);
 
