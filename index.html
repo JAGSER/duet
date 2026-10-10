@@ -15804,7 +15804,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202610092042';
+const APP_VERSION = '202610100920';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
