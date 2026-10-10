@@ -144,6 +144,23 @@ canvas#cvDraw{width:100%;aspect-ratio:3/4;border-radius:18px;background:#fffdf5;
 .pal button.on{box-shadow:0 0 0 3px var(--ink)}
 .toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 14px);transform:translateX(-50%) translateY(-120px);z-index:50;background:#fff;color:var(--ink);padding:12px 18px;border-radius:18px;box-shadow:0 10px 30px rgba(0,0,0,.25);font-size:16px;transition:transform .35s cubic-bezier(.2,1.4,.4,1);max-width:90%;text-align:center}
 .toast.show{transform:translateX(-50%) translateY(0)}
+.iosg{margin:4px 0 8px}
+.iosw{background:#fff3c4;color:#5a4300;border-radius:14px;padding:10px 12px;font-size:14px;line-height:1.35;margin-bottom:10px}
+.iosr{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid #efe9ff;font-size:15px;line-height:1.3}
+.iosr:first-of-type{border-top:0}
+.iosr>b{flex:none;width:26px;height:26px;border-radius:50%;background:var(--violet);color:#fff;display:grid;place-items:center;font-size:14px}
+.iosr .ic{flex:none;width:40px;height:40px;border-radius:12px;background:#f3eeff;display:grid;place-items:center;font-size:22px}
+.iosr small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px}
+.iosbar{position:relative;display:flex;align-items:center;gap:8px;background:#f2f2f7;border-radius:16px;padding:10px 12px;margin:14px 0 8px;box-shadow:inset 0 0 0 1px #e1e1ea}
+.iosbar .addr{flex:1;background:#fff;border-radius:10px;padding:8px 10px;font-size:14px;color:#333;text-align:center}
+.iosbar .btn1{flex:none;width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:#fff;box-shadow:0 0 0 3px #ffd60a;animation:iosp 1.2s ease-in-out infinite}
+.iosbar:not(.new){flex-direction:row}
+.iosbar:not(.new) .btn1{position:absolute;left:50%;bottom:-22px;transform:translateX(-50%)}
+.iosbar:not(.new){margin-bottom:30px}
+.iosarrow{position:absolute;right:20px;top:-26px;font-style:normal;font-size:22px;animation:iosa 1s ease-in-out infinite}
+.iosbar:not(.new) .iosarrow{display:none}
+@keyframes iosp{50%{box-shadow:0 0 0 7px rgba(255,214,10,.5)}}
+@keyframes iosa{50%{margin-top:6px;translate:0 6px}}
 .sheet{position:fixed;inset:0;z-index:40;background:rgba(20,0,50,.5);display:flex;align-items:flex-end;justify-content:center}
 .sheet .card{width:100%;max-width:560px;border-radius:28px 28px 0 0;padding-bottom:calc(env(safe-area-inset-bottom) + 20px);max-height:90vh;overflow:auto}
 .net{font-size:12px;color:#fff;opacity:.85;text-align:center;margin-top:16px;font-weight:700}
@@ -218,6 +235,7 @@ canvas#cvDraw{width:100%;aspect-ratio:3/4;border-radius:18px;background:#fffdf5;
 .vport{position:relative;width:100%;max-width:520px;overflow:hidden;touch-action:pan-y;border-radius:18px}
 .vstrip{display:flex;width:100%}
 .vslide{flex:0 0 100%;display:flex;justify-content:center;align-items:center}
+.vslide video{max-width:100%;max-height:68vh;border-radius:18px;box-shadow:0 10px 30px rgba(0,0,0,.5);background:#000}
 .vslide img{max-width:100%;max-height:68vh;border-radius:18px;box-shadow:0 10px 30px rgba(0,0,0,.5);user-select:none;-webkit-user-drag:none}
 .vnav{position:absolute;top:50%;transform:translateY(-50%);width:42px;height:42px;border-radius:50%;border:0;background:rgba(255,255,255,.75);font-size:28px;line-height:1;cursor:pointer}
 .vnav.l{left:6px}.vnav.r{right:6px}
@@ -297,6 +315,8 @@ canvas#cvDraw{width:100%;aspect-ratio:3/4;border-radius:18px;background:#fffdf5;
       <video id="localV" class="hidden" playsinline autoplay muted></video>
       <div class="ph" id="ph"><div><div class="e" id="phE">🙂</div><div class="t" id="phT"></div></div></div>
       <button class="btn y tapsound hidden" id="bSound" data-i="enableSound"></button>
+      <button class="stbtn" id="bChat" title="Чат">💬</button>
+      <button class="stbtn" id="bFull" title="На весь экран">⛶</button>
     </div>
     <div class="ctrls">
       <button class="ctrl" id="bCam">📷</button>
@@ -14085,6 +14105,9 @@ window.Arcade = Arcade;
     <button class="btn w" id="bSaveSet" data-i="save"></button>
     <div style="height:12px"></div>
     <button class="btn g w" id="bUnpair" data-i="unpair"></button>
+    <label class="l" id="setMoreL">Ещё</label>
+    <label class="small setchk"><input type="checkbox" id="setClips" checked> <span id="setClipsL">🎬 Видео-клипы: иногда записывать смешные моменты по 5 сек</span></label>
+    <label class="small setchk"><input type="checkbox" id="setStats" checked> <span id="setStatsL">📊 Анонимная статистика (без имён, переписки и фото) — помогает улучшать Дуэт</span></label>
     <label class="l" data-i="diagTitle"></label>
     <div id="diag" class="small" style="line-height:1.8;background:#f6f3ff;border-radius:14px;padding:10px 14px"></div>
     <p class="small" style="text-align:center;margin-top:14px" id="verLbl">Duet</p>
@@ -14114,8 +14137,10 @@ window.Arcade = Arcade;
   <div class="card">
     <div class="ghead"><h2 id="shotsTitle">📸 Моменты</h2><button class="btn g" id="bCloseShots" style="padding:10px 14px">✕</button></div>
     <label class="small" style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><input type="checkbox" id="autoShots" checked> <span id="autoShotsL"></span></label>
+    <label class="small" style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><input type="checkbox" id="autoClips" checked> <span id="autoClipsL">🎬 Иногда записывать короткие клипы (5 сек)</span></label>
     <label class="small" style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><input type="checkbox" id="autoSave"> <span id="autoSaveL">Сразу сохранять каждое фото на устройство</span></label>
     <div class="row" style="margin-bottom:12px"><button class="btn y" id="bShotNow">📸 Сделать момент сейчас</button><button class="btn c" id="bDlAll">💾 Скачать все</button></div>
+    <button class="btn g w" id="bClipNow" style="margin:-4px 0 12px">🎬 Записать клип 5 сек</button>
     <div class="shotgrid" id="shotGrid"></div>
   </div>
 </div>
@@ -14567,6 +14592,8 @@ function onData(m) {
     case 'close': if (Arcade.current() && arcNet) { arcClose(); toast(T.backToLobby(ptName())); } else if (gameId) { closeGame(true); toast(T.backToLobby(ptName())); } break;
     case 'g': if (game && m.g === gameId) game.onMsg(m); break;
     case 'w': watchMsg(m); roomRelay(m); break;
+    case 'chat': chatRecv(m); break;
+    case 'clipon': clipNotice(); break;
   }
 }
 
@@ -14610,9 +14637,9 @@ function renderArcGrid() {
   const g = $('arcGrid'); g.innerHTML = '';
   $('arcHint').textContent = playMode() === 'hotseat' ? tr('один телефон — двое игроков', 'one phone — two players') : online ? tr(`вдвоём с ${ptName()}`, `with ${ptName()}`) : playMode() === 'bot' ? tr('с ботом', 'vs bot') : tr(`ждём ${S.partner ? ptName() : 'друга'}`, `waiting for ${S.partner ? ptName() : 'your friend'}`);
   renderModeSeg();
-  Arcade.games.slice().sort((a, b) => a.n - b.n).forEach(G => {
+  Arcade.games.slice().sort((a, b) => (playCount('a' + b.n) - playCount('a' + a.n)) || a.n - b.n).forEach(G => {
     g.append(h('button', { className: 'tile', style: `background:${G.bg}`, on: { click: () => arcTap(G.n) }, disabled: playMode() === 'hotseat' && !Arcade.supportsHotseat(G.n) },
-      h('span', { className: 'num' }, String(G.n).padStart(2, '0')), h('div', { className: 'ic' }, G.icon), h('div', { className: 'tt' }, G.title), h('div', { className: 'ds' }, G.desc),
+      h('span', { className: 'num' }, String(G.n).padStart(2, '0')), isHot('a' + G.n) ? h('span', { className: 'hot' }, '🔥') : null, h('div', { className: 'ic' }, G.icon), h('div', { className: 'tt' }, G.title), h('div', { className: 'ds' }, G.desc),
       h('span', { className: 'md' }, playMode() === 'hotseat' ? (Arcade.supportsHotseat(G.n) ? tr('📱 на одном', '📱 one phone') : tr('🚫 не для одного экрана', '🚫 needs 2 screens')) : playMode() === 'bot' ? tr('🤖 с ботом', '🤖 vs bot') : online ? tr('💞 вдвоём', '💞 together') : (S.pending === G.n ? tr('⏳ ждём друга', '⏳ waiting') : tr('💞 вдвоём', '💞 together')))));
   });
 }
@@ -14620,7 +14647,7 @@ function renderGrid() {
   renderArcGrid();
   const g = $('grid'); g.innerHTML = '';
   $('lobbyHint').textContent = online ? T.lobbyOn : T.waitingFor(ptName());
-  for (const id in GAMES) { const G = GAMES[id]; g.append(h('button', { className: 'tile', disabled: !online, style: `background:${G.bg}`, on: { click: () => openGame(id) } }, h('div', { className: 'ic' }, G.icon), h('div', { className: 'tt' }, G.title), h('div', { className: 'ds' }, G.desc))); }
+  Object.keys(GAMES).sort((a, b) => playCount(b) - playCount(a)).forEach(id => { const G = GAMES[id]; g.append(h('button', { className: 'tile', disabled: !online, style: `background:${G.bg}`, on: { click: () => openGame(id) } }, isHot(id) ? h('span', { className: 'hot' }, '🔥') : null, h('div', { className: 'ic' }, G.icon), h('div', { className: 'tt' }, G.title), h('div', { className: 'ds' }, G.desc))); });
 }
 function openGame(id, remote) {
   if (!online && !remote) return;
@@ -15445,7 +15472,21 @@ function dbOpen() { if (DB.p) return DB.p; DB.p = new Promise((res, rej) => { tr
 async function dbAll() { const db = await dbOpen(); return new Promise(res => { const out = []; const q = db.transaction('shots').objectStore('shots').openCursor(null, 'prev'); q.onsuccess = () => { const c = q.result; if (c) { out.push(c.value); c.continue(); } else res(out); }; q.onerror = () => res(out); }); }
 async function dbPut(v) { const db = await dbOpen(); return new Promise(res => { const tx = db.transaction('shots', 'readwrite'); tx.objectStore('shots').add(v); tx.oncomplete = res; tx.onerror = res; }); }
 async function dbDel(id) { const db = await dbOpen(); return new Promise(res => { const tx = db.transaction('shots', 'readwrite'); tx.objectStore('shots').delete(id); tx.oncomplete = res; tx.onerror = res; }); }
-async function dbTrim(max = 120) { const all = await dbAll(); for (const v of all.slice(max)) await dbDel(v.id); }
+const CLIP_MAX = 12; // video clips are big: keep only the latest few
+async function dbTrim(max = 120) { const all = await dbAll(); const ph = all.filter(v => v.kind !== 'clip'), cl = all.filter(v => v.kind === 'clip'); for (const v of ph.slice(max)) await dbDel(v.id); for (const v of cl.slice(CLIP_MAX)) await dbDel(v.id); }
+// small, unobtrusive brand mark: two dots + "duetplay.app" in a corner
+function duetMark(x, Wd, Hh, o) {
+  o = o || {}; const s = Math.max(.55, Math.min(Wd, Hh) / 720) * (o.scale || 1);
+  const fs = Math.round(15 * s), r = 6 * s, pad = Math.round(14 * s), gap = 5 * s, lw = r * 3.2, txt = 'duetplay.app';
+  x.save(); x.globalAlpha = o.alpha || .6; x.font = `800 ${fs}px Nunito, sans-serif`; x.textBaseline = 'middle'; x.textAlign = 'left';
+  const tw = x.measureText(txt).width, X = Wd - pad - lw - gap - tw, Y = o.top ? pad + r : Hh - pad - r;
+  x.shadowColor = 'rgba(0,0,0,.45)'; x.shadowBlur = 4 * s;
+  x.fillStyle = '#ffd60a'; x.beginPath(); x.arc(X + r, Y, r, 0, 7); x.fill();
+  x.fillStyle = '#00d1ff'; x.beginPath(); x.arc(X + r * 2.2, Y, r, 0, 7); x.fill();
+  x.fillStyle = '#fff'; x.fillText(txt, X + lw + gap, Y + 1); x.restore();
+}
+window.duetMark = duetMark;
+const extOf = b => /mp4/.test((b && b.type) || '') ? 'mp4' : /webm/.test((b && b.type) || '') ? 'webm' : 'jpg';
 
 let lastShot = 0, shotsThisGame = 0;
 function drawVid(x, v, X, Y, w, hh, mirror, label, col, emoji) {
@@ -15480,7 +15521,8 @@ async function takeMoment(caption, force) {
     x.fillText($('sYou').textContent, gx / 2, gy + 60); x.fillText($('sBot').textContent, Wd - gx / 2, gy + 60);
     x.font = '800 18px Nunito, sans-serif'; x.fillText(tr('ты', 'you'), gx / 2, gy + 92); x.fillText(online ? ptName() : tr('бот', 'bot'), Wd - gx / 2, gy + 92, gx - 10); }
   }
-  x.fillStyle = 'rgba(255,255,255,.9)'; x.font = '800 20px Nunito, sans-serif'; x.textAlign = 'left'; x.fillText('🎮 ' + tr('Дуэт', 'Duet') + ' · ' + new Date().toLocaleString(LANG === 'en' ? 'en-GB' : 'ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }), 28, Hh - 28);
+  x.fillStyle = 'rgba(255,255,255,.75)'; x.font = '800 17px Nunito, sans-serif'; x.textAlign = 'left'; x.textBaseline = 'middle'; x.fillText(new Date().toLocaleString(LANG === 'en' ? 'en-GB' : 'ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }), 28, Hh - 26);
+  duetMark(x, Wd, Hh, { alpha: .7 });
   const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', .85)); if (!blob) return;
   try { await dbPut({ ts: now, caption, blob }); dbTrim(); } catch (e) {}
   if (S.autoSave) saveFile(blob, 'duet-' + now + '.jpg');
@@ -15520,15 +15562,23 @@ Arcade.onMoment = (kind, info) => {
   if (kind === 'drama') { if (shotsThisGame >= 3 || Date.now() - lastShot < 20000) return; shotsThisGame++; takeMoment(`🔥 ${tr('Напряжённый момент', 'Intense moment')} ${title}`); }
 };
 // gallery
-let shotURLs = [], shotItems = [];
+let shotURLs = [], shotItems = [], shotMain = [], shotPoster = [];
 async function openShots() {
-  shotURLs.forEach(u => URL.revokeObjectURL(u)); shotURLs = [];
+  shotURLs.forEach(u => URL.revokeObjectURL(u)); shotURLs = []; shotMain = []; shotPoster = [];
   const all = await dbAll().catch(() => []); const g = $('shotGrid'); g.innerHTML = '';
-  $('shotsTitle').textContent = `📸 ${tr('Моменты', 'Moments')} · ${all.length}`;
-  if (!all.length) g.append(h('p', { className: 'small', style: 'grid-column:1/-1;text-align:center' }, tr('Пока пусто. Скриншоты делаются сами: когда кто-то кричит, проигрывает или в игре напряжённый момент.', 'Empty for now. Screenshots happen automatically: screams, losses and intense game moments.')));
+  const nc = all.filter(v => v.kind === 'clip').length;
+  $('shotsTitle').textContent = `📸 ${tr('Моменты', 'Moments')} · ${all.length - nc}` + (nc ? ` · 🎬 ${nc}` : '');
+  if (!all.length) g.append(h('p', { className: 'small', style: 'grid-column:1/-1;text-align:center' }, tr('Пока пусто. Фото и короткие клипы делаются сами: когда кто-то кричит, проигрывает, в игре напряжённый момент или в кино летят помидоры.', 'Empty for now. Photos and short clips happen automatically: screams, losses, intense game moments, tomatoes flying in a movie.')));
   shotItems = all;
-  all.forEach(v => { const u = URL.createObjectURL(v.blob); shotURLs.push(u); g.append(h('button', { className: 'shot', on: { click: () => viewShot(v) } }, h('img', { src: u, alt: v.caption }), h('span', {}, v.caption))); });
+  all.forEach(v => {
+    const u = URL.createObjectURL(v.blob); shotURLs.push(u); shotMain.push(u);
+    const clip = v.kind === 'clip'; let pu = u;
+    if (clip) { pu = v.poster ? URL.createObjectURL(v.poster) : ''; if (pu) shotURLs.push(pu); }
+    shotPoster.push(pu);
+    g.append(h('button', { className: 'shot' + (clip ? ' clip' : ''), on: { click: () => viewShot(v) } }, clip && !pu ? h('div', { className: 'noposter' }, '🎬') : h('img', { src: pu, alt: v.caption }), clip ? h('i', { className: 'play' }, '▶ 5' + tr('с', 's')) : null, h('span', {}, v.caption)));
+  });
   $('autoShots').checked = S.autoShots !== false; $('autoSave').checked = !!S.autoSave; $('bDlAll').disabled = !all.length;
+  const ac = $('autoClips'); if (ac) ac.checked = S.autoClips !== false;
   $('shotsSheet').classList.remove('hidden');
 }
 function saveFile(blob, name) {
@@ -15552,35 +15602,44 @@ async function makeZip(files) {
 }
 async function downloadAll() {
   const all = await dbAll().catch(() => []); if (!all.length) return;
-  const files = all.map(v => ({ name: 'duet-' + v.ts + '.jpg', blob: v.blob }));
-  const asFiles = files.map(f => new File([f.blob], f.name, { type: 'image/jpeg' }));
+  const files = all.map(v => ({ name: 'duet-' + v.ts + '.' + extOf(v.blob), blob: v.blob }));
+  const asFiles = files.map(f => new File([f.blob], f.name, { type: f.blob.type || 'image/jpeg' }));
   // phones: the share sheet can save all photos to the gallery at once
   if (navigator.canShare && navigator.canShare({ files: asFiles })) { try { await navigator.share({ files: asFiles, title: tr('Дуэт — моменты', 'Duet moments') }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
   saveFile(await makeZip(files), 'duet-moments.zip'); toast('💾 ' + tr('Скачиваю архив со всеми фото', 'Downloading a zip with all photos'));
 }
 let viewList = [], viewIdx = 0;
 function viewShot(v) {
-  viewList = shotURLs.map((u, i) => ({ v: shotItems[i], u })); viewIdx = Math.max(0, viewList.findIndex(x => x.v.id === v.id));
+  viewList = shotMain.map((u, i) => ({ v: shotItems[i], u, p: shotPoster[i] })); viewIdx = Math.max(0, viewList.findIndex(x => x.v.id === v.id));
   const box = $('shotView'); box.innerHTML = '';
   const strip = h('div', { className: 'vstrip' });
-  viewList.forEach(x => strip.append(h('div', { className: 'vslide' }, h('img', { src: x.u, alt: x.v.caption, draggable: false }))));
+  viewList.forEach(x => strip.append(h('div', { className: 'vslide' }, x.v.kind === 'clip'
+    ? h('video', { src: x.u, poster: x.p || '', playsInline: true, loop: true, controls: true, preload: 'metadata' })
+    : h('img', { src: x.u, alt: x.v.caption, draggable: false }))));
+  const vids = () => strip.querySelectorAll('video');
+  const stopVids = () => vids().forEach(el => { try { el.pause(); } catch (e) {} });
+  const closeView = () => { stopVids(); box.classList.add('hidden'); };
   const cap = h('div', { className: 'vcap' }), cnt = h('div', { className: 'vcnt' });
   const bar = h('div', { className: 'row', style: 'margin-top:10px;flex-wrap:wrap;justify-content:center' });
   const cur = () => viewList[viewIdx];
-  const go = (i, anim = true) => { viewIdx = Math.max(0, Math.min(viewList.length - 1, i)); strip.style.transition = anim ? 'transform .28s ease' : 'none'; strip.style.transform = `translateX(${-viewIdx * 100}%)`; cap.textContent = cur().v.caption; cnt.textContent = `${viewIdx + 1} / ${viewList.length}`; };
-  const fileOf = x => new File([x.v.blob], 'duet-' + x.v.ts + '.jpg', { type: 'image/jpeg' });
+  const go = (i, anim = true) => {
+    viewIdx = Math.max(0, Math.min(viewList.length - 1, i)); strip.style.transition = anim ? 'transform .28s ease' : 'none'; strip.style.transform = `translateX(${-viewIdx * 100}%)`; cap.textContent = cur().v.caption; cnt.textContent = `${viewIdx + 1} / ${viewList.length}`;
+    stopVids(); const el = strip.children[viewIdx] && strip.children[viewIdx].querySelector('video'); if (el) { try { el.currentTime = 0; } catch (e) {} el.play().catch(() => {}); }
+  };
+  const nameOf = x => 'duet-' + x.v.ts + '.' + extOf(x.v.blob);
+  const fileOf = x => new File([x.v.blob], nameOf(x), { type: x.v.blob.type || 'image/jpeg' });
   if (navigator.canShare && navigator.canShare({ files: [fileOf(cur())] })) bar.append(h('button', { className: 'btn y', on: { click: () => navigator.share({ files: [fileOf(cur())], title: tr('Дуэт', 'Duet'), text: cur().v.caption }).catch(() => {}) } }, '📤 ' + tr('Поделиться', 'Share')));
-  bar.append(h('button', { className: 'btn c', on: { click: () => saveFile(cur().v.blob, 'duet-' + cur().v.ts + '.jpg') } }, '💾 ' + tr('Сохранить', 'Save')));
-  bar.append(h('button', { className: 'btn g', on: { click: async () => { await dbDel(cur().v.id); updateShotBadge(); box.classList.add('hidden'); await openShots(); if (shotItems.length) viewShot(shotItems[Math.min(viewIdx, shotItems.length - 1)]); } } }, '🗑️'));
+  bar.append(h('button', { className: 'btn c', on: { click: () => saveFile(cur().v.blob, nameOf(cur())) } }, '💾 ' + tr('Сохранить', 'Save')));
+  bar.append(h('button', { className: 'btn g', on: { click: async () => { stopVids(); await dbDel(cur().v.id); updateShotBadge(); box.classList.add('hidden'); await openShots(); if (shotItems.length) viewShot(shotItems[Math.min(viewIdx, shotItems.length - 1)]); } } }, '🗑️'));
   const prev = h('button', { className: 'vnav l', on: { click: () => go(viewIdx - 1) } }, '‹'), next = h('button', { className: 'vnav r', on: { click: () => go(viewIdx + 1) } }, '›');
   const vp = h('div', { className: 'vport' }, strip, prev, next);
-  // swipe
+  // swipe (but not on a clip's own play/seek controls)
   let sx = null, sy = 0, dx = 0;
-  vp.addEventListener('pointerdown', e => { if (e.target.closest('.vnav')) return; sx = e.clientX; sy = e.clientY; dx = 0; strip.style.transition = 'none'; try { vp.setPointerCapture(e.pointerId); } catch (_) {} });
+  vp.addEventListener('pointerdown', e => { if (e.target.closest('.vnav')) return; if (e.target.tagName === 'VIDEO' && e.offsetY > e.target.clientHeight - 60) return; sx = e.clientX; sy = e.clientY; dx = 0; strip.style.transition = 'none'; try { vp.setPointerCapture(e.pointerId); } catch (_) {} });
   vp.addEventListener('pointermove', e => { if (sx == null) return; dx = e.clientX - sx; strip.style.transform = `translateX(calc(${-viewIdx * 100}% + ${dx}px))`; });
-  const end = e => { if (sx == null) return; const w = vp.clientWidth || 300; const dy = (e.clientY || sy) - sy; sx = null; if (Math.abs(dy) > 120 && Math.abs(dy) > Math.abs(dx) * 1.5) { box.classList.add('hidden'); return; } go(viewIdx + (dx < -w * .18 ? 1 : dx > w * .18 ? -1 : 0)); };
+  const end = e => { if (sx == null) return; const w = vp.clientWidth || 300; const dy = (e.clientY || sy) - sy; sx = null; if (Math.abs(dy) > 120 && Math.abs(dy) > Math.abs(dx) * 1.5) { closeView(); return; } if (Math.abs(dx) < 6) return; go(viewIdx + (dx < -w * .18 ? 1 : dx > w * .18 ? -1 : 0)); };
   vp.addEventListener('pointerup', end); vp.addEventListener('pointercancel', end);
-  box.append(h('button', { className: 'btn g', style: 'position:absolute;top:calc(env(safe-area-inset-top,0px) + 12px);right:12px;padding:10px 14px;z-index:2', on: { click: () => box.classList.add('hidden') } }, '✕'), cnt, vp, cap, bar);
+  box.append(h('button', { className: 'btn g', style: 'position:absolute;top:calc(env(safe-area-inset-top,0px) + 12px);right:12px;padding:10px 14px;z-index:2', on: { click: closeView } }, '✕'), cnt, vp, cap, bar);
   box.classList.remove('hidden'); go(viewIdx, false);
 }
 
@@ -15631,6 +15690,39 @@ function setManifest() {
     if (link) link.href = 'data:application/manifest+json,' + encodeURIComponent(JSON.stringify(m));
   } catch (e) {}
 }
+/* iPhone: step-by-step pictures, adapted to the browser and Safari version */
+const SVG_SHARE = '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#0a84ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M8 7l4-4 4 4"/><path d="M6 11v9h12v-9"/></svg>';
+const SVG_DOTS = '<svg viewBox="0 0 24 24" width="26" height="26"><circle cx="5" cy="12" r="2.2" fill="#0a84ff"/><circle cx="12" cy="12" r="2.2" fill="#0a84ff"/><circle cx="19" cy="12" r="2.2" fill="#0a84ff"/></svg>';
+const SVG_ADD = '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#1d1340" stroke-width="2" stroke-linecap="round"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M12 8v8M8 12h8"/></svg>';
+function iosGuide() {
+  const ua = navigator.userAgent, ver = +((ua.match(/Version\/(\d+)/) || [])[1] || 0);
+  const inApp = /FBAN|FBAV|Instagram|Line\/|Telegram|VKClient|WhatsApp|MicroMessenger|GSA\//.test(ua) || (!/Safari\//.test(ua) && !/CriOS|FxiOS|EdgiOS|YaBrowser/.test(ua));
+  const chrome = /CriOS|EdgiOS|FxiOS|YaBrowser/.test(ua), newSafari = ver >= 26;
+  const box = h('div', { className: 'iosg' });
+  const step = (n, icon, text, sub) => { const r = h('div', { className: 'iosr' }, h('b', {}, String(n)), h('span', { className: 'ic' }), h('div', {}, h('div', {}, text), sub ? h('small', {}, sub) : null)); r.querySelector('.ic').innerHTML = icon; return r; };
+  const link = S.pair ? pairUrl(S.pair.id) : location.href;
+  if (inApp) {
+    box.append(h('div', { className: 'iosw' }, tr('⚠️ Ссылка открыта внутри другого приложения (Telegram, WhatsApp, Instagram…). Отсюда установить нельзя — нужен Safari.', '⚠️ This link is open inside another app (Telegram, WhatsApp, Instagram…). It cannot be installed from here — Safari is needed.')),
+      step(1, SVG_DOTS, tr('Нажми ⋯ или значок компаса 🧭 и выбери «Открыть в Safari»', 'Tap ⋯ or the compass 🧭 and choose “Open in Safari”'), tr('Если такого нет — скопируй ссылку кнопкой ниже и вставь её в Safari', 'If there is none — copy the link below and paste it into Safari')),
+      h('button', { className: 'btn y w', style: 'margin:8px 0', on: { click: () => copyText(link).then(ok => toast(ok ? '📋 ' + tr('Ссылка скопирована — открой Safari и вставь её', 'Link copied — open Safari and paste it') : tr('Выдели ссылку ниже и скопируй', 'Select the link below and copy'), 3500)) } }, '📋 ' + tr('Скопировать ссылку для Safari', 'Copy the link for Safari')),
+      h('div', { className: 'small', style: 'margin-top:4px' }, tr('Потом в Safari сделай шаги ниже.', 'Then follow the steps below in Safari.')));
+  }
+  if (chrome) {
+    box.append(step(1, SVG_SHARE, tr('Нажми «Поделиться» в адресной строке (справа вверху)', 'Tap Share in the address bar (top right)')),
+      step(2, SVG_ADD, tr('Выбери «На экран „Домой“»', 'Choose “Add to Home Screen”'), tr('Не видно — пролистай список вниз или нажми «Ещё»', 'Not visible — scroll down or tap “More”')),
+      step(3, '✅', tr('Нажми «Добавить» в правом верхнем углу', 'Tap “Add” at the top right')));
+  } else {
+    box.append(h('div', { className: 'iosbar' + (newSafari ? ' new' : '') }, h('span', { className: 'addr' }, 'duetplay.app'), h('span', { className: 'btn1' }), h('i', { className: 'iosarrow' }, '⬇')));
+    box.querySelector('.btn1').innerHTML = newSafari ? SVG_DOTS : SVG_SHARE;
+    let n = 1;
+    if (newSafari) box.append(step(n++, SVG_DOTS, tr('Нажми ⋯ справа от адреса внизу экрана', 'Tap ⋯ next to the address at the bottom')));
+    box.append(step(n++, SVG_SHARE, tr('Нажми «Поделиться»', 'Tap “Share”'), newSafari ? null : tr('Квадрат со стрелкой вверх — внизу посередине (или ⋯ → «Поделиться»)', 'A square with an arrow — bottom centre (or ⋯ → “Share”)')),
+      step(n++, SVG_ADD, tr('Выбери «На экран „Домой“»', 'Choose “Add to Home Screen”'), tr('Не видно — пролистай список вниз или нажми «Ещё»', 'Not visible — scroll the list down or tap “More”')),
+      step(n++, '✅', tr('Включи «Открыть как веб-приложение» (если есть) и нажми «Добавить»', 'Turn on “Open as Web App” (if shown) and tap “Add”')),
+      step(n++, '📱', tr('Открывай «Дуэт» с иконки на экране «Домой»', 'Open Duet from the Home Screen icon'), tr('В приложении один раз заново введи имя — у иконки своя память', 'Enter your name once more in the app — the icon has its own memory')));
+  }
+  return box;
+}
 function openInstall(auto) {
   const b = $('installBody'); b.innerHTML = '';
   const ua = navigator.userAgent, ios = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -15638,7 +15730,7 @@ function openInstall(auto) {
   const steps = arr => h('ol', { className: 'steps' }, arr.map(t => h('li', {}, t)));
   if (standalone) b.append(h('p', {}, tr('✅ «Дуэт» уже открыт как приложение с ярлыка.', '✅ Duet is already running from its shortcut.')));
   if (installEvt) b.append(h('button', { className: 'btn y w', on: { click: async () => { try { installEvt.prompt(); const r = await installEvt.userChoice; if (r && r.outcome === 'accepted') toast('📲 ' + tr('Готово!', 'Done!')); } catch (e) {} installEvt = null; openInstall(); } } }, '📲 ' + tr('Установить ярлык', 'Install shortcut')), h('div', { style: 'height:12px' }));
-  if (ios) b.append(h('p', { className: 'small' }, 'iPhone / iPad (Safari):'), steps([tr('Нажми «Поделиться» ⬆️ внизу экрана', 'Tap Share ⬆️'), tr('Выбери «На экран „Домой“» ➕', 'Choose “Add to Home Screen” ➕'), tr('Нажми «Добавить»', 'Tap “Add”')]));
+  if (ios && !standalone) b.append(iosGuide());
   else if (/Android/.test(ua)) b.append(h('p', { className: 'small' }, 'Android (Chrome):'), steps([tr('Нажми меню ⋮ в правом верхнем углу', 'Tap the ⋮ menu'), tr('Выбери «Установить приложение» или «Добавить на гл. экран»', 'Choose “Install app” / “Add to Home screen”')]));
   else b.append(h('p', { className: 'small' }, tr('Компьютер:', 'Computer:')), steps([tr('Chrome / Edge: значок установки ⊕ в адресной строке или меню ⋮ → «Установить Дуэт»', 'Chrome / Edge: the install icon ⊕ in the address bar or ⋮ → “Install Duet”'), tr('Safari на Mac: Файл → «Добавить в Dock»', 'Safari on Mac: File → “Add to Dock”'), tr('Ярлык появится на рабочем столе / в Dock и откроется отдельным окном', 'The shortcut appears on your desktop / Dock and opens in its own window')]));
   b.append(h('p', { className: 'small', style: 'margin-top:12px' }, tr('Или сохрани ссылку пары:', 'Or keep the pair link:')), h('div', { className: 'code', style: 'font-size:13px;letter-spacing:0;user-select:all;-webkit-user-select:all;word-break:break-all' }, S.pair ? pairUrl(S.pair.id) : location.href),
@@ -15804,7 +15896,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202610100920';
+const APP_VERSION = '202610101606';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
@@ -16976,6 +17068,329 @@ function roomBoot() {
   setInterval(() => { if (W.open && !W.kind) wRenderEmpty(); }, 5000);
   return true;
 }
+
+/* ================================================================
+   PLUS: short video clips, built-in chat, full-screen call,
+   games ordered by how often you play them, anonymous analytics.
+   ================================================================ */
+(() => {
+  const css = `
+.stbtn{position:absolute;bottom:10px;z-index:4;width:42px;height:42px;border:0;border-radius:14px;background:rgba(20,0,50,.45);color:#fff;font-size:20px;line-height:42px;padding:0;cursor:pointer;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+#bChat{left:10px}#bFull{right:10px;font-size:22px}
+#bChat[data-n]:not([data-n=""])::after{content:attr(data-n);position:absolute;top:-6px;right:-6px;min-width:20px;height:20px;border-radius:10px;background:#ff3b6b;color:#fff;font-size:12px;line-height:20px;text-align:center;padding:0 5px;box-shadow:0 2px 6px rgba(0,0,0,.3)}
+#scrMain.callfull .stage{position:fixed;inset:0;z-index:30;border-radius:0;aspect-ratio:auto;width:100vw;height:100vh;height:100dvh;box-shadow:none}
+#scrMain.callfull .ctrls,#scrMain.callfull .reacts{position:fixed;left:50%;transform:translateX(-50%);z-index:31;width:min(540px,calc(100% - 24px));transition:opacity .25s}
+#scrMain.callfull .ctrls{bottom:calc(env(safe-area-inset-bottom,0px) + 62px)}
+#scrMain.callfull .reacts{bottom:calc(env(safe-area-inset-bottom,0px) + 10px);margin:0}
+#scrMain.callfull .stbtn{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 12px)}
+#scrMain.callfull #localV{top:calc(env(safe-area-inset-top,0px) + 12px);right:12px;width:26%;max-width:200px}
+#scrMain.callfull #bFull{right:auto;left:62px}
+#scrMain.callfull.uioff .ctrls,#scrMain.callfull.uioff .reacts,#scrMain.callfull.uioff .stbtn{opacity:0;pointer-events:none}
+.tile .hot{position:absolute;top:8px;right:36px;font-size:14px;z-index:1}
+.setchk{display:flex;gap:10px;align-items:flex-start;margin:8px 0}.setchk input{margin-top:2px;flex:0 0 auto;width:18px;height:18px}
+.shot.clip{position:relative}.shot .play{position:absolute;left:6px;top:6px;background:rgba(0,0,0,.55);color:#fff;font-style:normal;font-size:11px;padding:2px 7px;border-radius:9px}
+.shot .noposter{width:100%;aspect-ratio:3/4;border-radius:12px;display:grid;place-items:center;background:#24124f;font-size:30px}
+.clipRec{position:fixed;left:12px;top:calc(env(safe-area-inset-top,0px) + 12px);z-index:70;background:rgba(0,0,0,.55);color:#fff;font-size:12px;padding:5px 10px;border-radius:12px;pointer-events:none;font-weight:800}
+.clipRec b{color:#ff3b6b;animation:recb 1s infinite}@keyframes recb{50%{opacity:.2}}
+#chatBox{position:fixed;left:0;right:0;bottom:0;z-index:45;display:flex;justify-content:center;pointer-events:none}
+#chatBox .cb{pointer-events:auto;width:100%;max-width:560px;height:min(58vh,520px);background:#fff;border-radius:24px 24px 0 0;box-shadow:0 -10px 40px rgba(40,0,80,.35);display:flex;flex-direction:column;padding:12px 12px calc(env(safe-area-inset-bottom,0px) + 10px);animation:chin .22s ease-out}
+@keyframes chin{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
+#chatBox .ch{display:flex;align-items:center;gap:8px;padding:2px 4px 8px;font-size:16px;color:var(--ink)}#chatBox .ch b{flex:1}
+#chatBox .ch button{border:0;background:#f1ecff;border-radius:12px;padding:8px 12px;font:inherit;cursor:pointer}
+#chatList{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding:4px 2px 8px;-webkit-user-select:text;user-select:text}
+.cm{max-width:78%;padding:8px 12px;border-radius:18px;font-weight:700;font-size:15px;line-height:1.35;word-wrap:break-word;overflow-wrap:anywhere;white-space:pre-wrap}
+.cm.me{align-self:flex-end;background:linear-gradient(135deg,var(--violet),var(--pink));color:#fff;border-bottom-right-radius:6px}
+.cm.pt{align-self:flex-start;background:#f1ecff;color:var(--ink);border-bottom-left-radius:6px}
+.cm small{display:block;font-size:10px;opacity:.65;margin-top:2px;text-align:right}
+.cm.pend{opacity:.6}
+.cempty{margin:auto;color:var(--muted);font-size:13px;text-align:center}
+#chatBox form{display:flex;gap:8px;margin:0}
+#chatIn{flex:1;min-width:0;border:2px solid #e6defc;border-radius:16px;padding:11px 14px;font:inherit;font-size:16px;outline:none;color:var(--ink)}#chatIn:focus{border-color:var(--violet)}
+#chatBox form button{border:0;border-radius:16px;width:50px;background:linear-gradient(135deg,var(--violet),var(--pink));color:#fff;font-size:20px;cursor:pointer}
+.chatPop{position:fixed;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 70px);z-index:55;max-width:min(90vw,420px);background:#fff;color:var(--ink);border-radius:18px;padding:10px 14px;box-shadow:0 10px 30px rgba(0,0,0,.3);font-size:14px;cursor:pointer;animation:chin .22s ease-out;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+`;
+  document.head.append(h('style', {}, css));
+})();
+
+/* ---------------- tiny helpers ---------------- */
+const PLUS = { boot: Date.now(), session: false };
+function plusOn(k) { return S[k] !== false; }
+function wrapFn(name, after, before) {
+  // re-point a global function: before(args) may return false to cancel; after(args, result)
+  const orig = window[name]; if (typeof orig !== 'function') { console.warn('plus: no', name); return window[name]; }
+  const f = function (...a) { if (before && before.apply(this, a) === false) return; const r = orig.apply(this, a); try { after && after(a, r); } catch (e) {} return r; };
+  return f;
+}
+
+/* ================= analytics (Umami, anonymous) ================= */
+const STATS = { id: '__UMAMI_ID__', q: [], n: 0, rl: {} };
+function statsOn() { return STATS.id && STATS.id.indexOf('__') !== 0 && S.stats !== false && location.hostname.indexOf('duetplay.app') >= 0; }
+function track(ev, data, every) {
+  if (!statsOn() || STATS.n >= 250) return;
+  const key = ev + '|' + (data ? JSON.stringify(data) : ''), now = Date.now();
+  if (!every && STATS.rl[key] && now - STATS.rl[key] < 90e3) return; // the same thing twice in a row is noise
+  STATS.rl[key] = now; STATS.n++;
+  const go = () => { try { window.umami.track(ev, data || undefined); } catch (e) {} };
+  if (window.umami && window.umami.track) go(); else STATS.q.push(go);
+}
+function statsInit() {
+  if (!statsOn() || STATS.loaded) return; STATS.loaded = true;
+  const s = document.createElement('script'); s.defer = true; s.src = 'https://cloud.umami.is/script.js';
+  s.setAttribute('data-website-id', STATS.id);
+  s.setAttribute('data-exclude-search', 'true'); s.setAttribute('data-exclude-hash', 'true'); // pair and room codes live in the link: never send them
+  s.onload = () => { const q = STATS.q.splice(0); setTimeout(() => q.forEach(f => f()), 400); };
+  document.head.append(s);
+  const pwa = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  track('launch', { app: pwa ? 'installed' : 'browser', lang: LANG, returning: S.me ? 'yes' : 'no' });
+}
+
+/* ================= games: most played first ================= */
+function playCount(k) { return (S.plays && S.plays[k]) || 0; }
+function isHot(k) {
+  const c = playCount(k); if (c < 3) return false;
+  const top = Object.values(S.plays || {}).sort((a, b) => b - a).slice(0, 3); return c >= (top[top.length - 1] || 0);
+}
+function bumpPlay(k) { S.plays = S.plays || {}; S.plays[k] = (S.plays[k] || 0) + 1; save(); }
+
+/* ================= short video clips ================= */
+const CLIP = { busy: false, last: 0, n: 0, sup: null, mime: null };
+const CLIP_GAP = 6 * 60e3, CLIP_PER_SESSION = 3, CLIP_SEC = 5;
+function clipMime() {
+  if (CLIP.mime != null) return CLIP.mime;
+  CLIP.mime = '';
+  for (const t of ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp8,opus', 'video/webm']) { try { if (MediaRecorder.isTypeSupported(t)) { CLIP.mime = t; break; } } catch (e) {} }
+  return CLIP.mime;
+}
+function clipSupported() {
+  if (CLIP.sup == null) { try { CLIP.sup = !!(window.MediaRecorder && HTMLCanvasElement.prototype.captureStream && clipMime()); } catch (e) { CLIP.sup = false; } }
+  return CLIP.sup;
+}
+function camLive(v) { return v && v.srcObject && v.videoWidth > 0; }
+// automatic clips are rare: at most one every 6 minutes, 3 per visit, never with strangers
+function maybeClip(caption) {
+  if (!clipSupported() || CLIP.busy || !plusOn('autoClips')) return;
+  if ((typeof LOB !== 'undefined' && LOB.match) || !online || document.hidden) return;
+  const now = Date.now();
+  if (now - CLIP.last < CLIP_GAP || CLIP.n >= CLIP_PER_SESSION || now - PLUS.boot < 90e3) return;
+  const watching = typeof W !== 'undefined' && W.open && W.kind;
+  if (!watching && !camLive($('remoteV')) && !camLive($('localV'))) return;
+  CLIP.n++; recordClip(caption, false);
+}
+function clipCam(x, v, X, Y, w, hh, mirror, label, col, emoji, s) {
+  const rr = 18 * s;
+  x.save(); x.beginPath(); x.roundRect ? x.roundRect(X, Y, w, hh, rr) : x.rect(X, Y, w, hh); x.clip();
+  x.fillStyle = '#24124f'; x.fillRect(X, Y, w, hh);
+  if (camLive(v)) {
+    const k = Math.max(w / v.videoWidth, hh / v.videoHeight), dw = v.videoWidth * k, dh = v.videoHeight * k;
+    if (mirror) { x.translate(X + w, Y); x.scale(-1, 1); x.drawImage(v, (w - dw) / 2, (hh - dh) / 2, dw, dh); }
+    else x.drawImage(v, X + (w - dw) / 2, Y + (hh - dh) / 2, dw, dh);
+  } else { x.font = `${Math.round(70 * s)}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(emoji || '🙂', X + w / 2, Y + hh / 2); }
+  x.restore();
+  x.save(); x.lineWidth = 5 * s; x.strokeStyle = col; x.beginPath(); x.roundRect ? x.roundRect(X, Y, w, hh, rr) : x.rect(X, Y, w, hh); x.stroke();
+  x.font = `900 ${Math.round(17 * s)}px Nunito, sans-serif`; const tw = x.measureText(label).width + 20 * s, ph = 28 * s;
+  x.fillStyle = col; x.beginPath(); x.roundRect ? x.roundRect(X + 10 * s, Y + hh - ph - 10 * s, tw, ph, ph / 2) : x.rect(X + 10 * s, Y + hh - ph - 10 * s, tw, ph); x.fill();
+  x.fillStyle = '#1d1340'; x.textAlign = 'left'; x.textBaseline = 'middle'; x.fillText(label, X + 20 * s, Y + hh - 10 * s - ph / 2, w - 30 * s); x.restore();
+}
+function clipMovie(x, X, Y, w, hh) {
+  x.save(); x.fillStyle = '#000'; x.fillRect(X, Y, w, hh);
+  try {
+    const v = mv(), fx = $('wfx'), r = movieRect();
+    if (fx.style.display === 'block' && fx.width) x.drawImage(fx, X, Y, w, hh); else if (readable() && v.videoWidth) x.drawImage(v, X, Y, w, hh); else throw 0;
+    try { const ov = $('wov'), dpr = ov.width / (ov.clientWidth || 1); x.drawImage(ov, r.x * dpr, r.y * dpr, r.w * dpr, r.h * dpr, X, Y, w, hh); } catch (e) {}
+  } catch (e) {
+    const g = x.createLinearGradient(X, Y, X + w, Y + hh); g.addColorStop(0, '#2a0f63'); g.addColorStop(1, '#6a0f6e'); x.fillStyle = g; x.fillRect(X, Y, w, hh);
+    x.fillStyle = '#fff'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = `900 ${Math.round(hh / 9)}px Nunito, sans-serif`; x.fillText('🍿 ' + (W.title || tr('Кино', 'Movie')), X + w / 2, Y + hh / 2, w - 20);
+  }
+  x.restore();
+}
+// one frame of a vertical 9:16 clip (made for Stories / Reels / TikTok)
+function clipFrame(x, Wd, Hh, caption, mode) {
+  const s = Wd / 432, pad = 14 * s;
+  const bg = x.createLinearGradient(0, 0, Wd, Hh); bg.addColorStop(0, '#7b2ff7'); bg.addColorStop(.55, '#f107a3'); bg.addColorStop(1, '#ff8a00'); x.fillStyle = bg; x.fillRect(0, 0, Wd, Hh);
+  x.fillStyle = '#fff'; x.font = `900 ${Math.round(24 * s)}px Nunito, sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(caption, Wd / 2, 36 * s, Wd - 2 * pad);
+  const top = 66 * s, bottom = Hh - 40 * s, me = '🙂 ' + S.me.name, pt = (online ? ptEmoji() + ' ' + ptName() : '🍿');
+  const lv = $('localV'), rv = online ? $('remoteV') : null;
+  if (mode === 'watch') {
+    let mw = Wd - 2 * pad, mh = mw * 9 / 16; try { const r = movieRect(); if (r.w && r.h) mh = Math.min((bottom - top) * .5, mw * r.h / r.w); } catch (e) {}
+    clipMovie(x, pad, top, mw, mh);
+    const cy = top + mh + pad, ch = bottom - cy, cw = (Wd - 3 * pad) / 2;
+    clipCam(x, lv, pad, cy, cw, ch, true, me, '#00d1ff', S.me.emoji, s);
+    clipCam(x, rv, pad * 2 + cw, cy, cw, ch, false, pt, '#ff7ac8', ptEmoji(), s);
+  } else if (mode === 'game') {
+    const cv = $('cv'), ch = (bottom - top) * .42, cw = (Wd - 3 * pad) / 2;
+    clipCam(x, lv, pad, top, cw, ch, true, me, '#00d1ff', S.me.emoji, s);
+    clipCam(x, rv, pad * 2 + cw, top, cw, ch, false, pt, '#ff7ac8', ptEmoji(), s);
+    const gy = top + ch + pad, gh = bottom - gy, gw = Wd - 2 * pad;
+    if (cv && cv.width) { const k = Math.min(gw / cv.width, gh / cv.height), dw = cv.width * k, dh = cv.height * k; x.save(); x.beginPath(); x.roundRect ? x.roundRect((Wd - dw) / 2, gy + (gh - dh) / 2, dw, dh, 18 * s) : x.rect((Wd - dw) / 2, gy, dw, dh); x.clip(); x.drawImage(cv, (Wd - dw) / 2, gy + (gh - dh) / 2, dw, dh); x.restore(); }
+  } else {
+    const ch = (bottom - top - pad) / 2, cw = Wd - 2 * pad;
+    clipCam(x, rv, pad, top, cw, ch, false, pt, '#ff7ac8', ptEmoji(), s);
+    clipCam(x, lv, pad, top + ch + pad, cw, ch, true, me, '#00d1ff', S.me.emoji, s);
+  }
+  duetMark(x, Wd, Hh, { alpha: .7, scale: 1.25 });
+}
+function clipAudio(mode) {
+  try {
+    const ac = (typeof wAC === 'function' && W.open) ? wAC() : (actx = actx || new (window.AudioContext || window.webkitAudioContext)());
+    if (!ac) return null; if (ac.state === 'suspended') ac.resume().catch(() => {});
+    const dest = ac.createMediaStreamDestination(), nodes = [];
+    const add = (t, g) => { if (!t || t.readyState !== 'live') return; const src = ac.createMediaStreamSource(new MediaStream([t])), gn = ac.createGain(); gn.gain.value = g; src.connect(gn); gn.connect(dest); nodes.push(src, gn); };
+    if (!S.micOff) add(localStream && localStream.getAudioTracks()[0], 1);
+    add(remoteStream && remoteStream.getAudioTracks()[0], 1);
+    if (mode === 'watch') { const ms = mv() && mv().srcObject; add((W.stream && W.stream.getAudioTracks()[0]) || (ms && ms.getAudioTracks && ms.getAudioTracks()[0]), .6); }
+    if (!nodes.length) return null;
+    return { dest, close() { nodes.forEach(n => { try { n.disconnect(); } catch (e) {} }); } };
+  } catch (e) { return null; }
+}
+async function recordClip(caption, manual) {
+  if (!clipSupported()) { toast(tr('Этот браузер не умеет записывать видео 😕', 'This browser cannot record video 😕')); return false; }
+  if (CLIP.busy) return false;
+  CLIP.busy = true; CLIP.last = Date.now();
+  const mode = (typeof W !== 'undefined' && W.open && W.kind) ? 'watch' : !$('view').hidden ? 'game' : 'call';
+  const low = typeof wLow === 'function' && wLow(), Wd = low ? 360 : 432, Hh = Math.round(Wd * 16 / 9), fps = low ? 10 : 15;
+  const c = document.createElement('canvas'); c.width = Wd; c.height = Hh; const x = c.getContext('2d');
+  const draw = () => { try { clipFrame(x, Wd, Hh, caption, mode); } catch (e) {} };
+  draw();
+  let stream = null, rec = null, mix = null, poster = null; const chunks = [];
+  const cleanup = () => { try { stream && stream.getTracks().forEach(t => t.stop()); } catch (e) {} try { mix && mix.close(); } catch (e) {} CLIP.busy = false; };
+  try {
+    stream = c.captureStream(fps); mix = clipAudio(mode);
+    if (mix) mix.dest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
+    rec = new MediaRecorder(stream, { mimeType: clipMime(), videoBitsPerSecond: low ? 700000 : 1000000, audioBitsPerSecond: 64000 });
+  } catch (e) { cleanup(); return false; }
+  rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+  const stopped = new Promise(res => { rec.onstop = res; rec.onerror = res; });
+  const iv = setInterval(draw, Math.round(1000 / fps));
+  if (online) send({ t: 'clipon' });
+  const ind = h('div', { className: 'clipRec' }, h('b', {}, '● '), tr('клип ', 'clip ') + CLIP_SEC); document.body.append(ind);
+  let left = CLIP_SEC; const tick = setInterval(() => { left--; ind.lastChild.textContent = tr('клип ', 'clip ') + Math.max(0, left); }, 1000);
+  try { rec.start(1000); } catch (e) { clearInterval(iv); clearInterval(tick); ind.remove(); cleanup(); return false; }
+  setTimeout(() => c.toBlob(b => { poster = b; }, 'image/jpeg', .75), 1500);
+  setTimeout(() => { try { rec.state !== 'inactive' && rec.stop(); } catch (e) {} }, CLIP_SEC * 1000);
+  await stopped; clearInterval(iv); clearInterval(tick); ind.remove(); cleanup();
+  const type = (rec.mimeType || clipMime()).split(';')[0] || 'video/webm', blob = new Blob(chunks, { type });
+  if (blob.size < 15000) return false;
+  if (!poster) poster = await new Promise(r => c.toBlob(r, 'image/jpeg', .75));
+  try { await dbPut({ ts: Date.now(), caption, blob, kind: 'clip', poster }); await dbTrim(); } catch (e) { return false; }
+  updateShotBadge(); toast('🎬 ' + tr('Клип сохранён в «Моменты»', 'Clip saved to Moments'), 1800);
+  track('clip', { how: manual ? 'button' : 'auto', where: mode });
+  return true;
+}
+function clipNotice() {
+  if (CLIP.busy) return;
+  const n = h('div', { className: 'clipRec' }, h('b', {}, '● '), tr(`${ptName()} записывает клип`, `${ptName()} is recording a clip`));
+  document.body.append(n); setTimeout(() => n.remove(), CLIP_SEC * 1000);
+}
+
+/* ================= chat ================= */
+const CHAT = { open: false, unread: 0, list: [] };
+function chatKey() { return 'duet-chat-' + ((S.pair && S.pair.id) || 'x'); }
+function chatLoad() { try { CHAT.list = JSON.parse(localStorage.getItem(chatKey()) || '[]'); } catch (e) { CHAT.list = []; } }
+function chatSave() { if (typeof LOB !== 'undefined' && LOB.match) return; try { localStorage.setItem(chatKey(), JSON.stringify(CHAT.list.slice(-200))); } catch (e) {} }
+function chatBadge() { const b = $('bChat'); if (b) b.dataset.n = CHAT.unread ? (CHAT.unread > 9 ? '9+' : CHAT.unread) : ''; }
+function chatTime(ts) { try { return new Date(ts).toLocaleTimeString(LANG === 'en' ? 'en-GB' : 'ru-RU', { hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } }
+function chatRender() {
+  const l = $('chatList'); if (!l) return; l.innerHTML = '';
+  if (!CHAT.list.length) l.append(h('div', { className: 'cempty' }, tr(`Напиши ${ptName()} что-нибудь 💬`, `Say something to ${ptName()} 💬`)));
+  CHAT.list.forEach(m => l.append(h('div', { className: 'cm ' + (m.me ? 'me' : 'pt') + (m.pend ? ' pend' : '') }, m.x, h('small', {}, (m.pend ? '⏳ ' : '') + chatTime(m.ts)))));
+  l.scrollTop = l.scrollHeight;
+}
+function chatOpen() {
+  if (CHAT.open) { chatClose(); return; }
+  CHAT.open = true; CHAT.unread = 0; chatBadge(); document.querySelectorAll('.chatPop').forEach(e => e.remove());
+  const inp = h('input', { id: 'chatIn', maxLength: 500, placeholder: tr('Сообщение…', 'Message…'), autocomplete: 'off', enterKeyHint: 'send' });
+  const form = h('form', { on: { submit: e => { e.preventDefault(); const t = inp.value.trim(); if (!t) return; inp.value = ''; chatSend(t); inp.focus(); } } }, inp, h('button', { type: 'submit' }, '➤'));
+  const box = h('div', { id: 'chatBox' }, h('div', { className: 'cb' },
+    h('div', { className: 'ch' }, h('span', {}, '💬'), h('b', {}, ptName()), h('button', { type: 'button', on: { click: chatClose } }, '✕')),
+    h('div', { id: 'chatList' }), form));
+  document.body.append(box); chatRender();
+  if (!matchMedia('(pointer: coarse)').matches) setTimeout(() => inp.focus(), 50);
+}
+function chatClose() { CHAT.open = false; const b = $('chatBox'); if (b) b.remove(); }
+function chatSend(text) {
+  const m = { id: S.dev + '.' + Date.now().toString(36), x: text.slice(0, 500), ts: Date.now(), me: true };
+  if (online) send({ t: 'chat', id: m.id, x: m.x, ts: m.ts }); else { m.pend = true; toast(tr(`${ptName()} не в сети — доставим, когда появится`, `${ptName()} is offline — we'll deliver it later`), 2200); }
+  CHAT.list.push(m); chatSave(); chatRender(); track('chat');
+}
+function chatFlush() {
+  let any = false;
+  CHAT.list.forEach(m => { if (m.me && m.pend) { send({ t: 'chat', id: m.id, x: m.x, ts: m.ts }); delete m.pend; any = true; } });
+  if (any) { chatSave(); chatRender(); }
+}
+function chatRecv(m) {
+  if (!m || typeof m.x !== 'string' || !m.id) return;
+  if (CHAT.list.some(x => x.id === m.id)) return;
+  CHAT.list.push({ id: String(m.id).slice(0, 40), x: m.x.slice(0, 500), ts: Date.now(), me: false }); chatSave();
+  if (CHAT.open) { chatRender(); return; }
+  CHAT.unread++; chatBadge();
+  try { beep(990, .06, 'sine', .05); } catch (e) {}
+  document.querySelectorAll('.chatPop').forEach(e => e.remove());
+  const pop = h('div', { className: 'chatPop', on: { click: () => { pop.remove(); if (typeof W !== 'undefined' && W.open) return; chatOpen(); } } }, '💬 ' + ptName() + ': ' + m.x.slice(0, 120));
+  document.body.append(pop); setTimeout(() => pop.remove(), 4500);
+}
+
+/* ================= full-screen call ================= */
+let fullByUs = false;
+function stageFull(on) {
+  const scr = $('scrMain'); if (!scr) return;
+  on = on == null ? !scr.classList.contains('callfull') : on;
+  if (on === scr.classList.contains('callfull')) return;
+  scr.classList.toggle('callfull', on); scr.classList.remove('uioff');
+  $('bFull').textContent = on ? '✕' : '⛶';
+  const de = document.documentElement;
+  if (on) {
+    if (!document.fullscreenElement && de.requestFullscreen) { de.requestFullscreen({ navigationUI: 'hide' }).then(() => { fullByUs = true; }).catch(() => {}); }
+    track('fullscreen');
+  } else if (fullByUs && document.fullscreenElement && document.exitFullscreen) { document.exitFullscreen().catch(() => {}); fullByUs = false; }
+}
+$('bFull').onclick = e => { e.stopPropagation(); stageFull(); };
+$('bChat').onclick = e => { e.stopPropagation(); chatOpen(); };
+$('stage').addEventListener('click', e => { if (!$('scrMain').classList.contains('callfull') || e.target.closest('button')) return; $('scrMain').classList.toggle('uioff'); });
+document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && fullByUs) { fullByUs = false; stageFull(false); } });
+
+/* ================= settings ================= */
+$('autoClips').onchange = e => { S.autoClips = e.target.checked; save(); const s2 = $('setClips'); if (s2) s2.checked = e.target.checked; };
+$('setClips').onchange = e => { S.autoClips = e.target.checked; save(); };
+$('setStats').onchange = e => { S.stats = e.target.checked; save(); if (S.stats) statsInit(); };
+$('bClipNow').onclick = async () => { $('shotsSheet').classList.add('hidden'); if (await recordClip('🎬 ' + tr('Наш момент', 'Our moment'), true)) openShots(); };
+$('bSettings').addEventListener('click', () => { $('setClips').checked = plusOn('autoClips'); $('setStats').checked = S.stats !== false; });
+function plusLang() {
+  const set = (id, ru, en) => { const e = $(id); if (e) e.textContent = tr(ru, en); };
+  set('autoClipsL', '🎬 Иногда записывать короткие клипы (5 сек)', '🎬 Sometimes record short clips (5 s)');
+  set('bClipNow', '🎬 Записать клип 5 сек', '🎬 Record a 5 s clip');
+  set('setMoreL', 'Ещё', 'More');
+  set('setClipsL', '🎬 Видео-клипы: иногда записывать смешные моменты по 5 сек', '🎬 Video clips: sometimes record funny 5-second moments');
+  set('setStatsL', '📊 Анонимная статистика (без имён, переписки и фото) — помогает улучшать Дуэт', '📊 Anonymous statistics (no names, messages or photos) — helps improve Duet');
+  $('bChat').title = tr('Чат', 'Chat'); $('bFull').title = tr('На весь экран', 'Full screen');
+}
+plusLang();
+
+/* ================= hooks into the rest of the app ================= */
+(() => {
+  // these are plain global functions, so re-pointing the name is enough
+  openArc = wrapFn('openArc', a => { bumpPlay('a' + a[0]); const g = Arcade.games.find(x => x.n === a[0]); if (!a[1]) track('game', { game: (g ? g.title : 'a' + a[0]), mode: a[2] === 'hotseat' ? 'one phone' : online ? 'together' : 'bot' }); }, () => { stageFull(false); });
+  openGame = wrapFn('openGame', a => { if (!GAMES[a[0]]) return; bumpPlay(a[0]); if (!a[1]) track('game', { game: GAMES[a[0]].title, mode: 'together' }); renderGrid(); }, () => { stageFull(false); });
+  openWatch = wrapFn('openWatch', a => { if (!a[0]) track('watch'); }, () => { stageFull(false); chatClose(); });
+  startScreen = wrapFn('startScreen', () => track('movie', { source: 'screen' }));
+  startFile = wrapFn('startFile', () => track('movie', { source: 'file' }));
+  startLink = wrapFn('startLink', a => track('movie', { source: ytId(a[0]) ? 'youtube' : 'link' }));
+  setMask = wrapFn('setMask', a => { if (a[0] && a[0] !== 'none') track('mask', { mask: a[0] }); });
+  roomStart = wrapFn('roomStart', () => track('room', { as: 'host' }));
+  openInstall = wrapFn('openInstall', a => track('install', { how: a[0] ? 'auto' : 'button' }));
+  lobbyStart = wrapFn('lobbyStart', () => track('random_player'));
+  setOnline = wrapFn('setOnline', a => { if (a[0]) { chatFlush(); if (!PLUS.session) { PLUS.session = true; track('call', { with: (typeof LOB !== 'undefined' && LOB.match) ? 'random' : 'friend' }); } } });
+  startMain = wrapFn('startMain', () => { chatLoad(); chatBadge(); });
+  roomBoot = wrapFn('roomBoot', (a, r) => { if (r) track('room', { as: 'guest' }); });
+  takeMoment = wrapFn('takeMoment', a => { track('photo', { how: a[1] ? 'button' : 'auto' }); });
+  // effects in the movie: count which ones people like (only the person who sent it)
+  const fx0 = WAPI.fx; WAPI.fx = function (k, d) { const r = fx0.call(this, k, d); if (!/^s:(g|duck|auto)$/.test(k)) { const sub = d && (d.id || d.kind || d.e || d.name || d.k); track('effect', { fx: k + (typeof sub === 'string' && sub.length < 24 ? ' ' + sub : '') }); } return r; };
+  ['bCreate', 'bJoin', 'bRandom', 'bShare', 'bShare2'].forEach(id => { const b = $(id); if (b) b.addEventListener('click', () => track({ bCreate: 'pair_create', bJoin: 'pair_join', bRandom: 'random_start', bShare: 'invite', bShare2: 'invite' }[id])); });
+  // clip moments: things people throw at each other in a movie, masks on actors, game endings, screams
+  WAPI.on('v:throw', () => maybeClip('🎯 ' + tr('Прямо в цель!', 'Bullseye!')));
+  WAPI.on('v:face', () => maybeClip('🎭 ' + tr('Новая роль', 'New role')));
+  const om = Arcade.onMoment; Arcade.onMoment = (kind, info) => { om(kind, info); if (kind === 'end') setTimeout(() => maybeClip(info && info.result === 'win' ? '🏆 ' + tr('Победа!', 'Victory!') : info && info.result === 'lose' ? '😭 ' + tr('Эх…', 'Oh no…') : '🤝 ' + tr('Ничья', 'Draw')), 300); };
+})();
+setTimeout(statsInit, 0);
 
 /* Soundboard samples (mp3). Rendered with the FluidR3 GM soundfont (MIT, Frank Wen) and taken from OpenRCT2 OpenSoundEffects (CC BY 4.0). */
 window.DUET_SFX = {
@@ -18577,6 +18992,7 @@ window.DUET_SFX = {
     const m = H * .03;
     memeText(x, top, W / 2, m, W * .94, H * .3, Math.round(H * .13), false);
     memeText(x, bottom, W / 2, H - m, faces ? W - 4 * (r + pad) - 8 : W * .94, H * .3, Math.round(H * .13), true);
+    if (window.duetMark) window.duetMark(x, W, H, { top: true, alpha: .6 });
     return c;
   }
   let memeShow = null;
