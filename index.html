@@ -14637,9 +14637,9 @@ function renderArcGrid() {
   const g = $('arcGrid'); g.innerHTML = '';
   $('arcHint').textContent = playMode() === 'hotseat' ? tr('один телефон — двое игроков', 'one phone — two players') : online ? tr(`вдвоём с ${ptName()}`, `with ${ptName()}`) : playMode() === 'bot' ? tr('с ботом', 'vs bot') : tr(`ждём ${S.partner ? ptName() : 'друга'}`, `waiting for ${S.partner ? ptName() : 'your friend'}`);
   renderModeSeg();
-  Arcade.games.slice().sort((a, b) => (playCount('a' + b.n) - playCount('a' + a.n)) || a.n - b.n).forEach(G => {
+  Arcade.games.slice().sort((a, b) => (rateScore('a' + b.n) - rateScore('a' + a.n)) || (playCount('a' + b.n) - playCount('a' + a.n)) || a.n - b.n).forEach(G => {
     g.append(h('button', { className: 'tile', style: `background:${G.bg}`, on: { click: () => arcTap(G.n) }, disabled: playMode() === 'hotseat' && !Arcade.supportsHotseat(G.n) },
-      h('span', { className: 'num' }, String(G.n).padStart(2, '0')), isHot('a' + G.n) ? h('span', { className: 'hot' }, '🔥') : null, h('div', { className: 'ic' }, G.icon), h('div', { className: 'tt' }, G.title), h('div', { className: 'ds' }, G.desc),
+      h('span', { className: 'num' }, String(G.n).padStart(2, '0')), isHot('a' + G.n) ? h('span', { className: 'hot' }, '🔥') : null, rateBadge('a' + G.n), h('div', { className: 'ic' }, G.icon), h('div', { className: 'tt' }, G.title), h('div', { className: 'ds' }, G.desc),
       h('span', { className: 'md' }, playMode() === 'hotseat' ? (Arcade.supportsHotseat(G.n) ? tr('📱 на одном', '📱 one phone') : tr('🚫 не для одного экрана', '🚫 needs 2 screens')) : playMode() === 'bot' ? tr('🤖 с ботом', '🤖 vs bot') : online ? tr('💞 вдвоём', '💞 together') : (S.pending === G.n ? tr('⏳ ждём друга', '⏳ waiting') : tr('💞 вдвоём', '💞 together')))));
   });
 }
@@ -14647,7 +14647,7 @@ function renderGrid() {
   renderArcGrid();
   const g = $('grid'); g.innerHTML = '';
   $('lobbyHint').textContent = online ? T.lobbyOn : T.waitingFor(ptName());
-  Object.keys(GAMES).sort((a, b) => playCount(b) - playCount(a)).forEach(id => { const G = GAMES[id]; g.append(h('button', { className: 'tile', disabled: !online, style: `background:${G.bg}`, on: { click: () => openGame(id) } }, isHot(id) ? h('span', { className: 'hot' }, '🔥') : null, h('div', { className: 'ic' }, G.icon), h('div', { className: 'tt' }, G.title), h('div', { className: 'ds' }, G.desc))); });
+  Object.keys(GAMES).sort((a, b) => (rateScore(b) - rateScore(a)) || (playCount(b) - playCount(a))).forEach(id => { const G = GAMES[id]; g.append(h('button', { className: 'tile', disabled: !online, style: `background:${G.bg}`, on: { click: () => openGame(id) } }, isHot(id) ? h('span', { className: 'hot' }, '🔥') : null, rateBadge(id), h('div', { className: 'ic' }, G.icon), h('div', { className: 'tt' }, G.title), h('div', { className: 'ds' }, G.desc))); });
 }
 function openGame(id, remote) {
   if (!online && !remote) return;
@@ -15677,14 +15677,15 @@ function renderPoints() {
 
 /* ---------------- install shortcut (phone + computer) ---------------- */
 let installEvt = null;
-window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; });
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; if (!$('installSheet').classList.contains('hidden')) openInstall(INST.auto); }); // the event can come late: refresh the open sheet
+const INST = { auto: false };
 window.addEventListener('appinstalled', () => { installEvt = null; toast('📲 ' + tr('Ярлык установлен!', 'Shortcut installed!')); $('installSheet').classList.add('hidden'); });
 function setManifest() {
   if (/iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return; // iOS uses the current page URL anyway
   // the shortcut must open THIS pair: give the browser a manifest whose start_url is the pair link
   try {
     const base = location.href.split('#')[0], abs = u => new URL(u, base).href;
-    const m = { name: tr('Дуэт — игры вдвоём', 'Duet — games for two'), short_name: tr('Дуэт', 'Duet'), id: abs('./') + '?app=duet', start_url: S.pair ? pairUrl(S.pair.id) : abs('./'), scope: abs('./'), display: 'standalone', orientation: 'any', background_color: '#7b2ff7', theme_color: '#7b2ff7',
+    const m = { name: tr('Дуэт — игры вдвоём', 'Duet — games for two'), short_name: tr('Дуэт', 'Duet'), id: abs('./') + '?app=duet2', start_url: S.pair ? pairUrl(S.pair.id) : abs('./'), scope: abs('./'), display: 'standalone', orientation: 'any', background_color: '#7b2ff7', theme_color: '#7b2ff7',
       icons: [{ src: abs('icon-192.png'), sizes: '192x192', type: 'image/png' }, { src: abs('icon-512.png'), sizes: '512x512', type: 'image/png' }, { src: abs('icon-512.png'), sizes: '512x512', type: 'image/png', purpose: 'maskable' }] };
     const link = document.querySelector('link[rel=manifest]');
     if (link) link.href = 'data:application/manifest+json,' + encodeURIComponent(JSON.stringify(m));
@@ -15724,6 +15725,7 @@ function iosGuide() {
   return box;
 }
 function openInstall(auto) {
+  auto = auto === true; INST.auto = auto;
   const b = $('installBody'); b.innerHTML = '';
   const ua = navigator.userAgent, ios = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
@@ -15731,7 +15733,10 @@ function openInstall(auto) {
   if (standalone) b.append(h('p', {}, tr('✅ «Дуэт» уже открыт как приложение с ярлыка.', '✅ Duet is already running from its shortcut.')));
   if (installEvt) b.append(h('button', { className: 'btn y w', on: { click: async () => { try { installEvt.prompt(); const r = await installEvt.userChoice; if (r && r.outcome === 'accepted') toast('📲 ' + tr('Готово!', 'Done!')); } catch (e) {} installEvt = null; openInstall(); } } }, '📲 ' + tr('Установить ярлык', 'Install shortcut')), h('div', { style: 'height:12px' }));
   if (ios && !standalone) b.append(iosGuide());
-  else if (/Android/.test(ua)) b.append(h('p', { className: 'small' }, 'Android (Chrome):'), steps([tr('Нажми меню ⋮ в правом верхнем углу', 'Tap the ⋮ menu'), tr('Выбери «Установить приложение» или «Добавить на гл. экран»', 'Choose “Install app” / “Add to Home screen”')]));
+  else if (/Android/.test(ua)) {
+    if (!installEvt && !standalone) b.append(h('div', { className: 'iosw' }, tr('Кнопки установки нет — значит, Chrome сейчас не предлагает установку. Обычно потому, что «Дуэт» уже установлен на этом телефоне (поищи иконку на экране или в меню ⋮ пункт «Открыть приложение Дуэт»), или недавно нажали «Отмена» — тогда установи вручную:', 'No install button — Chrome is not offering it right now. Usually Duet is already installed on this phone (look for the icon, or “Open Duet app” in the ⋮ menu), or the prompt was cancelled recently — then install manually:')));
+    b.append(h('p', { className: 'small' }, 'Android (Chrome):'), steps([tr('Нажми меню ⋮ в правом верхнем углу', 'Tap the ⋮ menu'), tr('Выбери «Установить приложение» или «Добавить на гл. экран»', 'Choose “Install app” / “Add to Home screen”'), tr('Нажми «Установить»', 'Tap “Install”')]));
+  }
   else b.append(h('p', { className: 'small' }, tr('Компьютер:', 'Computer:')), steps([tr('Chrome / Edge: значок установки ⊕ в адресной строке или меню ⋮ → «Установить Дуэт»', 'Chrome / Edge: the install icon ⊕ in the address bar or ⋮ → “Install Duet”'), tr('Safari на Mac: Файл → «Добавить в Dock»', 'Safari on Mac: File → “Add to Dock”'), tr('Ярлык появится на рабочем столе / в Dock и откроется отдельным окном', 'The shortcut appears on your desktop / Dock and opens in its own window')]));
   b.append(h('p', { className: 'small', style: 'margin-top:12px' }, tr('Или сохрани ссылку пары:', 'Or keep the pair link:')), h('div', { className: 'code', style: 'font-size:13px;letter-spacing:0;user-select:all;-webkit-user-select:all;word-break:break-all' }, S.pair ? pairUrl(S.pair.id) : location.href),
     h('button', { className: 'btn g w', on: { click: () => copyText(S.pair ? pairUrl(S.pair.id) : location.href).then(ok => toast(ok ? '📋 ' + tr('Скопировано', 'Copied') : tr('Выдели и скопируй ссылку', 'Select and copy the link'))) } }, '📋 ' + tr('Скопировать ссылку', 'Copy link')));
@@ -15896,7 +15901,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202610101834';
+const APP_VERSION = '202610101946';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
@@ -16062,6 +16067,15 @@ function wAC() { try { actx = actx || new (window.AudioContext || window.webkitA
 #wEmpty .lnk{display:flex;gap:8px;margin-top:10px}
 #wEmpty .lnk input{flex:1;min-width:0;border:1px solid rgba(255,255,255,.18);background:rgba(0,0,0,.35);border-radius:14px;padding:11px 12px;font:inherit;font-size:15px;color:#fff}
 #wEmpty .lnk .btn{width:auto;margin:0;background:#fff;color:#000}
+.bwatch .chev{display:inline-block;transition:transform .25s;margin-left:6px}.bwatch.open .chev{transform:rotate(180deg)}.bwatch{justify-content:center}
+#watchBox{margin:2px 0 8px;animation:gbin .3s ease-out}
+#watchBox .card{background:rgba(22,16,40,.94);color:#fff;padding:14px;border:1px solid rgba(255,255,255,.08)}
+#watchBox .small{font-size:12.5px;color:rgba(255,255,255,.65);line-height:1.35;font-weight:700}
+#watchBox .btn{width:100%;margin-top:10px;justify-content:flex-start;font-size:15px;padding:13px 16px;background:rgba(255,255,255,.1);color:#fff;box-shadow:none}
+#watchBox .btn[disabled]{opacity:.4}
+#watchBox .lnk{display:flex;gap:8px;margin-top:10px}
+#watchBox .lnk input{flex:1;min-width:0;border:1px solid rgba(255,255,255,.18);background:rgba(0,0,0,.35);border-radius:14px;padding:11px 12px;font:inherit;font-size:15px;color:#fff}
+#watchBox .lnk .btn{width:auto;margin:0;background:#fff;color:#000}
 #wWait{position:absolute;inset:0;display:grid;place-items:center;z-index:2;font-size:15px;opacity:.8;text-align:center;padding:20px;pointer-events:none}
 #wTap{position:absolute;inset:0;display:grid;place-items:center;z-index:8;background:rgba(0,0,0,.45)}
 #wTalk{align-self:center;border:0;border-radius:24px;padding:8px 16px;font:inherit;font-size:13px;background:rgba(255,255,255,.9);color:#111;touch-action:none;white-space:nowrap;cursor:pointer;-webkit-user-select:none;user-select:none}
@@ -16140,8 +16154,8 @@ body.watching .toast{background:rgba(18,14,30,.88);color:#fff;font-size:13px;pad
   <div id="wPanel" hidden></div>
 </div>`;
   document.body.append(root);
-  const bw = h('button', { className: 'btn w bwatch', id: 'bWatch', style: 'margin:4px 0 6px', on: { click: () => openWatch() } });
-  $('bFind').before(bw);
+  const bw = h('button', { className: 'btn w bwatch', id: 'bWatch', style: 'margin:4px 0 6px', on: { click: () => { S.watchBoxOpen = !S.watchBoxOpen; save(); renderWatchBox(); if (S.watchBoxOpen) setTimeout(() => bw.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60); } } });
+  $('bFind').before(bw, h('div', { id: 'watchBox', hidden: true }));
 })();
 
 /* ---------------- open / close ---------------- */
@@ -16171,7 +16185,7 @@ function closeWatch(remote) {
   moveVideo(false); micApply(); renderVideo();
 }
 function wLabels() {
-  $('bWatch').textContent = tr('🍿 Смотреть фильм вместе', '🍿 Watch a movie together');
+  renderWatchBox();
   $('wTitle').textContent = W.title ? '🍿 ' + W.title : tr('🍿 Кино вдвоём', '🍿 Movie night');
   $('wSrcBtn').title = tr('Выбрать фильм', 'Pick a movie'); $('wSet').title = tr('Настройки', 'Settings'); $('wClose').title = tr('Закрыть кино', 'Close the movie'); $('wFs').title = tr('На весь экран', 'Full screen');
   $('wTapB').textContent = tr('▶ Нажми, чтобы смотреть', '▶ Tap to watch');
@@ -16219,21 +16233,32 @@ function wRenderEmpty() {
   const e = $('wEmpty'); e.hidden = !!W.kind; if (W.kind) return;
   e.innerHTML = '';
   if (W.viewer) { roomEmpty(e); return; }
-  const file = h('input', { type: 'file', accept: 'video/*', style: 'display:none', on: { change: ev => { const f = ev.target.files[0]; if (f) startFile(f); } } });
-  const inp = h('input', { placeholder: tr('Ссылка на YouTube или .mp4', 'YouTube or .mp4 link'), inputMode: 'url' });
-  const go = () => { const u = inp.value.trim(); if (u) startLink(u); };
-  inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') go(); });
-  const scr = h('button', { className: 'btn', disabled: !canScreen(), on: { click: startScreen } }, '🖥️ ' + tr('Показать экран или вкладку', 'Share a screen or tab'));
   e.append(h('div', { className: 'card' },
     h('button', { className: 'wpx', title: tr('Назад', 'Back'), on: { click: () => closeWatch() } }, '✕'),
-    h('h3', {}, tr('🍿 Что смотрим?', '🍿 What are we watching?')),
+    h('h3', {}, tr('🍿 Что смотрим?', '🍿 What are we watching?')), ...wPickParts(false)));
+}
+// the source choices: inside the movie window, and (unfolded) right on the main page
+function wPickParts(inMain) {
+  const enter = () => { if (inMain && !W.open) openWatch(); };
+  const file = h('input', { type: 'file', accept: 'video/*', style: 'display:none', on: { change: ev => { const f = ev.target.files[0]; ev.target.value = ''; if (f) { enter(); startFile(f); } } } });
+  const inp = h('input', { placeholder: tr('Ссылка на YouTube или .mp4', 'YouTube or .mp4 link'), inputMode: 'url' });
+  const go = () => { const u = inp.value.trim(); if (!u) return; enter(); startLink(u); };
+  inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') go(); });
+  const scr = h('button', { className: 'btn', disabled: !canScreen(), on: { click: () => { if (!inMain) { startScreen(); return; } enter(); startScreen().then(() => { if (W.open && !W.kind) closeWatch(); }); } } }, '🖥️ ' + tr('Показать экран или вкладку', 'Share a screen or tab'));
+  return [
     h('div', { className: 'small' }, online ? tr(`${ptName()} увидит фильм и услышит звук. Реакции, маски и приколы работают у обоих.`, `${ptName()} will see the movie and hear it. Reactions, masks and pranks work for both of you.`) : tr('Друг пока не в сети — можно начать, он подключится к фильму, когда зайдёт.', 'Your friend is offline — start anyway, they will join the movie when they come.')),
     scr,
     h('div', { className: 'small', style: 'margin-top:6px' }, canScreen() ? tr('Любой сайт: открой фильм в соседней вкладке, выбери её и включи «Поделиться звуком вкладки» (Chrome/Edge). Netflix, Кинопоиск и подобные покажут чёрный экран — это их защита.', 'Any site: open the movie in another tab, pick it and turn on "Share tab audio" (Chrome/Edge). Netflix and similar show a black screen — that is their protection.') : tr('Телефоны не умеют показывать экран. Фильм с сайта: запусти показ на компьютере, нажми 🎬 → «📲 Смотреть на телефоне» и открой ссылку или QR на телефоне. С телефона можно включить свой файл или ссылку.', 'Phones cannot share their screen. For a movie from a website: start sharing on a computer, press 🎬 → "📲 Watch on a phone" and open the link or QR on the phone. From a phone you can play your own file or a link.')),
     canScreen() ? wSitesBox() : null,
     h('button', { className: 'btn c', on: { click: () => file.click() } }, '📁 ' + tr('Свой видеофайл', 'My video file')), file,
     h('div', { className: 'lnk' }, inp, h('button', { className: 'btn y', on: { click: go } }, '▶')),
-    h('div', { className: 'small', style: 'margin-top:6px' }, tr('YouTube и прямые ссылки идут синхронно у обоих: пауза и перемотка — общие.', 'YouTube and direct links play in sync for both: pause and seek are shared.'))));
+    h('div', { className: 'small', style: 'margin-top:6px' }, tr('YouTube и прямые ссылки идут синхронно у обоих: пауза и перемотка — общие.', 'YouTube and direct links play in sync for both: pause and seek are shared.'))];
+}
+function renderWatchBox() {
+  const b = $('bWatch'), box = $('watchBox'), open = !!S.watchBoxOpen; if (!b || !box) return;
+  b.classList.toggle('open', open); b.innerHTML = ''; b.append(document.createTextNode(tr('🍿 Смотреть фильм вместе', '🍿 Watch a movie together')), h('span', { className: 'chev' }, '▾'));
+  box.hidden = !open; box.innerHTML = '';
+  if (open) box.append(h('div', { className: 'card' }, ...wPickParts(true)));
 }
 
 /* ---------------- sources ---------------- */
@@ -17086,6 +17111,11 @@ function roomBoot() {
 #scrMain.callfull #localV{top:calc(env(safe-area-inset-top,0px) + 12px);right:12px;width:26%;max-width:200px}
 #scrMain.callfull #bFull{right:auto;left:62px}
 #scrMain.callfull.uioff .ctrls,#scrMain.callfull.uioff .reacts,#scrMain.callfull.uioff .stbtn{opacity:0;pointer-events:none}
+.tile .rt{position:absolute;right:10px;bottom:10px;z-index:1;font-size:11px;background:rgba(0,0,0,.28);padding:3px 7px;border-radius:9px;color:#ffe66d}
+.rateCard{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 24px);z-index:52;width:min(92vw,380px);background:#fff;color:var(--ink);border-radius:22px;box-shadow:0 12px 40px rgba(20,0,60,.5);padding:14px 16px 12px;text-align:center;animation:chin .25s ease-out;font-family:Nunito,system-ui,sans-serif;font-weight:800}
+.rateCard .rq{font-size:16px;margin-bottom:6px}
+.rstars{display:flex;justify-content:center;gap:4px}.rstars button{border:0;background:none;font-size:38px;line-height:1;color:#e3dcf5;cursor:pointer;padding:2px 4px;transition:transform .1s,color .1s}.rstars button.on{color:#ffc400}.rstars button:active{transform:scale(1.2)}
+.rlater{border:0;background:none;color:var(--muted);font:inherit;font-size:13px;margin-top:4px;cursor:pointer}
 .tile .hot{position:absolute;top:8px;right:36px;font-size:14px;z-index:1}
 .setchk{display:flex;gap:10px;align-items:flex-start;margin:8px 0}.setchk input{margin-top:2px;flex:0 0 auto;width:18px;height:18px}
 .shot.clip{position:relative}.shot .play{position:absolute;left:6px;top:6px;background:rgba(0,0,0,.55);color:#fff;font-style:normal;font-size:11px;padding:2px 7px;border-radius:9px}
@@ -17179,9 +17209,43 @@ function isHot(k) {
 }
 function bumpPlay(k) { S.plays = S.plays || {}; S.plays[k] = (S.plays[k] || 0) + 1; save(); }
 
+/* ================= game ratings (1–5 stars, from all players) ================= */
+const RATE = { sum: {}, asking: false, loaded: false };
+function relayHttp() { const q = new URLSearchParams(location.search).get('mq'); if (q && /\/mqtt$/.test(q.split(',')[0])) return q.split(',')[0].replace(/^ws/, 'http').replace(/\/mqtt$/, ''); return 'https://relay.duetplay.app'; }
+function rateLoad() {
+  try { RATE.sum = JSON.parse(localStorage.getItem('duet-rates') || '{}'); } catch (e) {}
+  fetch(relayHttp() + '/ratings', { cache: 'no-store' }).then(r => r.json()).then(d => { if (d && typeof d === 'object') { RATE.sum = d; RATE.loaded = true; try { localStorage.setItem('duet-rates', JSON.stringify(d)); } catch (e) {} if (started) renderGrid(); } }).catch(() => {});
+}
+function rateOf(k) { const v = RATE.sum[k]; return v && v[1] ? { avg: v[0] / v[1], n: v[1] } : null; }
+// better rated first; a game with few votes is pulled towards the middle so one 5★ does not jump to the top
+function rateScore(k) { const v = RATE.sum[k] || [0, 0]; return (v[0] + 3.5 * 3) / (v[1] + 3); }
+function rateBadge(k) { const r = rateOf(k); return r ? h('span', { className: 'rt' }, '★ ' + r.avg.toFixed(1) + ' · ' + r.n) : null; }
+function rateAsk(k, title) {
+  if (!k || RATE.asking || (typeof LOB !== 'undefined' && LOB.match && false)) return;
+  S.rates = S.rates || {}; S.rateLater = S.rateLater || {};
+  if (S.rates[k]) return; // already rated this game
+  if ((S.rateLater[k] || 0) > 0) { S.rateLater[k]--; save(); return; } // «later»: ask again after a few more games
+  RATE.asking = true;
+  const close = () => { RATE.asking = false; card.remove(); };
+  const stars = h('div', { className: 'rstars' }, [1, 2, 3, 4, 5].map(n => h('button', { type: 'button', on: { click: () => { stars.querySelectorAll('button').forEach((b, i) => b.classList.toggle('on', i < n)); setTimeout(() => { close(); rateSend(k, n); }, 350); }, pointerenter: () => stars.querySelectorAll('button').forEach((b, i) => b.classList.toggle('on', i < n)) } }, '★')));
+  const card = h('div', { className: 'rateCard' }, h('div', { className: 'rq' }, tr('Как тебе игра', 'How was') + ' «' + title + '»?'), stars,
+    h('button', { type: 'button', className: 'rlater', on: { click: () => { S.rateLater[k] = 3; save(); close(); } } }, tr('Позже', 'Later')));
+  document.body.append(card);
+  setTimeout(() => { if (card.isConnected) close(); }, 20000);
+}
+function rateSend(k, n) {
+  S.rates = S.rates || {}; const old = S.rates[k]; S.rates[k] = n; save();
+  const v = RATE.sum[k] || [0, 0]; RATE.sum[k] = old ? [v[0] - old + n, v[1]] : [v[0] + n, v[1] + 1]; // show it right away
+  toast('⭐ ' + tr('Спасибо за оценку!', 'Thanks for rating!'), 1600); if (started) renderGrid();
+  track('rate', { game: k, stars: n }, true);
+  fetch(relayHttp() + '/rate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ dev: S.dev, g: k, r: n }) }).then(r => r.json()).then(d => { if (d && d.avg) { RATE.sum[k] = d.avg; if (started) renderGrid(); } }).catch(() => {});
+}
+
 /* ================= short video clips ================= */
 const CLIP = { busy: false, last: 0, n: 0, sup: null, mime: null };
-const CLIP_COOL = 15e3, CLIP_SEC = 5; // 15 s pause only so two clips do not overlap
+// video clips follow emotions, not events: an event only "arms" a recording, and the clip is kept
+// only if the people actually react (laughter, screams, smiles, surprised faces)
+const CLIP_KEEP_GAP = 40e3, CLIP_MISS_GAP = 8e3, CLIP_MIN = 5000, CLIP_LONG = 5000, CLIP_CALM = 2200, CLIP_MANUAL = 5000;
 function clipMime() {
   if (CLIP.mime != null) return CLIP.mime;
   CLIP.mime = '';
@@ -17193,14 +17257,59 @@ function clipSupported() {
   return CLIP.sup;
 }
 function camLive(v) { return v && v.srcObject && v.videoWidth > 0; }
-// automatic clips: on the same interesting moments as photos (no count limits)
-function maybeClip(caption) {
+function clipMode() { return (typeof W !== 'undefined' && W.open && W.kind) ? 'watch' : !$('view').hidden ? 'game' : 'call'; }
+
+/* ---- reaction meter: both voices (bursts above each person's usual level) + faces ---- */
+const RX = { an: {}, hist: { me: [], pt: [] }, bursts: [], onHit: null, faceT: null };
+function rxAnalyser(k, stream) {
+  const t = stream && stream.getAudioTracks()[0]; const a = RX.an[k];
+  if (!t || t.readyState !== 'live') { RX.an[k] = null; return null; }
+  if (a && a.track === t) return a;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const src = actx.createMediaStreamSource(new MediaStream([t])), an = actx.createAnalyser(); an.fftSize = 512; src.connect(an);
+    return (RX.an[k] = { track: t, an, buf: new Float32Array(512) });
+  } catch (e) { return null; }
+}
+function rxLevel(a) { a.an.getFloatTimeDomainData(a.buf); let s = 0; for (let i = 0; i < a.buf.length; i++) s += a.buf[i] * a.buf[i]; return Math.sqrt(s / a.buf.length); }
+setInterval(() => {
+  if (!started || !plusOn('autoClips') || !clipSupported() || document.hidden) return;
+  if (actx && actx.state === 'suspended') return;
+  const now = Date.now(), movie = (typeof W !== 'undefined' && W.open && typeof wLevel === 'function') ? (wLevel('movie') || 0) : 0;
+  for (const k of ['me', 'pt']) {
+    if (k === 'me' && S.micOff) continue;
+    const a = rxAnalyser(k, k === 'me' ? localStream : (online ? remoteStream : null)); if (!a) continue;
+    const lv = rxLevel(a), hh = RX.hist[k]; hh.push(lv); if (hh.length > 66) hh.shift(); // ~10 s of history
+    const base = hh.slice().sort((x, y) => x - y)[Math.floor(hh.length / 2)] || 0;
+    if (lv > Math.max(.12, base * 2.5) && lv > movie * 1.3) { RX.bursts.push(now); if (RX.onHit) RX.onHit(1); }
+  }
+  RX.bursts = RX.bursts.filter(t => now - t < 1600);
+  // a laugh or a scream without any event: start a clip as well
+  if (RX.bursts.length >= 5 && !CLIP.busy) maybeClip('😂 ' + tr('Смешной момент', 'Funny moment'), 'react');
+}, 150);
+let rxFaceLoading = null;
+function rxFaces() {
+  if (!window.faceapi || !FX.exprReady) {
+    if (!rxFaceLoading) rxFaceLoading = loadFaceApi().then(async () => { if (!FX.exprReady) { await faceapi.nets.faceExpressionNet.loadFromUri('/__duetfx'); FX.exprReady = true; } }).catch(() => {});
+    return;
+  }
+  const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: .4 });
+  [$('localV'), online ? $('remoteV') : null].forEach(v => {
+    if (!camLive(v) || v._rxBusy) return; v._rxBusy = true;
+    faceapi.detectSingleFace(v, opts).withFaceExpressions().then(r => {
+      const e = r && r.expressions; if (e && (e.happy > .75 || e.surprised > .6 || e.fearful > .6) && RX.onHit) RX.onHit(2);
+    }).catch(() => {}).finally(() => { v._rxBusy = false; });
+  });
+}
+
+// called by events (win, a tomato in the face, a scream…) and by the reaction meter
+function maybeClip(caption, kind) {
   if (!clipSupported() || CLIP.busy || !plusOn('autoClips')) return;
   if ((typeof LOB !== 'undefined' && LOB.match) || document.hidden) return; // never record strangers
-  if (Date.now() - CLIP.last < CLIP_COOL) return;
-  const watching = typeof W !== 'undefined' && W.open && W.kind, inGame = !$('view').hidden;
-  if (!watching && !inGame && !camLive($('remoteV')) && !camLive($('localV'))) return;
-  CLIP.n++; recordClip(caption, false);
+  if (Date.now() < CLIP.last) return; // pause after the previous clip
+  const mode = clipMode();
+  if (mode !== 'watch' && !camLive($('remoteV')) && !camLive($('localV'))) return;
+  recordClip(caption, false, kind || 'event');
 }
 function clipCam(x, v, X, Y, w, hh, mirror, label, col, emoji, s) {
   const rr = 18 * s;
@@ -17268,44 +17377,55 @@ function clipAudio(mode) {
     return { dest, close() { nodes.forEach(n => { try { n.disconnect(); } catch (e) {} }); } };
   } catch (e) { return null; }
 }
-async function recordClip(caption, manual) {
-  if (!clipSupported()) { toast(tr('Этот браузер не умеет записывать видео 😕', 'This browser cannot record video 😕')); return false; }
+async function recordClip(caption, manual, kind) {
+  if (!clipSupported()) { if (manual) toast(tr('Этот браузер не умеет записывать видео 😕', 'This browser cannot record video 😕')); return false; }
   if (CLIP.busy) return false;
-  CLIP.busy = true; CLIP.last = Date.now();
-  const mode = (typeof W !== 'undefined' && W.open && W.kind) ? 'watch' : !$('view').hidden ? 'game' : 'call';
+  CLIP.busy = true;
+  const mode0 = clipMode();
   const low = typeof wLow === 'function' && wLow(), Wd = low ? 360 : 432, Hh = Math.round(Wd * 16 / 9), fps = low ? 10 : 15;
   const c = document.createElement('canvas'); c.width = Wd; c.height = Hh; const x = c.getContext('2d');
-  const draw = () => { try { clipFrame(x, Wd, Hh, caption, mode); } catch (e) {} };
+  const draw = () => { try { clipFrame(x, Wd, Hh, caption, clipMode()); } catch (e) {} }; // the layout follows the screen (a game may end mid-clip)
   draw();
   let stream = null, rec = null, mix = null, poster = null; const chunks = [];
-  const cleanup = () => { try { stream && stream.getTracks().forEach(t => t.stop()); } catch (e) {} try { mix && mix.close(); } catch (e) {} CLIP.busy = false; };
+  const cleanup = () => { try { stream && stream.getTracks().forEach(t => t.stop()); } catch (e) {} try { mix && mix.close(); } catch (e) {} RX.onHit = null; clearInterval(RX.faceT); CLIP.busy = false; };
   try {
-    stream = c.captureStream(fps); mix = clipAudio(mode);
+    stream = c.captureStream(fps); mix = clipAudio(mode0);
     if (mix) mix.dest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
     rec = new MediaRecorder(stream, { mimeType: clipMime(), videoBitsPerSecond: low ? 700000 : 1000000, audioBitsPerSecond: 64000 });
   } catch (e) { cleanup(); return false; }
   rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
   const stopped = new Promise(res => { rec.onstop = res; rec.onerror = res; });
   const iv = setInterval(draw, Math.round(1000 / fps));
-  if (online) send({ t: 'clipon' });
-  const ind = h('div', { className: 'clipRec' }, h('b', {}, '● '), tr('клип ', 'clip ') + CLIP_SEC); document.body.append(ind);
-  let left = CLIP_SEC; const tick = setInterval(() => { left--; ind.lastChild.textContent = tr('клип ', 'clip ') + Math.max(0, left); }, 1000);
-  try { rec.start(1000); } catch (e) { clearInterval(iv); clearInterval(tick); ind.remove(); cleanup(); return false; }
+  // reactions while recording: voices (1 point per burst) and smiling / surprised faces (2 points)
+  const t0 = Date.now(), need = manual ? 0 : kind === 'react' ? 3 : 4; let score = 0, lastReact = t0, ind = null;
+  const showRec = () => { if (ind) return; ind = h('div', { className: 'clipRec' }, h('b', {}, '● '), tr('запись клипа', 'recording a clip')); document.body.append(ind); if (online) send({ t: 'clipon' }); };
+  if (manual) showRec();
+  RX.onHit = w => { score += w; lastReact = Date.now(); if (score >= need) showRec(); };
+  if (!manual) { rxFaces(); RX.faceT = setInterval(rxFaces, 700); }
+  try { rec.start(1000); } catch (e) { clearInterval(iv); cleanup(); if (ind) ind.remove(); return false; }
   setTimeout(() => c.toBlob(b => { poster = b; }, 'image/jpeg', .75), 1500);
-  setTimeout(() => { try { rec.state !== 'inactive' && rec.stop(); } catch (e) {} }, CLIP_SEC * 1000);
-  await stopped; clearInterval(iv); clearInterval(tick); ind.remove(); cleanup();
+  // keep recording while people react (min 6 s, up to 15 s), stop ~2 s after they calm down
+  const watch = setInterval(() => {
+    const el = Date.now() - t0;
+    const done = manual ? el >= CLIP_MANUAL : (el >= CLIP_LONG || (el >= CLIP_MIN && Date.now() - lastReact > CLIP_CALM));
+    if (done) { clearInterval(watch); try { rec.state !== 'inactive' && rec.stop(); } catch (e) {} }
+  }, 250);
+  await stopped; clearInterval(iv); clearInterval(watch); cleanup(); if (ind) ind.remove();
+  if (!manual && score < need) { CLIP.last = Date.now() + CLIP_MISS_GAP; return false; } // nobody reacted: drop it quietly
+  CLIP.last = Date.now() + (manual ? 0 : CLIP_KEEP_GAP);
   const type = (rec.mimeType || clipMime()).split(';')[0] || 'video/webm', blob = new Blob(chunks, { type });
   if (blob.size < 15000) return false;
   if (!poster) poster = await new Promise(r => c.toBlob(r, 'image/jpeg', .75));
   try { await dbPut({ ts: Date.now(), caption, blob, kind: 'clip', poster }); await dbTrim(); } catch (e) { return false; }
-  updateShotBadge(); toast('🎬 ' + tr('Клип сохранён в «Моменты»', 'Clip saved to Moments'), 1800);
-  track('clip', { how: manual ? 'button' : 'auto', where: mode });
+  CLIP.n++; updateShotBadge(); toast('🎬 ' + tr('Клип сохранён в «Моменты»', 'Clip saved to Moments'), 1800);
+  track('clip', { how: manual ? 'button' : kind === 'react' ? 'reaction' : 'event', where: mode0 });
   return true;
 }
 function clipNotice() {
   if (CLIP.busy) return;
-  const n = h('div', { className: 'clipRec' }, h('b', {}, '● '), tr(`${ptName()} записывает клип`, `${ptName()} is recording a clip`));
-  document.body.append(n); setTimeout(() => n.remove(), CLIP_SEC * 1000);
+  document.querySelectorAll('.clipRec.pt').forEach(e => e.remove());
+  const n = h('div', { className: 'clipRec pt' }, h('b', {}, '● '), tr(`${ptName()} записывает клип`, `${ptName()} is recording a clip`));
+  document.body.append(n); setTimeout(() => n.remove(), 8000);
 }
 
 /* ================= chat: floating window that docks to a screen edge ================= */
@@ -17370,7 +17490,7 @@ function chatShow(st) {
   else { const inp = $('chatIn'); if (inp) inp.blur(); }
   chatPlace(); chatRender();
 }
-function chatToggle() { chatShow(CHAT.st === 'open' ? 'dock' : 'open'); }
+function chatToggle() { if (CHAT.st === 'open') chatClose(); else chatShow('open'); } // the chat button: open ↔ closed
 function chatClose() { CHAT.st = 'closed'; CHAT.edit = null; const b = $('chatBox'); if (b) b.remove(); }
 function chatRender() {
   const l = $('chatList'); if (!l) return; l.innerHTML = '';
@@ -17461,7 +17581,7 @@ function plusLang() {
   set('setClipsL', '🎬 Видео-клипы: иногда записывать смешные моменты по 5 сек', '🎬 Video clips: sometimes record funny 5-second moments');
   chatLaunchers().forEach(b => { b.title = tr('Чат', 'Chat'); });
   $('bInstall2').textContent = '📲 ' + tr('Установить ярлык на рабочий стол', 'Install a desktop shortcut');
-  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 27 · 10.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
+  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 31 · 10.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
 }
 plusLang();
 
@@ -17479,7 +17599,7 @@ plusLang();
   openInstall = wrapFn('openInstall', a => track('install', { how: a[0] ? 'auto' : 'button' }));
   lobbyStart = wrapFn('lobbyStart', () => track('random_player'));
   setOnline = wrapFn('setOnline', a => { if (a[0]) { chatFlush(); if (!PLUS.session) { PLUS.session = true; track('call', { with: (typeof LOB !== 'undefined' && LOB.match) ? 'random' : 'friend' }); } } });
-  startMain = wrapFn('startMain', () => { chatLoad(); chatBadge(); });
+  startMain = wrapFn('startMain', () => { chatLoad(); chatBadge(); rateLoad(); });
   roomBoot = wrapFn('roomBoot', (a, r) => { if (r) track('room', { as: 'guest' }); });
   takeMoment = wrapFn('takeMoment', a => { track('photo', { how: a[1] ? 'button' : 'auto' }); if (!a[1] && /😱/.test(a[0] || '')) maybeClip(a[0]); });
   // effects in the movie: count which ones people like (only the person who sent it)
@@ -17501,9 +17621,10 @@ plusLang();
     const t = info && info.title ? ` «${info.title}»` : '';
     if (kind === 'drama') maybeClip('🔥 ' + tr('Напряжённый момент', 'Intense moment') + t);
     else if (kind === 'photo') maybeClip((info && info.caption) || ('📸' + t));
+    if (kind === 'end') { const cur = Arcade.current(), g = cur && Arcade.games.find(x => x.n === cur.n); if (g && info && info.mode !== 'hotseat') setTimeout(() => rateAsk('a' + g.n, g.title), 2500); }
     else if (kind === 'end' && info && (info.result === 'win' || info.result === 'lose')) setTimeout(() => maybeClip((info.result === 'win' ? '🏆 ' + tr('Победа!', 'Victory!') : '😭 ' + tr('Эх…', 'Oh no…')) + t), 300);
   };
-  win = wrapFn('win', a => { setTimeout(() => maybeClip(a[0] ? '🏆 ' + tr('Победа!', 'Victory!') : '😭 ' + tr('Эх…', 'Oh no…')), 300); });
+  win = wrapFn('win', a => { const gid = gameId, gt = GAMES[gameId] && GAMES[gameId].title; setTimeout(() => rateAsk(gid, gt), 2500); setTimeout(() => maybeClip(a[0] ? '🏆 ' + tr('Победа!', 'Victory!') : '😭 ' + tr('Эх…', 'Oh no…')), 300); });
   $('bInstall2').onclick = () => openInstall();
   const sa = matchMedia('(display-mode: standalone)').matches || navigator.standalone; if (sa) $('bInstall2').hidden = true;
 })();
