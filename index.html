@@ -334,7 +334,7 @@ canvas#cvDraw{width:100%;aspect-ratio:3/4;border-radius:18px;background:#fffdf5;
       <button class="btn w bwatch bgames" id="bGames" style="margin:4px 0 6px"></button>
       <div class="pending hidden" id="pendingBar"><span id="pendingText"></span><button class="btn g" id="pendingCancel">✕</button></div>
       <div id="gamesBox" hidden>
-      <div class="sect"><b id="arcTitle">🕹️ Аркада · 42 игры</b> <span id="arcHint"></span></div>
+      <div class="sect"><b id="arcTitle">🕹️ Аркада · 40 игр</b> <span id="arcHint"></span></div>
       <div class="lvlrow"><div class="seg big" id="modeSeg"><button data-m="duo">💞 Вдвоём</button><button data-m="hotseat">📱 На одном</button><button data-m="bot">🤖 С ботом</button></div></div>
       <div class="lvlrow" id="lvlRow"><span id="lvlLbl">Бот:</span><div class="seg" id="lvl"><button data-l="0">лёгкий</button><button data-l="1">нормальный</button><button data-l="2">сильный</button></div></div>
       <div class="grid" id="arcGrid"></div>
@@ -7613,160 +7613,6 @@ registerGame({
 
 })();
 
-/* ---- 10-balloons.js ---- */
-(function(){
-/* 10. Лопни шарики — shared field. Cyan balloons are yours (+1), pink are the bot's, gold is anyone's (+3).
-   Popping the opponent's colour costs you −1. Bot taps with a visible pink hand. 60s. */
-registerGame({
-  n: 10, id: 'balloons', flip: false, net: true, title: TR('Лопни шарики', 'Balloon Pop'), icon: '🎈', mode: 'одновременно', bg: 'linear-gradient(135deg,#00d1ff,#f107a3)',
-  desc: TR('Лопай шарики своего цвета быстрее соперника', 'Pop your color faster than your rival'),
-  help: TR('Тапай по голубым шарикам (+1) и золотым (+3, кто первый). Розовые — соперника: лопнешь чужой — минус очко. 60 секунд.', 'Tap blue balloons (+1) and gold ones (+3, first come first served). Pink ones are your rival’s — pop one and lose a point. 60 seconds.'),
-  make(api) {
-    const { W, H, C } = api;
-    const DUR = 60, R = 27;
-    const COLS = [{ c: C.you, d: C.youDark }, { c: C.bot, d: C.botDark }, { c: C.yellow, d: C.orange }]; // owner 0 you, 1 bot, 2 gold
-    const S = { t: DUR, spawnT: .3, balloons: [], score: [0, 0], combo: [0, 0], over: false, id: 0 };
-    const lv = api.level;
-    const AI = { react: [.7, .5, .28][lv], speed: [480, 700, 1100][lv], oops: [.1, .04, 0][lv] };
-    const hand = { x: W / 2, y: 120, target: null, wait: .8, tap: 0 };
-    const taps = []; // tap rings of both players {x,y,s,life}
-    let clock = 0;
-
-    function spawn() {
-      const r = Math.random(), owner = r < .1 ? 2 : r < .55 ? 0 : 1;
-      S.balloons.push({ id: S.id++, owner, x: api.rand(R + 6, W - R - 6), y: H + R + 20, vy: api.rand(55, 85) + (DUR - S.t) * 1.3,
-        ph: api.rand(0, 6.28), wob: api.rand(14, 28), bx: 0, popped: false, scale: 0 });
-      if (owner === 2) S.balloons[S.balloons.length - 1].vy *= 1.35;
-    }
-    const bx = b => b.x + Math.sin(b.ph) * b.wob;
-    function hitTest(x, y) {
-      for (let i = S.balloons.length - 1; i >= 0; i--) {
-        const b = S.balloons[i]; if (b.popped) continue;
-        if (Math.hypot(x - bx(b), (y - b.y) * .9) < R + 10) return b;
-      }
-      return null;
-    }
-    // shared rule for both players
-    function applyInput(side, inp) {
-      const b = hitTest(inp.x, inp.y);
-      if (!b) return false;
-      b.popped = true;
-      let pts = b.owner === 2 ? 3 : b.owner === side ? 1 : -1;
-      if (pts > 0) { S.combo[side]++; if (S.combo[side] % 6 === 0) pts += 2; } else S.combo[side] = 0;
-      S.score[side] = Math.max(0, S.score[side] + pts);
-      api.setScore(S.score[0], S.score[1]);
-      const col = COLS[b.owner].c;
-      api.burst(bx(b), b.y, col, b.owner === 2 ? 26 : 14, b.owner === 2 ? 240 : 170);
-      const txt = (pts > 0 ? '+' : '') + pts + (pts > 3 || (pts > 1 && b.owner !== 2) ? TR(' комбо!', ' combo!') : '');
-      api.float(txt, api.clamp(bx(b), 60, W - 60), b.y - 10, pts < 0 ? C.red : side ? C.bot : C.you, b.owner === 2 ? 30 : 24);
-      if (side === 0 || !api.isBot) { api.sfx(pts < 0 ? 'lose' : 'pop'); api.vibrate(pts < 0 ? 40 : 10); if (pts < 0) api.shake(6); }
-      else api.sfx('tap');
-      return true;
-    }
-    function botPick() {
-      let best = null, bestV = -1;
-      for (const b of S.balloons) {
-        if (b.popped || b.y > H - 10 || b.y < 40) continue;
-        const mine = b.owner === 1 || b.owner === 2 || Math.random() < AI.oops * .2;
-        if (!mine) continue;
-        const d = Math.hypot(bx(b) - hand.x, b.y - hand.y);
-        const v = (b.owner === 2 ? 3 : 1) / (d + 120) * (b.y < 140 ? .6 : 1);
-        if (v > bestV) { bestV = v; best = b; }
-      }
-      return best;
-    }
-    function botUpdate(dt) {
-      hand.tap = Math.max(0, hand.tap - dt * 4);
-      if (hand.wait > 0) { hand.wait -= dt; return; }
-      if (!hand.target || hand.target.popped || hand.target.y < 20) { hand.target = botPick(); hand.wait = hand.target ? AI.react * api.rand(.6, 1.2) : .2; return; }
-      const b = hand.target, tx = bx(b), ty = b.y + 6;
-      const dx = tx - hand.x, dy = ty - hand.y, d = Math.hypot(dx, dy), step = AI.speed * dt;
-      if (d > step + 4) { hand.x += dx / d * step; hand.y += dy / d * step; return; }
-      hand.x = tx; hand.y = ty; hand.tap = 1;
-      applyInput(1, { x: hand.x, y: hand.y });
-      hand.target = null; hand.wait = AI.react * .5;
-    }
-    function drawBalloon(g, b) {
-      const x = bx(b), y = b.y, col = COLS[b.owner], s = b.scale;
-      // string
-      g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x, y + R * s);
-      for (let i = 1; i <= 4; i++) g.lineTo(x + Math.sin(b.ph * 2 + i) * 5, y + R * s + i * 12);
-      g.stroke();
-      g.save(); g.translate(x, y); g.scale(s, s);
-      g.beginPath(); g.ellipse(0, 0, R * .9, R * 1.08, 0, 0, 6.283);
-      const gr = g.createRadialGradient(-8, -10, 3, 0, 0, R * 1.2); gr.addColorStop(0, '#fff'); gr.addColorStop(.25, col.c); gr.addColorStop(1, col.d);
-      g.fillStyle = gr; g.fill();
-      g.beginPath(); g.moveTo(-5, R * 1.05); g.lineTo(5, R * 1.05); g.lineTo(0, R * 1.05 - 6); g.closePath(); g.fillStyle = col.d; g.fill();
-      if (b.owner === 2) api.text('★', 0, 2, 22, '#fff'); else api.text(api.label(b.owner === 0 ? 'you' : 'bot').slice(0, 6), 0, 2, 11, 'rgba(255,255,255,.85)');
-      g.restore();
-    }
-
-    function ageTaps(dt) { for (const m of taps) m.life -= dt * 3; while (taps.length && taps[0].life <= 0) taps.shift(); }
-    api.setInfo(v => TR('Голубые твои · розовые — ' + api.nameFor(api.other(v), v) + ' · золотые +3', 'Blue is yours · pink is ' + api.nameFor(api.other(v), v) + '’s · gold +3'));
-    return {
-      update(dt) {
-        if (!(dt > 0)) return; // engine can hand a negative dt on the first frame
-        if (S.over) return;
-        S.t -= dt; clock += dt;
-        if (S.t <= 0) { S.over = true; const [a, b] = S.score; api.end(a > b ? 'win' : a < b ? 'lose' : 'draw', v => v === 'you' ? TR(`Лопнуто очков ${a} : ${b}`, `Points popped ${a} : ${b}`) : TR(`Лопнуто очков ${b} : ${a}`, `Points popped ${b} : ${a}`)); return; }
-        S.spawnT -= dt;
-        if (S.spawnT <= 0) { spawn(); S.spawnT = api.lerp(.55, .3, 1 - S.t / DUR) * api.rand(.7, 1.3); }
-        for (const b of S.balloons) { b.y -= b.vy * dt; b.ph += dt * 2; b.scale = Math.min(1, b.scale + dt * 4); }
-        S.balloons = S.balloons.filter(b => !b.popped && b.y > -R * 2 - 50);
-        if (api.isBot) botUpdate(dt);
-        ageTaps(dt);
-      },
-      draw(g) {
-        const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, '#2b6be0'); gr.addColorStop(1, '#8ad8ff');
-        g.fillStyle = gr; g.fillRect(0, 0, W, H);
-        // clouds drifting
-        g.fillStyle = 'rgba(255,255,255,.35)';
-        for (let i = 0; i < 4; i++) {
-          const cx = ((clock * (10 + i * 5) + i * 120) % (W + 160)) - 80, cy = 90 + i * 120;
-          g.beginPath(); g.arc(cx, cy, 22, 0, 6.283); g.arc(cx + 24, cy - 8, 26, 0, 6.283); g.arc(cx + 50, cy, 20, 0, 6.283); g.fill();
-        }
-        for (const b of S.balloons) drawBalloon(g, b);
-        // tap rings of both players
-        for (const m of taps) { g.globalAlpha = Math.max(0, m.life); api.circle(m.x, m.y, 30 - m.life * 18, null, m.s ? C.bot : C.you, 3); }
-        g.globalAlpha = 1;
-        // bot hand (AI only)
-        if (api.isBot) { g.save(); g.translate(hand.x, hand.y); const s = 1 - hand.tap * .25; g.scale(s, s);
-        g.globalAlpha = .4; api.circle(0, 0, 22, C.bot); g.globalAlpha = 1; api.circle(0, 0, 22, null, C.bot, 3);
-        api.emoji('👆', 4, 18, 30);
-        g.restore();
-        if (hand.target && hand.wait <= 0) { g.strokeStyle = C.bot; g.globalAlpha = .5; g.setLineDash([4, 6]); g.lineWidth = 2; g.beginPath(); g.moveTo(hand.x, hand.y); g.lineTo(bx(hand.target), hand.target.y); g.stroke(); g.setLineDash([]); g.globalAlpha = 1; } }
-        // timer pill
-        const warn = S.t < 10;
-        api.rr(W / 2 - 40, 10, 80, 34, 17); g.fillStyle = warn ? C.red : 'rgba(29,19,64,.75)'; g.fill();
-        api.text('⏱ ' + Math.max(0, Math.ceil(S.t)), W / 2, 28, 18, '#fff');
-      },
-      down(p) {
-        const side = p.side === 'bot' ? 1 : 0;
-        taps.push({ x: p.x, y: p.y, s: side, life: 1 });
-        applyInput(side, p);
-      },
-      // network: ~16 balloons x 7 numbers -> ~0.6 KB
-      snap() {
-        const r = Math.round;
-        return { t: r(S.t * 10), b: S.balloons.map(b => [b.id, b.owner, r(b.x), r(b.y), r(b.vy), r(b.ph * 100), r(b.wob)]), k: taps.map(m => [r(m.x), r(m.y), m.s, r(m.life * 10)]) };
-      },
-      load(n) {
-        S.t = n.t / 10;
-        const old = new Map(S.balloons.map(b => [b.id, b]));
-        S.balloons = n.b.map(a => { const o = old.get(a[0]); return { id: a[0], owner: a[1], x: a[2], y: a[3], vy: a[4], ph: a[5] / 100, wob: a[6], scale: o ? o.scale : 0 }; });
-        taps.length = 0; for (const k of n.k) taps.push({ x: k[0], y: k[1], s: k[2], life: k[3] / 10 });
-      },
-      guestUpdate(dt) {
-        clock += dt;
-        for (const b of S.balloons) { b.y -= b.vy * dt; b.ph += dt * 2; b.scale = Math.min(1, b.scale + dt * 4); }
-        ageTaps(dt);
-      },
-    };
-  },
-});
-
-})();
-
 /* ---- 11-snowball.js ---- */
 (function(){
 /* 11. Снежки — real-time snowball fight behind crumbling snow walls. First to 5 hits. Netplay: flip (guest at the bottom). */
@@ -14089,125 +13935,6 @@ registerGame({
 
 })();
 
-/* ---- 42-boat.js ---- */
-(function(){
-/* 42. Лодка — co-op rowing. 'you' rows the LEFT oar, 'bot' (partner or bot) the RIGHT oar.
-   One oar turns the boat; both within a split second shoot it straight ahead. Reach the finish together. */
-registerGame({
-  n: 42, id: 'boat', net: true, flip: false, title: TR('Лодка', 'Rowing Boat'), icon: '⛵', mode: 'вместе', coop: true, bg: 'linear-gradient(135deg,#0077b6,#00d1ff)',
-  desc: TR('У каждого своё весло — плывите в такт', 'One oar each — row in sync'),
-  help: TR('Тапай по экрану — гребёт твоё весло (у одного левое, у другого правое). Одно весло поворачивает лодку, оба сразу — мощный рывок вперёд. Обходите камни и доплывите до финиша. 3 жизни.',
-    'Tap to pull your oar (one of you has the left, the other the right). One oar turns the boat, both together — a big push forward. Dodge the rocks and reach the finish. 3 lives.'),
-  make(api) {
-    const { W, H, C } = api;
-    const lvl = api.level, GOAL = [4200, 5400, 6600][lvl], RIVER = 250, BY = 360, SYNC = .24;
-    const botDelay = [[.05, .2], [.03, .14], [.02, .08]][lvl], botMiss = [.22, .12, .05][lvl];
-    const S = { x: W / 2, a: 0, v: 0, va: 0, dist: 0, lives: 3, rocks: [], last: { you: -9, bot: -9 }, n: { you: 0, bot: 0 }, sync: 0, inv: 0, t: 0, over: false };
-    let msg = null, botQ = [], tgt = null, splash = [];
-    const cx = d => W / 2 + Math.sin(d / 260) * 42 + Math.sin(d / 97) * 14; // river centre at a given distance
-    const sy = d => BY - (d - S.dist);                                      // screen y of a distance
-    function addRocks() { while (!S.rocks.length || S.rocks[S.rocks.length - 1].d < S.dist + 700) { const d = (S.rocks.length ? S.rocks[S.rocks.length - 1].d : 420) + api.rand(150, 240) - lvl * 15; if (d > GOAL - 120) break; S.rocks.push({ d, o: api.rand(-.38, .38) }); } }
-    addRocks(); api.setScore(0, 0); api.setInfo(TR('Гребите вместе — в такт!', 'Row together — in sync!'));
-
-    function stroke(side) {
-      if (S.over) return;
-      const other = side === 'you' ? 'bot' : 'you', both = S.t - S.last[other] < SYNC && S.used !== S.last[other]; // each pair of strokes counts once
-      S.last[side] = S.t; S.n[side]++; api.setScore(S.n.you, S.n.bot);
-      if (both) { S.used = S.t; S.v += 115; S.va *= .25; S.sync++; msg = { k: 'sync', t: .9 }; api.sfx('score'); api.vibrate(15); api.float(TR('Синхронно! 💪', 'In sync! 💪'), S.x, BY - 60, C.yellow, 22); }
-      else { S.v += 42; S.va += side === 'you' ? 1.5 : -1.5; api.sfx('tap'); }
-      splash.push({ x: S.x + (side === 'you' ? -34 : 34), y: BY + 6, t: 0 });
-      if (api.isBot && side === 'you' && Math.random() > botMiss) botQ.push(S.t + api.rand(botDelay[0], botDelay[1])); // the bot follows your rhythm
-    }
-    function botThink() {
-      while (botQ.length && botQ[0] <= S.t) { botQ.shift(); stroke('bot'); }
-      // the bot also steers on its own when the boat drifts towards the left bank or a rock on the left
-      if (S.t - S.last.bot > .7 && S.t - S.last.you > .5) {
-        const c = cx(S.dist + 60), off = S.x - c, ahead = S.rocks.find(r => r.d > S.dist && r.d < S.dist + 140);
-        const rockX = ahead ? cx(ahead.d) + ahead.o * RIVER : null;
-        if ((S.a > .35) || off > RIVER * .3 || (rockX != null && Math.abs(rockX - S.x) < 34 && rockX >= S.x)) stroke('bot');
-      }
-    }
-    function hitRock() {
-      S.lives--; S.v = 0; S.va = 0; S.inv = 1.4; msg = { k: 'rock', t: 1.4 };
-      api.sfx('lose'); api.shake(9); api.vibrate(50); api.burst(S.x, BY - 20, '#c9c9c9', 16, 180);
-      if (S.lives <= 0) { S.over = true; api.after(.8, () => api.end('lose', TR(`Лодка разбилась на ${Math.round(S.dist / 10)} м из ${GOAL / 10}`, `The boat broke at ${Math.round(S.dist / 10)} of ${GOAL / 10} m`))); }
-    }
-    return {
-      update(dt) {
-        S.t += dt; if (msg) { msg.t -= dt; if (msg.t <= 0) msg = null; }
-        splash.forEach(s => s.t += dt); splash = splash.filter(s => s.t < .6);
-        if (S.over) return;
-        if (api.isBot) botThink();
-        S.v *= Math.pow(.5, dt); S.va *= Math.pow(.3, dt); S.a += S.va * dt; S.a *= Math.pow(.55, dt); S.a = api.clamp(S.a, -1.1, 1.1);
-        S.x += Math.sin(S.a) * S.v * dt; S.dist += Math.max(0, Math.cos(S.a)) * S.v * dt + 6 * dt; // the current carries you slowly
-        const c = cx(S.dist), half = RIVER / 2 - 18;
-        if (S.x < c - half || S.x > c + half) { S.x = api.clamp(S.x, c - half, c + half); S.v *= .4; S.va = (S.x < c ? -1 : 1) * 1.1; api.sfx('bounce'); }
-        S.inv -= dt;
-        if (S.inv <= 0) for (const r of S.rocks) { const rx = cx(r.d) + r.o * RIVER; if (Math.abs(r.d - S.dist) < 26 && Math.abs(rx - S.x) < 30) { hitRock(); break; } }
-        S.rocks = S.rocks.filter(r => r.d > S.dist - 260); addRocks();
-        if (S.dist >= GOAL) { S.over = true; api.sfx('win'); api.after(.4, () => api.end('win', TR(`Доплыли! Синхронных гребков: ${S.sync}`, `You made it! Strokes in sync: ${S.sync}`))); }
-      },
-      draw(g) {
-        g.fillStyle = '#3f8f2e'; g.fillRect(0, 0, W, H);
-        // grass dots
-        g.fillStyle = 'rgba(255,255,255,.08)'; for (let i = 0; i < 40; i++) { const d = Math.floor(S.dist / 40) * 40 + i * 40 - 400, y = sy(d); g.fillRect((i * 97) % W, y, 3, 3); }
-        // river
-        g.fillStyle = '#1e88c7'; g.beginPath();
-        for (let y = -10; y <= H + 10; y += 10) g.lineTo(cx(S.dist + (BY - y)) - RIVER / 2, y);
-        for (let y = H + 10; y >= -10; y -= 10) g.lineTo(cx(S.dist + (BY - y)) + RIVER / 2, y);
-        g.fill();
-        g.strokeStyle = 'rgba(255,255,255,.22)'; g.lineWidth = 2;
-        for (let i = 0; i < 16; i++) { const d = Math.floor(S.dist / 50) * 50 + i * 50 - 250, y = sy(d); const xx = cx(d) + ((i * 37) % 160) - 80; g.beginPath(); g.moveTo(xx, y); g.lineTo(xx + 18, y); g.stroke(); }
-        // finish line
-        const fy = sy(GOAL); if (fy > -40 && fy < H) { for (let i = 0; i < 12; i++) { g.fillStyle = i % 2 ? '#fff' : '#111'; g.fillRect(cx(GOAL) - RIVER / 2 + i * RIVER / 12, fy - 6, RIVER / 12, 12); } api.emoji('🏁', cx(GOAL) + RIVER / 2 + 14, fy - 10, 26); }
-        // rocks
-        for (const r of S.rocks) { const y = sy(r.d); if (y > -30 && y < H + 30) api.emoji('🪨', cx(r.d) + r.o * RIVER, y, 34); }
-        // splashes
-        splash.forEach(s => { g.globalAlpha = 1 - s.t / .6; api.circle(s.x, s.y + s.t * 40, 6 + s.t * 18, null, '#fff', 2); g.globalAlpha = 1; });
-        // boat
-        g.save(); g.translate(S.x, BY); g.rotate(S.a); if (S.inv > 0 && Math.floor(S.t * 10) % 2) g.globalAlpha = .45;
-        const pl = Math.max(0, .35 - (S.t - S.last.you)) / .35, pr = Math.max(0, .35 - (S.t - S.last.bot)) / .35;
-        g.strokeStyle = '#ffd60a'; g.lineWidth = 5; g.lineCap = 'round';
-        g.beginPath(); g.moveTo(-12, 0); g.lineTo(-44, 10 - pl * 24); g.stroke(); g.beginPath(); g.moveTo(12, 0); g.lineTo(44, 10 - pr * 24); g.stroke();
-        g.fillStyle = '#8b4a1c'; g.beginPath(); g.ellipse(0, 0, 17, 36, 0, 0, 6.283); g.fill();
-        g.fillStyle = '#6b3510'; g.beginPath(); g.ellipse(0, 2, 11, 28, 0, 0, 6.283); g.fill();
-        api.circle(-6, 4, 7, C.you); api.circle(6, -6, 7, C.bot);
-        g.restore(); g.globalAlpha = 1;
-        // progress + lives
-        api.rr(20, 20, W - 40, 12, 6); g.fillStyle = 'rgba(0,0,0,.25)'; g.fill();
-        api.rr(20, 20, (W - 40) * Math.min(1, S.dist / GOAL), 12, 6); g.fillStyle = C.yellow; g.fill();
-        api.text(`${Math.round(S.dist / 10)} / ${GOAL / 10} м`, W / 2, 46, 14, '#fff');
-        for (let i = 0; i < 3; i++) api.emoji(i < S.lives ? '❤️' : '🖤', 30 + i * 22, 48, 16);
-        api.text('💪 ' + S.sync, W - 30, 48, 14, '#fff', 'right');
-        // oar buttons (whole half of the screen works; these show who is who)
-        for (const side of ['you', 'bot']) {
-          const left = side === 'you', bx = left ? 14 : W / 2 + 7, bw = W / 2 - 21, hot = Math.max(0, .2 - (S.t - S.last[side])) / .2, col = left ? C.you : C.bot;
-          g.globalAlpha = api.mine(side) || api.hotseat ? .95 : .55; api.rr(bx, H - 74 + hot * 4, bw, 58, 18); g.fillStyle = col; g.fill(); g.globalAlpha = 1;
-          api.text((left ? '🚣 ' : '') + (api.mine(side) && !api.hotseat ? TR('Твоё весло', 'Your oar') : api.name(side) + (api.isBot && side === 'bot' ? ' 🤖' : '')) + (left ? '' : ' 🚣'), bx + bw / 2, H - 45 + hot * 4, 15, '#fff');
-        }
-        if (msg && msg.k === 'rock') { g.globalAlpha = Math.min(1, msg.t); api.rr(30, 150, W - 60, 50, 16); g.fillStyle = 'rgba(255,61,90,.9)'; g.fill(); api.text(TR('Бум о камень! 🪨', 'Crashed into a rock! 🪨'), W / 2, 175, 18, '#fff'); g.globalAlpha = 1; }
-        if (S.n.you + S.n.bot === 0) api.text(TR('Тапайте по очереди — лодка поворачивает. Вместе — летит вперёд!', 'Tap alone — the boat turns. Together — it flies!'), W / 2, 100, 13, '#fff');
-      },
-      // any tap pulls this player's own oar; in single-phone mode the screen halves are the two oars
-      down(p) { const side = api.hotseat ? (p.x < W / 2 ? 'you' : 'bot') : (p.side || 'you'); if (api.isBot && side === 'bot') return; stroke(side); },
-      move() {}, up() {},
-      snap() { const r = Math.round; return { x: r(S.x), a: +S.a.toFixed(3), d: r(S.dist), l: S.lives, i: S.inv > 0 ? 1 : 0, L: +(S.t - S.last.you).toFixed(2), R: +(S.t - S.last.bot).toFixed(2), n: [S.n.you, S.n.bot], s: S.sync, k: S.rocks.map(q => [r(q.d), +q.o.toFixed(2)]), m: msg ? [msg.k, +msg.t.toFixed(1)] : 0 }; },
-      load(s) {
-        if (!tgt) { S.x = s.x; S.dist = s.d; }
-        tgt = s; S.a = s.a; S.lives = s.l; S.inv = s.i ? .5 : 0; S.n.you = s.n[0]; S.n.bot = s.n[1]; S.sync = s.s; S.rocks = s.k.map(q => ({ d: q[0], o: q[1] }));
-        if (S.t - S.last.you > s.L + .05) S.last.you = S.t - s.L; if (S.t - S.last.bot > s.R + .05) S.last.bot = S.t - s.R;
-        msg = s.m ? { k: s.m[0], t: s.m[1] } : null;
-      },
-      guestUpdate(dt) {
-        S.t += dt; splash.forEach(q => q.t += dt); splash = splash.filter(q => q.t < .6); if (!tgt) return;
-        const k = Math.min(1, dt * 14); S.x += (tgt.x - S.x) * k; S.dist += (tgt.d - S.dist) * k;
-      },
-    };
-  },
-});
-
-})();
-
 window.Arcade = Arcade;
 })();
 </script>
@@ -14756,7 +14483,7 @@ function renderArcGrid() {
   const g = $('arcGrid'); g.innerHTML = '';
   $('arcHint').textContent = playMode() === 'hotseat' ? tr('один телефон — двое игроков', 'one phone — two players') : online ? tr(`вдвоём с ${ptName()}`, `with ${ptName()}`) : playMode() === 'bot' ? tr('с ботом', 'vs bot') : tr(`ждём ${S.partner ? ptName() : 'друга'}`, `waiting for ${S.partner ? ptName() : 'your friend'}`);
   renderModeSeg();
-  Arcade.games.slice().sort((a, b) => (rateScore('a' + b.n) - rateScore('a' + a.n)) || (playCount('a' + b.n) - playCount('a' + a.n)) || a.n - b.n).forEach(G => {
+  Arcade.games.slice().sort((a, b) => a.n - b.n).forEach(G => {
     g.append(h('button', { className: 'tile', style: `background:${G.bg}`, on: { click: () => arcTap(G.n) }, disabled: playMode() === 'hotseat' && !Arcade.supportsHotseat(G.n) },
       h('span', { className: 'num' }, String(G.n).padStart(2, '0')), isHot('a' + G.n) ? h('span', { className: 'hot' }, '🔥') : null, rateBadge('a' + G.n), h('div', { className: 'ic' }, G.icon), h('div', { className: 'tt' }, G.title), h('div', { className: 'ds' }, G.desc),
       h('span', { className: 'md' }, playMode() === 'hotseat' ? (Arcade.supportsHotseat(G.n) ? tr('📱 на одном', '📱 one phone') : tr('🚫 не для одного экрана', '🚫 needs 2 screens')) : playMode() === 'bot' ? tr('🤖 с ботом', '🤖 vs bot') : online ? tr('💞 вдвоём', '💞 together') : (S.pending === G.n ? tr('⏳ ждём друга', '⏳ waiting') : tr('💞 вдвоём', '💞 together')))));
@@ -14766,7 +14493,7 @@ function renderGrid() {
   renderArcGrid();
   const g = $('grid'); g.innerHTML = '';
   $('lobbyHint').textContent = online ? T.lobbyOn : T.waitingFor(ptName());
-  Object.keys(GAMES).sort((a, b) => (rateScore(b) - rateScore(a)) || (playCount(b) - playCount(a))).forEach(id => { const G = GAMES[id]; g.append(h('button', { className: 'tile', disabled: !online, style: `background:${G.bg}`, on: { click: () => openGame(id) } }, isHot(id) ? h('span', { className: 'hot' }, '🔥') : null, rateBadge(id), h('div', { className: 'ic' }, G.icon), h('div', { className: 'tt' }, G.title), h('div', { className: 'ds' }, G.desc))); });
+  Object.keys(GAMES).forEach(id => { const G = GAMES[id]; g.append(h('button', { className: 'tile', disabled: !online, style: `background:${G.bg}`, on: { click: () => openGame(id) } }, isHot(id) ? h('span', { className: 'hot' }, '🔥') : null, rateBadge(id), h('div', { className: 'ic' }, G.icon), h('div', { className: 'tt' }, G.title), h('div', { className: 'ds' }, G.desc))); });
 }
 function openGame(id, remote) {
   if (!online && !remote) return;
@@ -15986,7 +15713,7 @@ $('bFind').onclick = () => { lobbyStart(); toast('🔍 ' + tr('Ищем случ
 /* ---------------- translations for the newer UI ---------------- */
 function applyExtrasLang() {
   const set = (id, ru, en) => { const e = $(id); if (e) e.textContent = tr(ru, en); };
-  set('arcTitle', '🕹️ Аркада · 42 игры', '🕹️ Arcade · 42 games'); set('classicTitle', '💞 Классика', '💞 Classics');
+  set('arcTitle', '🕹️ Аркада · 40 игр', '🕹️ Arcade · 40 games'); set('classicTitle', '💞 Классика', '💞 Classics');
   document.querySelectorAll('#modeSeg button').forEach(b => { b.textContent = { duo: tr('💞 Вдвоём', '💞 Together'), hotseat: tr('📱 На одном', '📱 One phone'), bot: tr('🤖 С ботом', '🤖 vs Bot') }[b.dataset.m]; });
   set('lvlLbl', 'Бот:', 'Bot:'); const lv = document.querySelectorAll('#lvl button'); [['лёгкий', 'easy'], ['нормальный', 'normal'], ['сильный', 'strong']].forEach((p, i) => lv[i] && (lv[i].textContent = tr(p[0], p[1])));
   set('maskTitle', '🎭 Маски', '🎭 Masks'); set('maskNote', 'Маска рисуется прямо в видео — друг тоже её видит. Смотри на себя в маленьком окошке сверху.', 'The mask is drawn right into your video — your friend sees it too. Watch yourself in the small window above.');
@@ -16020,7 +15747,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202610102027';
+const APP_VERSION = '202610102124';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
@@ -16972,7 +16699,7 @@ wLabels();
 /* ---------------- games under one button (opens in place) ---------------- */
 function renderGamesBtn() {
   const b = $('bGames'), open = !!S.gamesOpen; $('gamesBox').hidden = !open; b.classList.toggle('open', open);
-  b.innerHTML = ''; b.append(document.createTextNode(tr('🎮 Играть вместе · 48 игр', '🎮 Play together · 48 games')), h('span', { className: 'chev' }, '▾'));
+  b.innerHTML = ''; b.append(document.createTextNode(tr('🎮 Играть вместе · 46 игр', '🎮 Play together · 46 games')), h('span', { className: 'chev' }, '▾'));
 }
 $('bGames').onclick = () => { S.gamesOpen = !S.gamesOpen; save(); renderGamesBtn(); if (S.gamesOpen) setTimeout(() => $('bGames').scrollIntoView({ behavior: 'smooth', block: 'start' }), 60); };
 renderGamesBtn();
@@ -17331,23 +17058,20 @@ function ptLoad() {
   try { PT.sum = JSON.parse(localStorage.getItem('duet-playtime') || '{}'); } catch (e) {}
   fetch(relayHttp() + '/stats', { cache: 'no-store' }).then(r => r.json()).then(d => { if (d && typeof d === 'object' && !d.error) { PT.sum = d; try { localStorage.setItem('duet-playtime', JSON.stringify(d)); } catch (e) {} if (started) renderGrid(); } }).catch(() => {});
 }
-// rating 1–5 from total play time (log scale: the most played game gets 5)
-function ptStars(k) {
-  const v = PT.sum[k]; if (!v || !v[0]) return 0;
-  const max = Math.max(...Object.values(PT.sum).map(x => x[0] || 0)); if (!max) return 0;
-  return 1 + 4 * Math.log(1 + v[0] / 60) / Math.log(1 + max / 60);
-}
-function rateScore(k) { const v = PT.sum[k]; return v ? v[0] || 0 : 0; } // games are sorted by total time played
+// stars only for games people come back to: repeat plays = sessions beyond each player's first one
+const PT_MIN_REPEATS = 10;
+function ptRepeats(k) { const v = PT.sum[k]; return v && v[2] ? Math.max(0, v[2] - v[1]) : 0; }
+function ptStars(k) { const v = PT.sum[k]; if (!v || ptRepeats(k) < PT_MIN_REPEATS) return 0; return Math.max(1, Math.min(5, 1 + ptRepeats(k) / v[1])); } // ≈ 1 + average returns per player
 function rateBadge(k) {
-  const s = ptStars(k); if (!s) return null; const v = PT.sum[k], hrs = v[0] / 3600;
-  return h('span', { className: 'rt', title: tr(`Сыграно ${hrs >= 1 ? hrs.toFixed(1) + ' ч' : Math.round(v[0] / 60) + ' мин'} · игроков: ${v[1]}`, `Played ${hrs >= 1 ? hrs.toFixed(1) + ' h' : Math.round(v[0] / 60) + ' min'} · players: ${v[1]}`) }, '★ ' + s.toFixed(1));
+  const s = ptStars(k); if (!s) return null; const v = PT.sum[k];
+  return h('span', { className: 'rt', title: tr(`Игроков: ${v[1]} · повторных игр: ${ptRepeats(k)}`, `Players: ${v[1]} · repeat plays: ${ptRepeats(k)}`) }, '★ ' + s.toFixed(1));
 }
 function ptStart(k) { ptStop(); PT.cur = { k, t: Date.now(), hid: 0 }; }
 function ptStop() {
   const c = PT.cur; if (!c) return; PT.cur = null;
   if (PT.hidAt) { c.hid += Date.now() - PT.hidAt; }
   const sec = Math.min(3600, Math.round((Date.now() - c.t - c.hid) / 1000)); if (sec < 10) return;
-  const v = PT.sum[c.k] || [0, 0]; PT.sum[c.k] = [v[0] + sec, v[1] || 1];
+  const v = PT.sum[c.k] || [0, 0, 0]; PT.sum[c.k] = [v[0] + sec, v[1] || 1, (v[2] || 0) + (sec >= 30 ? 1 : 0)];
   try { fetch(relayHttp() + '/time', { method: 'POST', keepalive: true, headers: { 'content-type': 'text/plain' }, body: JSON.stringify({ dev: S.dev, g: c.k, s: sec }) }).catch(() => {}); } catch (e) {}
 }
 document.addEventListener('visibilitychange', () => { if (document.hidden) PT.hidAt = Date.now(); else { if (PT.cur && PT.hidAt) PT.cur.hid += Date.now() - PT.hidAt; PT.hidAt = 0; } });
@@ -17693,7 +17417,7 @@ function plusLang() {
   set('setClipsL', '🎬 Видео-клипы: иногда записывать смешные моменты по 5 сек', '🎬 Video clips: sometimes record funny 5-second moments');
   chatLaunchers().forEach(b => { b.title = tr('Чат', 'Chat'); });
   $('bInstall2').textContent = '📲 ' + tr('Установить ярлык на рабочий стол', 'Install a desktop shortcut');
-  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 33 · 10.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
+  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 34 · 10.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
 }
 plusLang();
 
