@@ -14345,7 +14345,7 @@ $('sheet').onclick = e => { if (e.target === $('sheet')) $('sheet').classList.ad
 $('bUnpair').onclick = () => { if (!confirm(T.unpairQ)) return; try { publishPresence(false); } catch (e) {} localStorage.removeItem('duet'); location.reload(); };
 
 /* ================= networking: MQTT relay (presence, game moves, video signaling) + WebRTC video ================= */
-const BROKERS = (() => { const q = new URLSearchParams(location.search).get('mq'); return q ? q.split(',') : ['wss://broker.emqx.io:8084/mqtt', 'wss://broker.hivemq.com:8884/mqtt', 'wss://test.mosquitto.org:8081/mqtt', 'wss://mqtt.eclipseprojects.io:443/mqtt']; })();
+const BROKERS = (() => { const q = new URLSearchParams(location.search).get('mq'); return q ? q.split(',') : ['wss://relay.duetplay.app/mqtt', 'wss://broker.emqx.io:8084/mqtt', 'wss://broker.hivemq.com:8884/mqtt', 'wss://test.mosquitto.org:8081/mqtt', 'wss://mqtt.eclipseprojects.io:443/mqtt']; })();
 const NS = 'duet-v3/';
 const rid = n => { let s = ''; for (let i = 0; i < n; i++) s += 'abcdefghijkmnpqrstuvwxyz23456789'[rnd(32)]; return s; };
 const SESS = rid(8);
@@ -15896,7 +15896,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202610101742';
+const APP_VERSION = '202610101834';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
@@ -17461,7 +17461,7 @@ function plusLang() {
   set('setClipsL', '🎬 Видео-клипы: иногда записывать смешные моменты по 5 сек', '🎬 Video clips: sometimes record funny 5-second moments');
   chatLaunchers().forEach(b => { b.title = tr('Чат', 'Chat'); });
   $('bInstall2').textContent = '📲 ' + tr('Установить ярлык на рабочий стол', 'Install a desktop shortcut');
-  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 26 · 10.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
+  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 27 · 10.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
 }
 plusLang();
 
