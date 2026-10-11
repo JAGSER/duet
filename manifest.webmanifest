@@ -1,6 +1,7 @@
 {
- "name": "Дуэт — игры вдвоём",
- "short_name": "Дуэт",
+ "name": "Duet — games & movies for two",
+ "short_name": "Duet",
+ "description": "Video chat, games to play together and movie nights in sync",
  "id": "./?app=duet2",
  "start_url": "./",
  "scope": "./",

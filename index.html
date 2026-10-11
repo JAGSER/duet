@@ -1,9 +1,17 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<title>Duet</title>
+<title>Duet — Games for Couples, Watch Movies Together & Video Chat</title>
+<meta name="description" content="Free web app for two: video chat, 46 games to play together and movie nights in sync with emoji reactions. Perfect for long distance couples. No download, no sign-up.">
+<link rel="canonical" href="https://duetplay.app/">
+<meta property="og:type" content="website"><meta property="og:site_name" content="Duet">
+<meta property="og:title" content="Duet — games, movies & video chat for two">
+<meta property="og:description" content="Play 46 games together, watch movies in sync, react with emoji and chat — free, right in your browser.">
+<meta property="og:url" content="https://duetplay.app/"><meta property="og:image" content="https://duetplay.app/og.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebApplication", "name": "Duet", "alternateName": "Дуэт", "url": "https://duetplay.app/", "applicationCategory": "GameApplication", "operatingSystem": "Web, Android, iOS, Windows, macOS", "description": "Free web app for two: video chat, 46 games to play together and movie nights in sync with emoji reactions.", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "image": "https://duetplay.app/og.png", "inLanguage": ["en", "ru"]}</script>
 <meta name="theme-color" content="#7b2ff7">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -200,6 +208,11 @@ canvas#cvDraw{width:100%;aspect-ratio:3/4;border-radius:18px;background:#fffdf5;
 #view.hotseat .score{margin:2px 0}
 #view.hotseat #info,#view.hotseat #info2{min-height:18px;font-size:13px;margin-top:2px}
 #view.hotseat .vtop{margin:4px 0}
+#view .vtop2{display:none}
+/* one phone: the same interface mirrored for each player — top player's controls at the top (rotated), bottom player's at the bottom */
+#view.hotseat .vtop2{display:flex}
+#view.hotseat #half2{order:0}#view.hotseat #stageBox{order:1}#view.hotseat > .score{order:2}#view.hotseat #info{order:3}#view.hotseat > .vtop{order:4}
+#view.hotseat #gChatB{display:none}
 #info2{color:#fff;text-align:center}
 #cv,#cv2{display:block;border-radius:22px;touch-action:none;box-shadow:0 12px 30px rgba(0,0,0,.35);background:#1d1340}
 #info{color:#fff;font-size:15px;min-height:22px;margin-top:6px;text-align:center}
@@ -345,7 +358,8 @@ canvas#cvDraw{width:100%;aspect-ratio:3/4;border-radius:18px;background:#fffdf5;
     <div id="panel" class="panel card hidden"></div>
     <div class="net" id="net"></div>
   </section>
-  <div class="foot" id="foot"><button class="btn g" id="bInstall2">📲 Установить ярлык на рабочий стол</button><div id="verFoot">Дуэт</div></div>
+  <div class="foot" id="foot"><button class="btn g" id="bInstall2">📲 Установить ярлык на рабочий стол</button><div id="verFoot">Дуэт</div>
+    <nav class="seolinks"><a href="/long-distance-relationship-games">Long distance games</a><a href="/watch-movies-together-online">Watch movies together</a><a href="/online-games-for-couples">Games for couples</a><a href="/games-to-play-on-facetime">Games on a video call</a><a href="/things-to-do-with-your-partner-online">Online date ideas</a><a href="/teleparty-alternative">Teleparty alternative</a><a href="/igry-dlya-par-na-rasstoyanii" hreflang="ru">Игры для пар</a><a href="/juegos-para-parejas-a-distancia" hreflang="es">Juegos para parejas</a><a href="/jogos-para-casal-a-distancia" hreflang="pt">Jogos para casal</a></nav></div>
 </div>
 
 <div id="view" hidden>
@@ -353,6 +367,7 @@ canvas#cvDraw{width:100%;aspect-ratio:3/4;border-radius:18px;background:#fffdf5;
     <div class="score"><span class="you" id="lYou2">🙂 Ты</span><b class="you" id="sYou2">0</b><span>:</span><b class="bot" id="sBot2">0</b><span class="bot" id="lBot2">Бот 🤖</span></div>
     <div id="stageBox2"><canvas id="cv2"></canvas><div class="ov" id="ov2"></div></div>
     <div id="info2"></div>
+    <div class="vtop vtop2"><button class="btn g" id="back2">←</button><h2 id="vtitle2"></h2></div>
   </div>
   <div class="vtop"><button class="btn g" id="back">←</button><h2 id="vtitle"></h2><button class="btn g chatl" id="gChatB">💬</button><div id="vvid"></div></div>
   <div class="score"><span class="you" id="lYou">🙂 Ты</span><b class="you" id="sYou">0</b><span>:</span><b class="bot" id="sBot">0</b><span class="bot" id="lBot">Бот 🤖</span></div>
@@ -14116,7 +14131,7 @@ try { LANG = localStorage.getItem('duet-lang') || ((navigator.language || 'en').
 if (!LANGS[LANG]) LANG = 'en';
 const T = LANGS[LANG];
 function applyStatic() {
-  document.documentElement.lang = LANG; document.title = T.app;
+  document.documentElement.lang = LANG; document.title = LANG === 'ru' ? 'Дуэт — игры вдвоём, кино вместе и видеосвязь' : 'Duet — Games for Couples, Watch Movies Together & Video Chat';
   document.querySelectorAll('[data-i]').forEach(e => e.textContent = T[e.dataset.i]);
   document.querySelectorAll('[data-iph]').forEach(e => e.placeholder = T[e.dataset.iph]);
   document.querySelectorAll('[data-langsw]').forEach(el => { el.innerHTML = ''; [['ru', 'RU'], ['en', 'EN']].forEach(([k, l]) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = l; if (k === LANG) b.className = 'on'; b.onclick = () => { if (k === LANG) return; try { localStorage.setItem('duet-lang', k); } catch (e) {} location.reload(); }; el.append(b); }); });
@@ -15747,7 +15762,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202610102124';
+const APP_VERSION = '202610110607';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
@@ -17004,6 +17019,7 @@ function roomBoot() {
 #view .vtop .chatl{padding:8px 12px}
 .foot{margin:26px 0 6px;text-align:center}.foot .btn{font-size:14px;padding:10px 16px}
 #verFoot{color:rgba(255,255,255,.75);font-size:12px;margin-top:12px}
+.seolinks{display:flex;flex-wrap:wrap;justify-content:center;gap:4px 12px;margin-top:10px}.seolinks a{color:rgba(255,255,255,.6);font-size:11px;text-decoration:none}
 .chatPop{position:fixed;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 70px);z-index:55;max-width:min(90vw,420px);background:#fff;color:var(--ink);border-radius:18px;padding:10px 14px;box-shadow:0 10px 30px rgba(0,0,0,.3);font-size:14px;cursor:pointer;animation:chin .22s ease-out;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 `;
   document.head.append(h('style', {}, css));
@@ -17417,9 +17433,10 @@ function plusLang() {
   set('setClipsL', '🎬 Видео-клипы: иногда записывать смешные моменты по 5 сек', '🎬 Video clips: sometimes record funny 5-second moments');
   chatLaunchers().forEach(b => { b.title = tr('Чат', 'Chat'); });
   $('bInstall2').textContent = '📲 ' + tr('Установить ярлык на рабочий стол', 'Install a desktop shortcut');
-  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 34 · 10.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
+  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 36 · 11.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
 }
 plusLang();
+try { document.documentElement.lang = LANG; } catch (e) {}
 
 /* ================= hooks into the rest of the app ================= */
 (() => {
@@ -17434,6 +17451,10 @@ plusLang();
   roomStart = wrapFn('roomStart', () => track('room', { as: 'host' }));
   openInstall = wrapFn('openInstall', a => track('install', { how: a[0] ? 'auto' : 'button' }));
   lobbyStart = wrapFn('lobbyStart', () => track('random_player'));
+  $('back2').onclick = () => $('back').click(); // the top player's own «back» on a shared phone
+  { const syncTitle = () => { $('vtitle2').textContent = $('vtitle').textContent; }; new MutationObserver(syncTitle).observe($('vtitle'), { childList: true, characterData: true, subtree: true }); }
+  // the games / movie sections must match the saved state once it is loaded (they were drawn before)
+  startMain = wrapFn('startMain', () => { renderGamesBtn(); renderWatchBox(); });
   arcClose = wrapFn('arcClose', () => ptStop()); closeGame = wrapFn('closeGame', () => ptStop());
   { const oc = Arcade.onClose; Arcade.onClose = (...a) => { ptStop(); return oc && oc(...a); }; }
   setOnline = wrapFn('setOnline', a => { if (a[0]) { chatFlush(); if (!PLUS.session) { PLUS.session = true; track('call', { with: (typeof LOB !== 'undefined' && LOB.match) ? 'random' : 'friend' }); } } });
