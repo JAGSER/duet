@@ -6819,29 +6819,48 @@ registerGame({
     const clone = bs => bs.map(b => ({ ...b }));
     const cue = () => S.balls[0];
 
+    // a ball that reaches the rail right next to a pocket drops in (the pocket mouth), like on a real table
+    const MOUTH = PR + BR + 3;
+    const nearPocket = b => { for (const [px, py] of POCKETS) if (Math.hypot(b.x - px, b.y - py) < MOUTH) return [px, py]; return null; };
     function step(bs, dt, ev) {
       for (const b of bs) {
         if (b.in) continue;
         b.x += b.vx * dt; b.y += b.vy * dt;
         const sp = Math.hypot(b.vx, b.vy);
         if (sp > 0) { const ns = Math.max(0, sp * (1 - .7 * dt) - 95 * dt); b.vx *= ns / sp; b.vy *= ns / sp; }
-        for (const [px, py] of POCKETS) if (Math.hypot(b.x - px, b.y - py) < PR) { b.in = true; b.vx = b.vy = 0; ev && ev.push(['pot', b, px, py]); break; }
-        if (b.in) continue;
+        let pk = null;
+        for (const [px, py] of POCKETS) if (Math.hypot(b.x - px, b.y - py) < PR) { pk = [px, py]; break; }
+        if (!pk && (b.x < L + BR || b.x > R - BR || b.y < T + BR || b.y > B - BR)) pk = nearPocket(b);
+        if (pk) { b.in = true; b.vx = b.vy = 0; ev && ev.push(['pot', b, pk[0], pk[1]]); continue; }
         if (b.x < L + BR) { b.x = L + BR; b.vx = Math.abs(b.vx) * .85; ev && ev.push(['cush']); }
         if (b.x > R - BR) { b.x = R - BR; b.vx = -Math.abs(b.vx) * .85; ev && ev.push(['cush']); }
         if (b.y < T + BR) { b.y = T + BR; b.vy = Math.abs(b.vy) * .85; ev && ev.push(['cush']); }
         if (b.y > B - BR) { b.y = B - BR; b.vy = -Math.abs(b.vy) * .85; ev && ev.push(['cush']); }
       }
+      const D2 = 4 * BR * BR;
       for (let i = 0; i < bs.length; i++) for (let j = i + 1; j < bs.length; j++) {
         const a = bs[i], c = bs[j]; if (a.in || c.in) continue;
+        let px = c.x - a.x, py = c.y - a.y; const pp = px * px + py * py;
+        if (pp >= D2 || pp === 0) continue;
+        const vx = c.vx - a.vx, vy = c.vy - a.vy, pv = px * vx + py * vy, vv = vx * vx + vy * vy;
+        if (pv < 0 && vv > 1e-6) {
+          // step both balls back to the exact moment they touched, so the hit direction is the one the aim line shows
+          let t = (pv + Math.sqrt(pv * pv - vv * (pp - D2))) / vv; t = Math.max(0, Math.min(t, dt * 2));
+          a.x -= a.vx * t; a.y -= a.vy * t; c.x -= c.vx * t; c.y -= c.vy * t;
+          px = c.x - a.x; py = c.y - a.y; const d = Math.hypot(px, py) || 1, nx = px / d, ny = py / d;
+          const vn = (c.vx - a.vx) * nx + (c.vy - a.vy) * ny;
+          if (vn < 0) { const j2 = -vn * .985; a.vx -= j2 * nx; a.vy -= j2 * ny; c.vx += j2 * nx; c.vy += j2 * ny; ev && ev.push(['hit', a, c, -vn]); }
+          a.x += a.vx * t; a.y += a.vy * t; c.x += c.vx * t; c.y += c.vy * t;
+        }
+        // never leave two balls overlapping
         const dx = c.x - a.x, dy = c.y - a.y, d = Math.hypot(dx, dy);
-        if (d >= BR * 2 || d === 0) continue;
-        const nx = dx / d, ny = dy / d, ov = (BR * 2 - d) / 2;
-        a.x -= nx * ov; a.y -= ny * ov; c.x += nx * ov; c.y += ny * ov;
-        const vn = (c.vx - a.vx) * nx + (c.vy - a.vy) * ny;
-        if (vn < 0) { const j2 = -vn * .97; a.vx -= j2 * nx; a.vy -= j2 * ny; c.vx += j2 * nx; c.vy += j2 * ny; ev && ev.push(['hit', a, c, -vn]); }
+        if (d < BR * 2 && d > 0) { const nx = dx / d, ny = dy / d, ov = (BR * 2 - d) / 2; a.x -= nx * ov; a.y -= ny * ov; c.x += nx * ov; c.y += ny * ov; }
       }
     }
+    const HSTEP = 1 / 480; let acc = 0; // fixed small physics steps: the same result every time
+    // how fast a ball still is after rolling a distance (same friction as step())
+    function speedAfter(v, dist) { let d = 0; const h = 1 / 240; while (d < dist) { if (v <= 5) return 0; d += v * h; v = Math.max(0, v * (1 - .7 * h) - 95 * h); } return v; }
+    function rollDist(v) { let d = 0; const h = 1 / 240; while (v > 5) { d += v * h; v = Math.max(0, v * (1 - .7 * h) - 95 * h); } return d; }
     const moving = bs => bs.some(b => !b.in && Math.hypot(b.vx, b.vy) > 5);
 
     function applyShot(side, shot) {
@@ -6849,7 +6868,7 @@ registerGame({
       const sp = Math.hypot(shot.vx, shot.vy), k = sp > MAXV ? MAXV / sp : 1;
       cue().vx = shot.vx * k; cue().vy = shot.vy * k;
       S.aim = null; drags.you = drags.bot = null;
-      S.phase = 'move'; S.potted = []; S.still = 0; S.moveT = 0; S.shots++;
+      S.phase = 'move'; S.potted = []; S.still = 0; S.moveT = 0; S.shots++; acc = 0;
       api.sfx('hit'); api.vibrate(15); api.shake(Math.min(6, sp / 160));
       api.setInfo(TR('Шары катятся…', 'Balls rolling…'));
     }
@@ -6881,7 +6900,7 @@ registerGame({
 
     function evalShot(vx, vy, side) {
       const s = clone(S.balls); s[0].vx = vx; s[0].vy = vy; const ev = [];
-      for (let t = 0; t < 400; t++) { step(s, 1 / 120, ev); step(s, 1 / 120, ev); if (!moving(s)) break; }
+      for (let t = 0; t < 800; t++) { step(s, 1 / 240, ev); step(s, 1 / 240, ev); if (!moving(s)) break; }
       let sc = 0; const fh = ev.find(e => e[0] === 'hit' && (e[1].id === 0 || e[2].id === 0));
       if (fh) { const o = fh[1].id === 0 ? fh[2] : fh[1]; sc += o.side === side ? 25 : -10; } else sc -= 30;
       for (const e of ev) if (e[0] === 'pot') sc += e[1].side === 'cue' ? -150 : e[1].side === side ? 100 : -60;
@@ -6933,6 +6952,18 @@ registerGame({
       api.circle(b.x - 3, b.y - 3.5, 2.6, 'rgba(255,255,255,.75)');
     }
     let g0 = null;
+    // straight path of an object ball: stops at another ball, a rail, a pocket or where it runs out of speed
+    function objPath(o, nx, ny, reach) {
+      let tEnd = reach, pocket = null;
+      if (nx < 0) tEnd = Math.min(tEnd, (L + BR - o.x) / nx); if (nx > 0) tEnd = Math.min(tEnd, (R - BR - o.x) / nx);
+      if (ny < 0) tEnd = Math.min(tEnd, (T + BR - o.y) / ny); if (ny > 0) tEnd = Math.min(tEnd, (B - BR - o.y) / ny);
+      for (const b of live(S.balls)) { if (b === o) continue; const ox = b.x - o.x, oy = b.y - o.y, t = ox * nx + oy * ny; if (t <= 0) continue; const d2 = ox * ox + oy * oy - t * t, rr = 4 * BR * BR; if (d2 > rr) continue; tEnd = Math.min(tEnd, t - Math.sqrt(rr - d2)); }
+      // a pocket on the way (inside the hole) or at the rail where it stops (the pocket mouth)
+      for (const [px, py] of POCKETS) { const t = (px - o.x) * nx + (py - o.y) * ny; if (t <= 0 || t > tEnd + PR) continue; const d = Math.hypot(o.x + nx * Math.min(t, tEnd) - px, o.y + ny * Math.min(t, tEnd) - py); if (d < PR) { pocket = [px, py]; tEnd = Math.min(t, tEnd); break; } }
+      const ex = o.x + nx * tEnd, ey = o.y + ny * tEnd;
+      if (!pocket && tEnd < reach - 1) { const atRail = ex <= L + BR + .5 || ex >= R - BR - .5 || ey <= T + BR + .5 || ey >= B - BR - .5; if (atRail) pocket = nearPocket({ x: ex, y: ey }); }
+      return { x: ex, y: ey, pocket };
+    }
     function drawGuide(g, vx, vy, color, fromFinger) {
       const c = cue(), sp = Math.hypot(vx, vy); if (sp < 1) return;
       const ux = vx / sp, uy = vy / sp, pw = Math.min(1, sp / MAXV), hit = ray(ux, uy);
@@ -6940,7 +6971,17 @@ registerGame({
       g.strokeStyle = 'rgba(255,255,255,.85)'; g.lineWidth = 2; g.setLineDash([6, 6]); g.lineDashOffset = -tk * 30;
       g.beginPath(); g.moveTo(c.x, c.y); g.lineTo(ex, ey); g.stroke(); g.setLineDash([]);
       api.circle(ex, ey, BR, null, 'rgba(255,255,255,.9)', 2);
-      if (hit.b) { const nx = hit.b.x - ex, ny = hit.b.y - ey, nl = Math.hypot(nx, ny) || 1; g.strokeStyle = color; g.lineWidth = 3; g.beginPath(); g.moveTo(hit.b.x, hit.b.y); g.lineTo(hit.b.x + nx / nl * 50, hit.b.y + ny / nl * 50); g.stroke(); }
+      if (hit.b) {
+        // where the struck ball goes: along the line from the touch point through its centre, as far as this power takes it
+        const nl = Math.hypot(hit.b.x - ex, hit.b.y - ey) || 1, nx = (hit.b.x - ex) / nl, ny = (hit.b.y - ey) / nl, cos = Math.max(0, ux * nx + uy * ny);
+        const v1 = speedAfter(sp > MAXV ? MAXV : sp, hit.t), reach = rollDist(v1 * cos * .985);
+        const pr = objPath(hit.b, nx, ny, reach);
+        g.strokeStyle = pr.pocket ? C.lime : color; g.lineWidth = 3; g.setLineDash([4, 5]); g.beginPath(); g.moveTo(hit.b.x, hit.b.y); g.lineTo(pr.x, pr.y); g.stroke(); g.setLineDash([]);
+        if (pr.pocket) { const q = .5 + .5 * Math.sin(tk * 8); api.circle(pr.pocket[0], pr.pocket[1], PR + 5 + q * 3, null, C.lime, 3); }
+        // and where the cue ball glances off (short hint)
+        const tx = ux - cos * nx, ty = uy - cos * ny, tl = Math.hypot(tx, ty);
+        if (tl > .05) { g.strokeStyle = 'rgba(255,255,255,.45)'; g.lineWidth = 2; g.beginPath(); g.moveTo(ex, ey); g.lineTo(ex + tx / tl * 36, ey + ty / tl * 36); g.stroke(); }
+      }
       // cue stick, pulled back by power
       const back = 14 + pw * 45;
       g.lineCap = 'round'; g.strokeStyle = '#7a4a1f'; g.lineWidth = 7; g.beginPath(); g.moveTo(c.x - ux * back, c.y - uy * back); g.lineTo(c.x - ux * (back + 170), c.y - uy * (back + 170)); g.stroke();
@@ -6963,7 +7004,7 @@ registerGame({
         tk += dt; if (S.msg) S.msg.t -= dt * .8;
         if (botAim) { botAim.t += dt; const k = Math.min(1, botAim.t / .6); S.aim = { vx: botAim.vx * k, vy: botAim.vy * k, s: 'bot' }; }
         if (S.phase !== 'move') return;
-        const ev = []; for (let k = 0; k < 4; k++) step(S.balls, dt / 4, ev);
+        const ev = []; acc = Math.min(acc + dt, .1); while (acc >= HSTEP) { step(S.balls, HSTEP, ev); acc -= HSTEP; }
         let snd = 0;
         for (const e of ev) {
           if (e[0] === 'hit' && e[3] > 50 && snd++ < 2) { api.sfx('hit'); api.burst((e[1].x + e[2].x) / 2, (e[1].y + e[2].y) / 2, '#fff', 4, 60 + e[3] * .1); }
@@ -15764,7 +15805,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202610121732';
+const APP_VERSION = '202610121744';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
@@ -17441,7 +17482,7 @@ function plusLang() {
   set('setClipsL', '🎬 Видео-клипы: иногда записывать смешные моменты по 5 сек', '🎬 Video clips: sometimes record funny 5-second moments');
   chatLaunchers().forEach(b => { b.title = tr('Чат', 'Chat'); });
   $('bInstall2').textContent = '📲 ' + tr('Установить ярлык на рабочий стол', 'Install a desktop shortcut');
-  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 40 · 12.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
+  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 41 · 12.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
 }
 plusLang();
 try { document.documentElement.lang = LANG; } catch (e) {}
