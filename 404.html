@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Duet</title>
+<meta name="robots" content="noindex">
+<script>
+// invite links /play/<game> and /igra/<game>: open the app even if the invite page itself is missing
+(function () {
+  var m = location.pathname.match(/^\/(play|igra)\/([a-z0-9-]+)/);
+  if (!m) return;
+  var q = location.search.replace(/^\?/, '').split('&').filter(function (x) { return x && x.indexOf('g=') !== 0; });
+  q.push('g=' + m[2]);
+  location.replace('/?' + q.join('&'));
+})();
+</script>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:system-ui,sans-serif;font-weight:800;color:#fff;text-align:center;background:linear-gradient(135deg,#7b2ff7,#f107a3 55%,#ff8a00)}a{display:inline-block;margin-top:18px;background:#ffd60a;color:#1d1340;text-decoration:none;padding:14px 22px;border-radius:16px}</style>
+</head>
+<body><div><div style="font-size:64px">🎮💞</div>Page not found<br><a href="/">Open Duet →</a></div></body>
+</html>
