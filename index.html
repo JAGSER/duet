@@ -15574,12 +15574,14 @@ function iosGuide() {
       step(2, SVG_ADD, tr('Выбери «На экран „Домой“»', 'Choose “Add to Home Screen”'), tr('Не видно — пролистай список вниз или нажми «Ещё»', 'Not visible — scroll down or tap “More”')),
       step(3, '✅', tr('Нажми «Добавить» в правом верхнем углу', 'Tap “Add” at the top right')));
   } else {
+    // links opened from Telegram / WhatsApp / Instagram often show a «mini Safari» that looks the same but cannot add to Home Screen
+    box.append(h('div', { className: 'iosw' }, tr('💡 Открыла ссылку из Telegram, WhatsApp или Instagram? Тогда сначала нажми «Поделиться» → «Открыть в Safari» (или значок компаса 🧭 внизу справа). В этом мини-окне пункта «На экран „Домой“» нет — он есть только в самом Safari.', '💡 Opened the link from Telegram, WhatsApp or Instagram? First tap Share → “Open in Safari” (or the compass 🧭 at the bottom right). That mini window has no “Add to Home Screen” — only the real Safari does.')));
     box.append(h('div', { className: 'iosbar' + (newSafari ? ' new' : '') }, h('span', { className: 'addr' }, 'duetplay.app'), h('span', { className: 'btn1' }), h('i', { className: 'iosarrow' }, '⬇')));
     box.querySelector('.btn1').innerHTML = newSafari ? SVG_DOTS : SVG_SHARE;
     let n = 1;
     if (newSafari) box.append(step(n++, SVG_DOTS, tr('Нажми ⋯ справа от адреса внизу экрана', 'Tap ⋯ next to the address at the bottom')));
     box.append(step(n++, SVG_SHARE, tr('Нажми «Поделиться»', 'Tap “Share”'), newSafari ? null : tr('Квадрат со стрелкой вверх — внизу посередине (или ⋯ → «Поделиться»)', 'A square with an arrow — bottom centre (or ⋯ → “Share”)')),
-      step(n++, SVG_ADD, tr('Выбери «На экран „Домой“»', 'Choose “Add to Home Screen”'), tr('Не видно — пролистай список вниз или нажми «Ещё»', 'Not visible — scroll the list down or tap “More”')),
+      step(n++, SVG_ADD, tr('Выбери «На экран „Домой“»', 'Choose “Add to Home Screen”'), tr('Не видно — нажми «Ещё» / «Показать больше» (стрелка ⌄) и пролистай вниз. Есть только «Открыть в Safari» — нажми его и начни с шага 1', 'Not visible — tap “View More” (⌄) and scroll down. Only “Open in Safari” there? Tap it and start again from step 1')),
       step(n++, '✅', tr('Включи «Открыть как веб-приложение» (если есть) и нажми «Добавить»', 'Turn on “Open as Web App” (if shown) and tap “Add”')),
       step(n++, '📱', tr('Открывай «Дуэт» с иконки на экране «Домой»', 'Open Duet from the Home Screen icon'), tr('В приложении один раз заново введи имя — у иконки своя память', 'Enter your name once more in the app — the icon has its own memory')));
   }
@@ -15762,7 +15764,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202610121240';
+const APP_VERSION = '202610121725';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
@@ -17439,7 +17441,7 @@ function plusLang() {
   set('setClipsL', '🎬 Видео-клипы: иногда записывать смешные моменты по 5 сек', '🎬 Video clips: sometimes record funny 5-second moments');
   chatLaunchers().forEach(b => { b.title = tr('Чат', 'Chat'); });
   $('bInstall2').textContent = '📲 ' + tr('Установить ярлык на рабочий стол', 'Install a desktop shortcut');
-  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 38 · 12.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
+  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 39 · 12.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
 }
 plusLang();
 try { document.documentElement.lang = LANG; } catch (e) {}
