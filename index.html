@@ -6971,17 +6971,6 @@ registerGame({
       g.strokeStyle = 'rgba(255,255,255,.85)'; g.lineWidth = 2; g.setLineDash([6, 6]); g.lineDashOffset = -tk * 30;
       g.beginPath(); g.moveTo(c.x, c.y); g.lineTo(ex, ey); g.stroke(); g.setLineDash([]);
       api.circle(ex, ey, BR, null, 'rgba(255,255,255,.9)', 2);
-      if (hit.b) {
-        // where the struck ball goes: along the line from the touch point through its centre, as far as this power takes it
-        const nl = Math.hypot(hit.b.x - ex, hit.b.y - ey) || 1, nx = (hit.b.x - ex) / nl, ny = (hit.b.y - ey) / nl, cos = Math.max(0, ux * nx + uy * ny);
-        const v1 = speedAfter(sp > MAXV ? MAXV : sp, hit.t), reach = rollDist(v1 * cos * .985);
-        const pr = objPath(hit.b, nx, ny, reach);
-        g.strokeStyle = pr.pocket ? C.lime : color; g.lineWidth = 3; g.setLineDash([4, 5]); g.beginPath(); g.moveTo(hit.b.x, hit.b.y); g.lineTo(pr.x, pr.y); g.stroke(); g.setLineDash([]);
-        if (pr.pocket) { const q = .5 + .5 * Math.sin(tk * 8); api.circle(pr.pocket[0], pr.pocket[1], PR + 5 + q * 3, null, C.lime, 3); }
-        // and where the cue ball glances off (short hint)
-        const tx = ux - cos * nx, ty = uy - cos * ny, tl = Math.hypot(tx, ty);
-        if (tl > .05) { g.strokeStyle = 'rgba(255,255,255,.45)'; g.lineWidth = 2; g.beginPath(); g.moveTo(ex, ey); g.lineTo(ex + tx / tl * 36, ey + ty / tl * 36); g.stroke(); }
-      }
       // cue stick, pulled back by power
       const back = 14 + pw * 45;
       g.lineCap = 'round'; g.strokeStyle = '#7a4a1f'; g.lineWidth = 7; g.beginPath(); g.moveTo(c.x - ux * back, c.y - uy * back); g.lineTo(c.x - ux * (back + 170), c.y - uy * (back + 170)); g.stroke();
@@ -15805,7 +15794,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202610121744';
+const APP_VERSION = '202610121752';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
@@ -17482,7 +17471,7 @@ function plusLang() {
   set('setClipsL', '🎬 Видео-клипы: иногда записывать смешные моменты по 5 сек', '🎬 Video clips: sometimes record funny 5-second moments');
   chatLaunchers().forEach(b => { b.title = tr('Чат', 'Chat'); });
   $('bInstall2').textContent = '📲 ' + tr('Установить ярлык на рабочий стол', 'Install a desktop shortcut');
-  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 41 · 12.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
+  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 42 · 12.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
 }
 plusLang();
 try { document.documentElement.lang = LANG; } catch (e) {}
