@@ -15764,7 +15764,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202610121725';
+const APP_VERSION = '202610121732';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
@@ -17441,7 +17441,7 @@ function plusLang() {
   set('setClipsL', '🎬 Видео-клипы: иногда записывать смешные моменты по 5 сек', '🎬 Video clips: sometimes record funny 5-second moments');
   chatLaunchers().forEach(b => { b.title = tr('Чат', 'Chat'); });
   $('bInstall2').textContent = '📲 ' + tr('Установить ярлык на рабочий стол', 'Install a desktop shortcut');
-  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 39 · 12.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
+  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 40 · 12.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
 }
 plusLang();
 try { document.documentElement.lang = LANG; } catch (e) {}
@@ -17543,7 +17543,7 @@ function invInfo(k) {
 }
 function invLink(k) {
   const u = new URL((LANG === 'ru' ? '/igra/' : '/play/') + invSlug(k), location.origin);
-  u.searchParams.set('p', S.pair.id); u.searchParams.set('n', S.me.name); u.searchParams.set('e', S.me.emoji);
+  u.searchParams.set('p', S.pair.id); u.searchParams.set('n', S.me.name); u.searchParams.set('e', S.me.emoji); u.searchParams.set('t', Date.now().toString(36));
   const mq = new URLSearchParams(location.search).get('mq'); if (mq) u.searchParams.set('mq', mq); // test servers
   return u.toString();
 }
@@ -17571,18 +17571,35 @@ function shareGameInvite(k) {
 }
 // the general «Send invite» buttons get their own texts back, and their link now carries my name
 ['bShare', 'bShare2'].forEach(id => { const b = $(id); if (b) b.addEventListener('click', () => { const box = $('shareSheet'); box.querySelector('[data-i="shareTitle"]').textContent = T.shareTitle; box.querySelector('[data-i="shareHelp"]').textContent = T.shareHelp; }, true); });
-pairUrl = (orig => id => { const u = new URL(orig(id)); ['g', 'n', 'e'].forEach(x => u.searchParams.delete(x)); return u.toString(); })(pairUrl);
+pairUrl = (orig => id => { const u = new URL(orig(id)); ['g', 'n', 'e', 't'].forEach(x => u.searchParams.delete(x)); return u.toString(); })(pairUrl);
 inviteLink = function () { const u = new URL(pairUrl(S.pair.id)); u.searchParams.set('n', S.me.name); u.searchParams.set('e', S.me.emoji); return u.toString(); };
 
 /* ---------- friend's side: arriving by an invite link ---------- */
+// An invite works once. The g/n/e/t params leave the address bar right away, so a bookmark or a
+// Home Screen icon made from this page never re-opens the game; a reload of the same tab keeps it (sessionStorage).
+const INV_USED_KEY = 'duet-inv-used';
+const invUsedList = () => { try { return JSON.parse(localStorage.getItem(INV_USED_KEY) || '[]'); } catch (e) { return []; } };
 const INV_IN = (() => {
   const q = new URLSearchParams(location.search);
-  const code = (q.get('p') || '').toUpperCase(), key = invFromSlug(q.get('g'));
-  const name = (q.get('n') || '').trim().slice(0, 16), emoji = Array.from((q.get('e') || '').trim()).slice(0, 2).join('');
-  if (!key && !name) return null;
-  return { code, key, name, emoji: emoji || '🙂' };
+  let inv = null;
+  if (q.get('g') || q.get('n')) {
+    const name = (q.get('n') || '').trim().slice(0, 16), emoji = Array.from((q.get('e') || '').trim()).slice(0, 2).join('');
+    inv = { code: (q.get('p') || '').toUpperCase(), slug: q.get('g') || '', name, emoji: emoji || '🙂', t: q.get('t') || ('old:' + (q.get('p') || '') + ':' + (q.get('g') || '')) }; // links made before v40 have no t
+    try { sessionStorage.setItem('duet-inv', JSON.stringify(inv)); } catch (e) {}
+    invCleanUrl();
+  } else { try { inv = JSON.parse(sessionStorage.getItem('duet-inv') || 'null'); } catch (e) {} }
+  if (!inv) return null;
+  inv.key = invFromSlug(inv.slug);
+  if (inv.t && invUsedList().includes(inv.t)) inv.key = null; // this invite was already used
+  if (!inv.key && !inv.name) return null;
+  return inv;
 })();
-function invCleanUrl() { try { const u = new URL(location.href); let ch = false; ['g', 'n', 'e'].forEach(x => { if (u.searchParams.has(x)) { u.searchParams.delete(x); ch = true; } }); if (ch) history.replaceState(null, '', u.toString()); } catch (e) {} }
+function invMarkUsed() {
+  try { sessionStorage.removeItem('duet-inv'); } catch (e) {}
+  if (!INV_IN || !INV_IN.t) return;
+  try { const l = invUsedList().filter(x => x !== INV_IN.t); l.push(INV_IN.t); localStorage.setItem(INV_USED_KEY, JSON.stringify(l.slice(-30))); } catch (e) {}
+}
+function invCleanUrl() { try { const u = new URL(location.href); let ch = false; ['g', 'n', 'e', 't'].forEach(x => { if (u.searchParams.has(x)) { u.searchParams.delete(x); ch = true; } }); if (ch) history.replaceState(null, '', u.toString()); } catch (e) {} }
 function invRenderSetup() {
   const scr = $('scrSetup'); if (!INV_IN || !scr) return;
   scr.querySelector('.invhero') && scr.querySelector('.invhero').remove();
@@ -17605,7 +17622,7 @@ applyStatic = wrapFn('applyStatic', () => { if (INV_IN && !started && !$('scrSet
 let invUsed = false;
 startMain = wrapFn('startMain', null, () => {
   if (invUsed || !INV_IN) return; invUsed = true;
-  invCleanUrl();
+  invCleanUrl(); invMarkUsed();
   if (!INV_IN.key || !S.pair || S.pair.id !== INV_IN.code) return;
   S.pending = invPend(INV_IN.key); S.playMode = S.playMode === 'hotseat' ? 'duo' : S.playMode; save();
   const inf = invInfo(INV_IN.key), who = (S.partner && S.partner.name) || INV_IN.name || T.friend;
