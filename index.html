@@ -6820,7 +6820,7 @@ registerGame({
     const cue = () => S.balls[0];
 
     // a ball that reaches the rail right next to a pocket drops in (the pocket mouth), like on a real table
-    const MOUTH = PR + BR + 3;
+    const MOUTH = PR + BR - 7;
     const nearPocket = b => { for (const [px, py] of POCKETS) if (Math.hypot(b.x - px, b.y - py) < MOUTH) return [px, py]; return null; };
     function step(bs, dt, ev) {
       for (const b of bs) {
@@ -6829,7 +6829,7 @@ registerGame({
         const sp = Math.hypot(b.vx, b.vy);
         if (sp > 0) { const ns = Math.max(0, sp * (1 - .7 * dt) - 95 * dt); b.vx *= ns / sp; b.vy *= ns / sp; }
         let pk = null;
-        for (const [px, py] of POCKETS) if (Math.hypot(b.x - px, b.y - py) < PR) { pk = [px, py]; break; }
+        for (const [px, py] of POCKETS) if (Math.hypot(b.x - px, b.y - py) < PR - 2) { pk = [px, py]; break; }
         if (!pk && (b.x < L + BR || b.x > R - BR || b.y < T + BR || b.y > B - BR)) pk = nearPocket(b);
         if (pk) { b.in = true; b.vx = b.vy = 0; ev && ev.push(['pot', b, pk[0], pk[1]]); continue; }
         if (b.x < L + BR) { b.x = L + BR; b.vx = Math.abs(b.vx) * .85; ev && ev.push(['cush']); }
@@ -6968,9 +6968,6 @@ registerGame({
       const c = cue(), sp = Math.hypot(vx, vy); if (sp < 1) return;
       const ux = vx / sp, uy = vy / sp, pw = Math.min(1, sp / MAXV), hit = ray(ux, uy);
       const ex = c.x + ux * hit.t, ey = c.y + uy * hit.t;
-      g.strokeStyle = 'rgba(255,255,255,.85)'; g.lineWidth = 2; g.setLineDash([6, 6]); g.lineDashOffset = -tk * 30;
-      g.beginPath(); g.moveTo(c.x, c.y); g.lineTo(ex, ey); g.stroke(); g.setLineDash([]);
-      api.circle(ex, ey, BR, null, 'rgba(255,255,255,.9)', 2);
       // cue stick, pulled back by power
       const back = 14 + pw * 45;
       g.lineCap = 'round'; g.strokeStyle = '#7a4a1f'; g.lineWidth = 7; g.beginPath(); g.moveTo(c.x - ux * back, c.y - uy * back); g.lineTo(c.x - ux * (back + 170), c.y - uy * (back + 170)); g.stroke();
@@ -15794,7 +15791,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202610121752';
+const APP_VERSION = '202610121758';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
@@ -17471,7 +17468,7 @@ function plusLang() {
   set('setClipsL', '🎬 Видео-клипы: иногда записывать смешные моменты по 5 сек', '🎬 Video clips: sometimes record funny 5-second moments');
   chatLaunchers().forEach(b => { b.title = tr('Чат', 'Chat'); });
   $('bInstall2').textContent = '📲 ' + tr('Установить ярлык на рабочий стол', 'Install a desktop shortcut');
-  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 42 · 12.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
+  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 43 · 12.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
 }
 plusLang();
 try { document.documentElement.lang = LANG; } catch (e) {}
