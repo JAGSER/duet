@@ -15762,7 +15762,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202610110607';
+const APP_VERSION = '202610121240';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
@@ -16055,8 +16055,14 @@ function wLabels() {
 /* ---------------- source picker ---------------- */
 const canScreen = () => !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) && !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 /* my movie sites: open one in a new tab, then share that tab */
-const W_SITES0 = ['https://www.youtube.com/', 'https://www.bilibili.com/video/', 'https://www.tiktok.com/', 'https://kinoknopka.plus/', 'https://go.zet-flix.online/films/normal/', 'https://tvhub.life/', 'https://fairground.tv/watch', 'https://2sub.movie/', 'https://kinonavigator.ru/films/'];
-function wSites() { if (!Array.isArray(S.wSites)) S.wSites = W_SITES0.map(u => ({ u })); return S.wSites; }
+const W_SITES0 = ['https://www.youtube.com/', 'https://www.tiktok.com/', 'https://www.bilibili.com/video/'];
+// sites that used to be in the default list: drop them from saved lists (sites the user added stay)
+const W_SITES_OLD = ['https://kinoknopka.plus/', 'https://go.zet-flix.online/films/normal/', 'https://tvhub.life/', 'https://fairground.tv/watch', 'https://2sub.movie/', 'https://kinonavigator.ru/films/'];
+function wSites() {
+  if (!Array.isArray(S.wSites)) S.wSites = W_SITES0.map(u => ({ u }));
+  else if (!S.wSitesV2) { S.wSites = S.wSites.filter(s => !W_SITES_OLD.includes(s.u)); S.wSitesV2 = 1; try { save(); } catch (e) {} }
+  return S.wSites;
+}
 function siteName(u) { try { const x = new URL(u); return x.hostname.replace(/^www\./, '').replace(/^(go|m)\./, ''); } catch (e) { return u; } }
 function wSitesBox() {
   const box = h('div', { className: 'wsites' }), grid = h('div', { className: 'wsg' });
@@ -17433,7 +17439,7 @@ function plusLang() {
   set('setClipsL', '🎬 Видео-клипы: иногда записывать смешные моменты по 5 сек', '🎬 Video clips: sometimes record funny 5-second moments');
   chatLaunchers().forEach(b => { b.title = tr('Чат', 'Chat'); });
   $('bInstall2').textContent = '📲 ' + tr('Установить ярлык на рабочий стол', 'Install a desktop shortcut');
-  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 36 · 11.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
+  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 38 · 12.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
 }
 plusLang();
 try { document.documentElement.lang = LANG; } catch (e) {}
@@ -17487,6 +17493,174 @@ try { document.documentElement.lang = LANG; } catch (e) {}
   const sa = matchMedia('(display-mode: standalone)').matches || navigator.standalone; if (sa) $('bInstall2').hidden = true;
 })();
 setTimeout(statsInit, 0);
+
+/* ================= invite to a specific game / movie night =================
+   Link: https://duetplay.app/play/<slug>?p=PAIR&n=Name&e=😺   (ru: /igra/<slug>)
+   /play/<slug> is a tiny static page with its own preview picture; it forwards to /?p=…&g=<slug>.
+   The friend sees «Name invites you to play X», joins the pair, and X opens as soon as both are online. */
+(function () {
+  const css = `
+.invhero{text-align:center;color:#fff;margin:18px 0 14px}
+.invhero .ava{width:92px;height:92px;margin:0 auto 10px;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:52px;box-shadow:0 6px 0 rgba(0,0,0,.15)}
+.invhero h1{font-size:26px;line-height:1.15}
+.invhero p{margin:6px 0 0;font-weight:700;opacity:.95;font-size:15px}
+.invgame{display:flex;gap:12px;align-items:center;margin:0 0 6px}
+.invgame .gi{width:76px;height:76px;flex:none;border-radius:18px;display:grid;place-items:center;font-size:42px;box-shadow:0 4px 0 rgba(0,0,0,.15)}
+.invgame .gt{flex:1;min-width:0}
+.invgame b{display:block;font-size:19px}
+.invgame .ds{font-size:13px;color:var(--muted);font-weight:700;margin-top:2px}
+.invchips{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
+.invchips span{font-size:12px;background:#f1ecff;color:var(--violet);padding:4px 9px;border-radius:10px}
+.invnote{text-align:center;color:#fff;font-size:13px;font-weight:700;opacity:.92;margin:14px 6px 0;line-height:1.4}
+#pendingInv{padding:10px 12px;font-size:14px;white-space:nowrap}
+#gInvB{padding:8px 12px}
+.invwatch{margin:0 0 12px}
+`;
+  document.head.append(h('style', {}, css));
+})();
+
+const INV_CLASSIC = { rps: 'rock-paper-scissors', react: 'reaction', tug: 'tug-of-war', ttt: 'tic-tac-toe', match: 'answers-match', draw: 'draw-together' };
+// key: 'a<n>' = arcade game n, a classic id (rps…), 'w' = movie night
+const invKey = p => typeof p === 'number' ? 'a' + p : String(p);
+const invPend = k => k[0] === 'a' && /^a\d+$/.test(k) ? +k.slice(1) : k;
+function invSlug(k) {
+  if (k === 'w') return 'movie';
+  if (/^a\d+$/.test(k)) { const g = Arcade.games.find(x => x.n === +k.slice(1)); return g ? g.id : null; }
+  return INV_CLASSIC[k] || null;
+}
+function invFromSlug(s) {
+  s = String(s || '').toLowerCase();
+  if (s === 'movie') return 'w';
+  for (const k in INV_CLASSIC) if (INV_CLASSIC[k] === s) return k;
+  const g = Arcade.games.find(x => x.id === s); return g ? 'a' + g.n : null;
+}
+function invInfo(k) {
+  if (k === 'w') return { icon: '🍿', title: tr('Кино вдвоём', 'Movie night'), desc: tr('Смотрим фильм синхронно и видим реакции друг друга', 'Watch in sync and see each other\'s reactions'), bg: 'linear-gradient(135deg,#7b2ff7,#f107a3)' };
+  if (/^a\d+$/.test(k)) { const g = Arcade.games.find(x => x.n === +k.slice(1)); return g ? { icon: g.icon, title: g.title, desc: g.desc, bg: g.bg } : null; }
+  const G = GAMES[k]; return G ? { icon: G.icon, title: G.title, desc: G.desc, bg: G.bg } : null;
+}
+function invLink(k) {
+  const u = new URL((LANG === 'ru' ? '/igra/' : '/play/') + invSlug(k), location.origin);
+  u.searchParams.set('p', S.pair.id); u.searchParams.set('n', S.me.name); u.searchParams.set('e', S.me.emoji);
+  const mq = new URLSearchParams(location.search).get('mq'); if (mq) u.searchParams.set('mq', mq); // test servers
+  return u.toString();
+}
+function invText(k, inf) {
+  const me = S.me.name;
+  if (k === 'w') return tr(`${me} зовёт тебя смотреть кино вместе 🍿\nЖми на ссылку — фильм идёт синхронно, и мы видим реакции друг друга 👇\n`, `${me} invites you to a movie night 🍿\nTap the link — we watch in sync and see each other's reactions 👇\n`);
+  return tr(`${me} зовёт тебя сыграть в «${inf.title}» ${inf.icon}\nЖми на ссылку — и сразу играем вдвоём, без регистрации 👇\n`, `${me} invites you to play ${inf.title} ${inf.icon}\nTap the link and we're playing — no sign-up 👇\n`);
+}
+
+/* ---------- my side: the invite sheet ---------- */
+function shareGameInvite(k) {
+  const inf = invInfo(k); if (!inf || !S.pair) return;
+  shareInvite();
+  const url = invLink(k), text = invText(k, inf), full = text + url;
+  const box = $('shareSheet');
+  box.querySelector('[data-i="shareTitle"]').textContent = '💌 ' + (k === 'w' ? tr('Позвать смотреть кино', 'Invite to a movie night') : tr('Позвать в', 'Invite to') + ' ' + inf.title);
+  box.querySelector('[data-i="shareHelp"]').textContent = k === 'w' ? tr('По этой ссылке у партнёра сразу откроется кино вдвоём. Код пары на всякий случай:', 'This link opens the movie night for your partner right away. Pair code, just in case:') : tr('По этой ссылке у партнёра сразу откроется эта игра. Код пары на всякий случай:', 'This link opens this game for your partner right away. Pair code, just in case:');
+  $('shareText').value = full; $('shareText').classList.add('hidden');
+  $('shTg').href = 'https://t.me/share/url?url=' + encodeURIComponent(url) + '&text=' + encodeURIComponent(text);
+  $('shWa').href = 'https://wa.me/?text=' + encodeURIComponent(full);
+  $('shCopy').onclick = () => copyText(full).then(ok => { if (ok) toast(T.copied); else { $('shareText').classList.remove('hidden'); $('shareText').select(); toast(T.copyPrompt); } });
+  $('shMore').onclick = () => { navigator.share({ title: T.app, text, url }).catch(() => {}); };
+  if (!online) { S.pending = invPend(k); save(); renderGrid(); renderWatchBox(); }
+  track('invite', { game: invSlug(k) });
+}
+// the general «Send invite» buttons get their own texts back, and their link now carries my name
+['bShare', 'bShare2'].forEach(id => { const b = $(id); if (b) b.addEventListener('click', () => { const box = $('shareSheet'); box.querySelector('[data-i="shareTitle"]').textContent = T.shareTitle; box.querySelector('[data-i="shareHelp"]').textContent = T.shareHelp; }, true); });
+pairUrl = (orig => id => { const u = new URL(orig(id)); ['g', 'n', 'e'].forEach(x => u.searchParams.delete(x)); return u.toString(); })(pairUrl);
+inviteLink = function () { const u = new URL(pairUrl(S.pair.id)); u.searchParams.set('n', S.me.name); u.searchParams.set('e', S.me.emoji); return u.toString(); };
+
+/* ---------- friend's side: arriving by an invite link ---------- */
+const INV_IN = (() => {
+  const q = new URLSearchParams(location.search);
+  const code = (q.get('p') || '').toUpperCase(), key = invFromSlug(q.get('g'));
+  const name = (q.get('n') || '').trim().slice(0, 16), emoji = Array.from((q.get('e') || '').trim()).slice(0, 2).join('');
+  if (!key && !name) return null;
+  return { code, key, name, emoji: emoji || '🙂' };
+})();
+function invCleanUrl() { try { const u = new URL(location.href); let ch = false; ['g', 'n', 'e'].forEach(x => { if (u.searchParams.has(x)) { u.searchParams.delete(x); ch = true; } }); if (ch) history.replaceState(null, '', u.toString()); } catch (e) {} }
+function invRenderSetup() {
+  const scr = $('scrSetup'); if (!INV_IN || !scr) return;
+  scr.querySelector('.invhero') && scr.querySelector('.invhero').remove();
+  scr.querySelector('.invgame') && scr.querySelector('.invgame').remove();
+  scr.querySelector('.invnote') && scr.querySelector('.invnote').remove();
+  const inf = INV_IN.key ? invInfo(INV_IN.key) : null, nm = INV_IN.name, w = INV_IN.key === 'w';
+  const title = nm ? (w ? tr(`${nm} зовёт тебя смотреть кино!`, `${nm} invites you to a movie night!`) : inf ? tr(`${nm} зовёт тебя сыграть!`, `${nm} invites you to play!`) : tr(`${nm} зовёт тебя в «Дуэт»!`, `${nm} invites you to Duet!`))
+    : (w ? tr('Тебя зовут смотреть кино!', 'You\'re invited to a movie night!') : tr('Тебя зовут сыграть!', 'You\'re invited to play!'));
+  const sub = w ? tr('Нажми — и смотрите вместе, синхронно', 'Tap — and watch together, in sync') : tr('Нажми — и вы сразу играете вместе', 'Tap — and you\'re playing together');
+  scr.querySelector('.hero').classList.add('hidden');
+  scr.querySelector('.card').before(h('div', { className: 'invhero' }, h('div', { className: 'ava' }, INV_IN.emoji), h('h1', {}, title), h('p', {}, sub)));
+  if (inf) scr.querySelector('.card').prepend(h('div', { className: 'invgame' }, h('div', { className: 'gi', style: `background:${inf.bg}` }, inf.icon),
+    h('div', { className: 'gt' }, h('b', {}, inf.title), h('div', { className: 'ds' }, inf.desc), h('div', { className: 'invchips' }, h('span', {}, tr('Бесплатно', 'Free')), h('span', {}, tr('Без регистрации', 'No sign-up'))))));
+  scr.querySelector('.card').after(h('div', { className: 'invnote' }, tr('Камеру и микрофон браузер спросит после — можно отказаться и играть без них 🙈', 'Your browser will ask for camera and mic next — you can say no and still play 🙈')));
+  $('linkNote').classList.add('hidden'); $('bRandom').classList.add('hidden');
+  $('bEnter').textContent = (inf ? inf.icon + ' ' : '🎮 ') + (w ? tr('Смотреть вместе', 'Watch together') : nm ? tr('Играть вместе', `Play with ${nm}`) : tr('Играть вместе', 'Play together'));
+}
+setupScreen = wrapFn('setupScreen', () => { if (INV_IN && linkCode()) { invRenderSetup(); track('invite_open', { game: INV_IN.key ? invSlug(INV_IN.key) : 'duet', step: 'new' }); } });
+applyStatic = wrapFn('applyStatic', () => { if (INV_IN && !started && !$('scrSetup').classList.contains('hidden')) invRenderSetup(); });
+let invUsed = false;
+startMain = wrapFn('startMain', null, () => {
+  if (invUsed || !INV_IN) return; invUsed = true;
+  invCleanUrl();
+  if (!INV_IN.key || !S.pair || S.pair.id !== INV_IN.code) return;
+  S.pending = invPend(INV_IN.key); S.playMode = S.playMode === 'hotseat' ? 'duo' : S.playMode; save();
+  const inf = invInfo(INV_IN.key), who = (S.partner && S.partner.name) || INV_IN.name || T.friend;
+  setTimeout(() => { if (S.pending != null && !online) toast(INV_IN.key === 'w' ? tr('🍿 Кино начнётся, как только вы оба будете в сети', `🍿 The movie with ${who} starts as soon as you're both online`) : tr(`${inf.icon} «${inf.title}» откроется, как только ${who} будет в сети`, `${inf.icon} ${inf.title} opens as soon as ${who} is online`), 4000); }, 1200);
+});
+
+/* ---------- waiting for the partner: any game (and the movie) can be pending ---------- */
+checkPending = function () {
+  if (!online || S.pending == null || Arcade.current() || gameId || (typeof W !== 'undefined' && W.open)) return;
+  const p = S.pending; S.pending = null; save();
+  setTimeout(() => { if (!online) return; if (typeof p === 'number') openArc(p); else if (p === 'w') openWatch(); else if (GAMES[p]) openGame(p); }, 700);
+};
+function invWaitText() {
+  const inf = invInfo(invKey(S.pending)), t = inf ? inf.title : '';
+  if (LANG !== 'ru') return `⏳ Waiting for ${S.partner ? ptName() : 'your friend'}… «${t}» starts as soon as they join`;
+  return `⏳ ${S.partner ? ptName() + ' ещё не в сети' : 'Друг ещё не зашёл'} — «${t}» начнётся, как только он(а) зайдёт`;
+}
+renderModeSeg = wrapFn('renderModeSeg', () => {
+  const pb = $('pendingBar'), p = S.pending;
+  const show = p != null && !online && invInfo(invKey(p)) && (typeof p !== 'number' || playMode() === 'duo');
+  pb.classList.toggle('hidden', !show); if (!show) return;
+  $('pendingText').textContent = invWaitText();
+  if (!$('pendingInv')) $('pendingCancel').before(h('button', { className: 'btn y', id: 'pendingInv', on: { click: () => shareGameInvite(invKey(S.pending)) } }, '💌 ' + tr('Позвать', 'Invite')));
+  else $('pendingInv').textContent = '💌 ' + tr('Позвать', 'Invite');
+});
+// offline: classic games can be picked too — they wait for the partner like the arcade ones
+function classicTap(id) {
+  if (online) return;
+  S.pending = id; save(); renderGrid();
+  if (!S.partner) shareGameInvite(id); else toast(invWaitText(), 3200);
+}
+renderGrid = wrapFn('renderGrid', () => {
+  if (online) return;
+  const tiles = [...$('grid').children];
+  // fresh copies of the tiles: the normal «open game» handler must not run while the partner is away
+  Object.keys(GAMES).forEach((id, i) => { const t0 = tiles[i]; if (!t0) return; const t = t0.cloneNode(true); t0.replaceWith(t); t.disabled = false; t.addEventListener('click', () => classicTap(id)); if (S.pending === id) t.append(h('span', { className: 'md' }, tr('⏳ ждём друга', '⏳ waiting'))); });
+});
+arcTap = wrapFn('arcTap', a => { if (!online && playMode() === 'duo' && !S.partner) shareGameInvite('a' + a[0]); });
+// once we're actually playing together, nothing is pending any more
+let invHot = false;
+const invOpened = () => { if (online && S.pending != null) { S.pending = null; save(); } invGameBtn(); };
+openArc = wrapFn('openArc', invOpened, (n, remote, forced) => { invHot = forced === 'hotseat'; });
+openGame = wrapFn('openGame', invOpened);
+openWatch = wrapFn('openWatch', invOpened);
+
+/* ---------- invite button inside an arcade game (while playing with the bot) ---------- */
+$('vtitle').after(h('button', { className: 'btn y hidden', id: 'gInvB', title: tr('Позвать в эту игру', 'Invite to this game'), on: { click: () => { const c = Arcade.current(); if (c) shareGameInvite('a' + c.n); } } }, '💌'));
+function invGameBtn() { const b = $('gInvB'); if (b) b.classList.toggle('hidden', online || invHot || !Arcade.current()); }
+setOnline = wrapFn('setOnline', () => { invGameBtn(); renderWatchBox(); });
+
+/* ---------- movie night: invite from the «Watch together» box ---------- */
+renderWatchBox = wrapFn('renderWatchBox', () => {
+  const box = $('watchBox'); if (!box || box.hidden || online || !S.pair || !S.me) return;
+  const card = box.querySelector('.card'); if (!card) return;
+  const who = S.partner ? ptName() : tr('друга', 'your friend');
+  card.prepend(h('button', { className: 'btn y w invwatch', on: { click: () => shareGameInvite('w') } }, S.pending === 'w' ? '⏳ ' + tr('Ждём партнёра — позвать ещё раз', `Waiting for ${who} — invite again`) : '💌 ' + tr('Позвать смотреть вместе', `Invite ${who} to watch together`)));
+});
 
 /* Soundboard samples (mp3). Rendered with the FluidR3 GM soundfont (MIT, Frank Wen) and taken from OpenRCT2 OpenSoundEffects (CC BY 4.0). */
 window.DUET_SFX = {
