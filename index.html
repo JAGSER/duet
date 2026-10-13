@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <title>Duet — Games for Couples, Watch Movies Together & Video Chat</title>
-<meta name="description" content="Free web app for two: video chat, 46 games to play together and movie nights in sync with emoji reactions. Perfect for long distance couples. No download, no sign-up.">
+<meta name="description" content="Free web app for two: video chat, 47 games to play together and movie nights in sync with emoji reactions. Perfect for long distance couples. No download, no sign-up.">
 <link rel="canonical" href="https://duetplay.app/">
 <meta property="og:type" content="website"><meta property="og:site_name" content="Duet">
 <meta property="og:title" content="Duet — games, movies & video chat for two">
-<meta property="og:description" content="Play 46 games together, watch movies in sync, react with emoji and chat — free, right in your browser.">
+<meta property="og:description" content="Play 47 games together, watch movies in sync, react with emoji and chat — free, right in your browser.">
 <meta property="og:url" content="https://duetplay.app/"><meta property="og:image" content="https://duetplay.app/og.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebApplication", "name": "Duet", "alternateName": "Дуэт", "url": "https://duetplay.app/", "applicationCategory": "GameApplication", "operatingSystem": "Web, Android, iOS, Windows, macOS", "description": "Free web app for two: video chat, 46 games to play together and movie nights in sync with emoji reactions.", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "image": "https://duetplay.app/og.png", "inLanguage": ["en", "ru"]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebApplication", "name": "Duet", "alternateName": "Дуэт", "url": "https://duetplay.app/", "applicationCategory": "GameApplication", "operatingSystem": "Web, Android, iOS, Windows, macOS", "description": "Free web app for two: video chat, 47 games to play together and movie nights in sync with emoji reactions.", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "image": "https://duetplay.app/og.png", "inLanguage": ["en", "ru"]}</script>
 <meta name="theme-color" content="#7b2ff7">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -347,7 +347,7 @@ canvas#cvDraw{width:100%;aspect-ratio:3/4;border-radius:18px;background:#fffdf5;
       <button class="btn w bwatch bgames" id="bGames" style="margin:4px 0 6px"></button>
       <div class="pending hidden" id="pendingBar"><span id="pendingText"></span><button class="btn g" id="pendingCancel">✕</button></div>
       <div id="gamesBox" hidden>
-      <div class="sect"><b id="arcTitle">🕹️ Аркада · 40 игр</b> <span id="arcHint"></span></div>
+      <div class="sect"><b id="arcTitle">🕹️ Аркада · 41 игра</b> <span id="arcHint"></span></div>
       <div class="lvlrow"><div class="seg big" id="modeSeg"><button data-m="duo">💞 Вдвоём</button><button data-m="hotseat">📱 На одном</button><button data-m="bot">🤖 С ботом</button></div></div>
       <div class="lvlrow" id="lvlRow"><span id="lvlLbl">Бот:</span><div class="seg" id="lvl"><button data-l="0">лёгкий</button><button data-l="1">нормальный</button><button data-l="2">сильный</button></div></div>
       <div class="grid" id="arcGrid"></div>
@@ -13977,6 +13977,332 @@ registerGame({
 
 })();
 
+/* ---- 43-brawl.js ---- */
+(function(){
+/* 43. Бой одной кнопкой — файтинг, у каждого одна кнопка (весь экран).
+   Бойцы сами ходят и держат дистанцию; что они делают — решает то, КАК нажимаешь:
+     тап — удар рукой · быстрый второй тап — пинок (связка) · держи — блок · держи ≥0.8 с и отпусти — супер-апперкот.
+   Блок съедает «стойкость»; пинки по блоку быстро её ломают; супер пробивает блок. До 2 побед в раундах.
+   В последнем раунде проигравший шатается — «ДОБЕЙ!»: тап победителя = добивание.
+   Netplay: host simulates everything; snap() carries fighters' state, the guest draws poses from it. */
+registerGame({
+  n: 43, id: 'brawl', flip: false, net: true, title: TR('Бой одной кнопкой', 'One-Button Brawl'), icon: '🥋', mode: 'одновременно', bg: 'linear-gradient(135deg,#ff3d5a,#7b2ff7 60%,#1d1340)',
+  desc: TR('Файтинг: тап, два тапа, удержание — бойцы дерутся сами', 'A fighter: tap, double-tap, hold — they fight on their own'),
+  help: TR('Весь экран — твоя кнопка. Тап — удар рукой. Два быстрых тапа — удар + пинок. Держи — блок. Держи секунду и отпусти — супер-апперкот, он пробивает блок. Пинки по блоку ломают защиту. Две победы — и добей соперника!',
+    'The whole screen is your button. Tap — punch. Two quick taps — punch + kick. Hold — block. Hold a second and let go — super uppercut that breaks a block. Kicks wear a block down. Win two rounds — then finish your opponent!'),
+  make(api) {
+    const { W, H, C } = api;
+    const GY = 400, WALL_L = 34, WALL_R = W - 34, ROUND_T = 45, HOLD = .16, CHARGE = .8;
+    const MOVES = {
+      jab: { st: .07, act: .09, rec: .16, dmg: 5, reach: 76, stun: .3, push: 14, guard: 12 },
+      kick: { st: .16, act: .12, rec: .28, dmg: 8, reach: 98, stun: .42, push: 34, guard: 30 },
+      super: { st: .13, act: .2, rec: .45, dmg: 14, reach: 84, stun: 1.1, push: 95, guard: 100 },
+    };
+    const mk = (side, x) => ({ side, x, hp: 100, guard: 100, st: 'idle', t: 0, hold: false, holdT: 0, lastTap: -9, q: null, hit: false, kb: 0, fly: null });
+    const F = [mk('you', 110), mk('bot', 250)];
+    const idx = s => s === 'you' ? 0 : 1, nm = (s, v) => api.nameFor(s, v);
+    const S = { ph: 'intro', pt: 0, rd: 1, w: [0, 0], tm: ROUND_T, msg: '', who: -1 };
+    let clock = 0, tk = 0, localHold = false, localHoldT = 0, tgt = null;
+    const busy = f => f.st === 'jab' || f.st === 'kick' || f.st === 'super' || f.st === 'hit' || f.st === 'down' || f.st === 'stun' || f.st === 'ko' || f.st === 'win' || f.st === 'dizzy' || f.st === 'fly';
+    const fighting = () => S.ph === 'fight';
+    const face = i => F[i].x <= F[1 - i].x ? 1 : -1;
+
+    function resetRound() {
+      F[0] = Object.assign(mk('you', 110), {}); F[1] = Object.assign(mk('bot', 250), {});
+      S.ph = 'intro'; S.pt = 0; S.tm = ROUND_T; S.msg = ''; S.who = -1;
+      api.setInfo(TR('Тап — удар · 2 тапа — пинок · держи — блок · держи 1 с — супер', 'Tap — punch · 2 taps — kick · hold — block · hold 1 s — super'));
+    }
+    function startMove(i, m) {
+      const f = F[i]; f.st = m; f.t = 0; f.hit = false; f.q = null;
+      if (m === 'super') { api.sfx('shoot'); api.vibrate(25); }
+    }
+    // ---- input (both players use the same code: host taps, guest taps forwarded, bot taps) ----
+    function press(i) {
+      const f = F[i]; f.hold = true; f.holdT = 0;
+      if (S.ph === 'finish' && S.who === i) finisher(i);
+    }
+    function release(i) {
+      const f = F[i]; if (!f.hold) return; f.hold = false;
+      const held = f.holdT; f.holdT = 0;
+      if (!fighting()) return;
+      if (f.st === 'block') { if (held >= CHARGE) startMove(i, 'super'); else { f.st = 'idle'; f.t = 0; } return; }
+      if (held >= HOLD) return;
+      // a tap
+      const quick = clock - f.lastTap < .34; f.lastTap = clock;
+      if (f.st === 'jab') { const mv = MOVES.jab; if (f.t > mv.st + mv.act - .02) startMove(i, 'kick'); else f.q = 'kick'; return; }
+      if (busy(f)) return;
+      startMove(i, quick ? 'kick' : 'jab');
+    }
+
+    // ---- hits ----
+    function resolve(i, m) {
+      const a = F[i], d = F[1 - i], mv = MOVES[m], dir = face(i);
+      if (d.st === 'down' || d.st === 'ko' || d.st === 'fly') return;
+      const hx = (a.x + d.x) / 2, hy = GY - (m === 'kick' ? 70 : m === 'super' ? 110 : 88);
+      if (d.st === 'block' && m !== 'super') {
+        d.hp = Math.max(1, d.hp - (m === 'jab' ? 1 : 2)); d.guard -= mv.guard; d.kb = dir * mv.push * 5; a.kb = -dir * 60;
+        api.sfx('bounce'); api.burst(hx, hy, '#bfe9ff', 8, 120);
+        if (d.guard <= 0) { d.guard = 0; d.st = 'stun'; d.t = 0; d.hold = false; api.sfx('boom'); api.shake(7); api.float(TR('БЛОК ПРОБИТ!', 'GUARD BREAK!'), hx, hy - 30, C.yellow, 22); }
+        return;
+      }
+      const counter = (d.st === 'jab' || d.st === 'kick' || d.st === 'super') && d.t < MOVES[d.st].st;
+      const dmg = mv.dmg + (counter ? 4 : 0);
+      d.hp = Math.max(0, d.hp - dmg); d.kb = dir * mv.push * 6; d.hold = false; d.holdT = 0;
+      d.st = m === 'super' ? 'down' : 'hit'; d.t = 0; d.stunT = mv.stun;
+      api.sfx(m === 'super' ? 'boom' : 'hit'); api.vibrate(m === 'jab' ? 15 : 35);
+      api.burst(hx, hy, m === 'super' ? C.yellow : '#ffffff', m === 'jab' ? 10 : 18, m === 'super' ? 260 : 170);
+      api.shake(m === 'jab' ? 2 : m === 'kick' ? 5 : 10);
+      if (counter) api.float(TR('КОНТРА!', 'COUNTER!'), hx, hy - 34, C.orange, 20);
+      else if (m === 'super') api.float(TR('СУПЕР!', 'SUPER!'), hx, hy - 34, C.yellow, 26);
+      if (d.hp <= 0) ko(i);
+    }
+    function ko(wi) {
+      const w = F[wi], l = F[1 - wi]; S.w[wi]++; api.setScore(S.w[0], S.w[1]); S.who = wi; S.pt = 0;
+      w.hold = l.hold = false;
+      if (S.w[wi] >= 2) { // match point: the loser staggers — finish them
+        S.ph = 'finish'; l.st = 'dizzy'; l.t = 0; l.hp = 0; w.st = 'idle'; w.t = 0;
+        api.sfx('win'); api.shake(9);
+        api.setInfo(v => idx(v) === wi ? TR('ДОБЕЙ! Жми!', 'FINISH! Tap!') : TR('Ты шатаешься…', 'You are dizzy…'));
+        if (api.isBot && wi === 1) api.after(.9, () => { if (S.ph === 'finish') finisher(1); });
+      } else {
+        S.ph = 'ko'; l.st = 'ko'; l.t = 0; w.st = 'win'; w.t = 0;
+        api.sfx('lose'); api.photo(TR('Нокаут! 🥊', 'Knockout! 🥊'));
+      }
+    }
+    function finisher(i) {
+      if (S.ph !== 'finish') return;
+      S.ph = 'final'; S.pt = 0;
+      const w = F[i], l = F[1 - i], dir = face(i);
+      w.x = l.x - dir * 56; startMove(i, 'super'); w.hit = true;
+      api.after(.16, () => {
+        l.st = 'fly'; l.t = 0; l.fly = { vx: dir * 430, vy: -720, r: 0 };
+        api.sfx('boom'); api.shake(14); api.burst(l.x, GY - 110, C.yellow, 40, 320); api.burst(l.x, GY - 110, C.red, 30, 260);
+        api.photo(TR('Добивание! 💥', 'Finished! 💥'));
+      });
+      api.after(.7, () => { if (w.st !== 'fly') { w.st = 'win'; w.t = 0; } });
+      api.after(2.2, () => endMatch(i));
+    }
+    function endMatch(wi) {
+      const ws = wi ? 'bot' : 'you';
+      api.end(wi ? 'lose' : 'win', v => TR(`${nm(ws, v)} ${v === ws ? 'победил(а)' : 'побеждает'}! ${S.w[0]} : ${S.w[1]}`, `${nm(ws, v)} ${v === ws ? 'win' : 'wins'}! ${S.w[0]} : ${S.w[1]}`));
+    }
+
+    // ---- bot ----
+    let botT = .8, botRel = 0;
+    function botBrain(dt) {
+      if (!api.isBot || !fighting()) return;
+      const b = F[1], p = F[0], d = Math.abs(b.x - p.x);
+      if (botRel > 0) { botRel -= dt; if (botRel <= 0) release(1); return; }
+      botT -= dt; if (botT > 0) return;
+      const lv = api.level, react = [.55, .38, .24][lv];
+      botT = react * api.rand(.7, 1.3);
+      if (busy(b)) return;
+      const pAttack = (p.st === 'jab' || p.st === 'kick' || p.st === 'super') && p.t < MOVES[p.st].st + .05;
+      const r = Math.random();
+      if (pAttack && d < 110 && r < [.25, .5, .75][lv] && p.st !== 'super') { press(1); botRel = .35; return; }
+      if ((p.st === 'block' || p.st === 'stun') && d < 100) { press(1); release(1); if (Math.random() < .7) api.after(.12, () => { press(1); release(1); }); return; }
+      if (r < .12 && b.guard > 60) { press(1); botRel = CHARGE + .1; return; }
+      if (d < 80) { press(1); release(1); if (Math.random() < [.2, .4, .6][lv]) api.after(.14, () => { press(1); release(1); }); return; }
+      if (d < 100 && r < .5) { press(1); release(1); api.after(.1, () => { press(1); release(1); }); }
+    }
+
+    // ---- simulation ----
+    function sim(dt) {
+      clock += dt; S.pt += dt;
+      if (S.ph === 'intro' && S.pt > 1.8) { S.ph = 'fight'; S.pt = 0; }
+      if (S.ph === 'fight') {
+        S.tm -= dt;
+        if (S.tm <= 0) { S.tm = 0; const a = F[0].hp, b = F[1].hp; if (a === b) { S.ph = 'draw'; S.pt = 0; } else { const wi = a > b ? 0 : 1; F[1 - wi].hp = 0; ko(wi); } }
+      }
+      if (S.ph === 'ko' && S.pt > 2.6) { S.rd++; resetRound(); }
+      if (S.ph === 'draw' && S.pt > 2) resetRound();
+      if (S.ph === 'finish' && S.pt > 3.5) { const l = F[1 - S.who]; l.st = 'ko'; l.t = 0; S.ph = 'final'; S.pt = 0; api.after(1.4, () => endMatch(S.who)); }
+      for (let i = 0; i < 2; i++) {
+        const f = F[i], o = F[1 - i], dir = face(i);
+        f.t += dt;
+        if (f.hold) {
+          f.holdT += dt;
+          if (fighting() && f.holdT >= HOLD && (f.st === 'idle' || f.st === 'walk')) { f.st = 'block'; f.t = 0; }
+        }
+        if (f.st === 'block') { f.guard -= 28 * dt; if (f.guard <= 0) { f.guard = 0; f.st = 'stun'; f.t = 0; f.hold = false; api.float(TR('Устал!', 'Worn out!'), f.x, GY - 140, C.orange, 18); } }
+        else if (f.st !== 'stun') f.guard = Math.min(100, f.guard + 22 * dt);
+        const mv = MOVES[f.st];
+        if (mv) {
+          if (f.st === 'super' && f.t < mv.st + mv.act && S.ph === 'fight') f.x += dir * 260 * dt;
+          if (!f.hit && f.t >= mv.st && f.t < mv.st + mv.act && Math.abs(f.x - o.x) <= mv.reach && S.ph === 'fight') { f.hit = true; resolve(i, f.st); }
+          if (f.st === 'jab' && f.q === 'kick' && f.t >= mv.st + mv.act) startMove(i, 'kick');
+          else if (f.t >= mv.st + mv.act + mv.rec) { f.st = f.hold && fighting() ? 'block' : 'idle'; f.t = 0; }
+        }
+        if ((f.st === 'hit' || f.st === 'down') && f.t >= (f.stunT || .3)) { f.st = 'idle'; f.t = 0; }
+        if (f.st === 'stun' && f.t >= 1) { f.st = 'idle'; f.t = 0; f.guard = 40; }
+        if (f.st === 'fly' && f.fly) { f.x += f.fly.vx * dt; f.fly.vy += 1500 * dt; f.fly.r += dt * 9 * Math.sign(f.fly.vx); f.flyY = (f.flyY || 0) + f.fly.vy * dt; if (f.flyY > 0) { f.flyY = 0; f.fly.vy *= -.35; f.fly.vx *= .5; } }
+        // auto footwork: keep a fighting distance
+        if ((f.st === 'idle' || f.st === 'walk' || f.st === 'block') && (S.ph === 'fight' || S.ph === 'intro')) {
+          const d = Math.abs(f.x - o.x), sp = f.st === 'block' ? 25 : 70;
+          if (d > 74) { f.x += dir * sp * dt; if (f.st === 'idle') f.st = 'walk'; }
+          else if (d < 54) { f.x -= dir * 40 * dt; if (f.st === 'idle') f.st = 'walk'; }
+          else if (f.st === 'walk') f.st = 'idle';
+        }
+        f.x += f.kb * dt; f.kb *= Math.exp(-9 * dt);
+        if (f.st !== 'fly') f.x = api.clamp(f.x, WALL_L, WALL_R);
+      }
+      // bodies don't overlap
+      const gap = Math.abs(F[0].x - F[1].x);
+      if (gap < 36 && F[0].st !== 'fly' && F[1].st !== 'fly') { const push = (36 - gap) / 2, s = F[0].x <= F[1].x ? 1 : -1; F[0].x -= s * push; F[1].x += s * push; }
+      botBrain(dt);
+    }
+
+    resetRound(); api.setScore(0, 0);
+
+    // ---- poses (facing right, ground at y = 0) ----
+    const P = {
+      idle: { hip: [0, -48], neck: [3, -90], head: [5, -106], fe: [18, -78], ff: [26, -94], be: [8, -74], bf: [16, -90], fk: [12, -24], fft: [16, 0], bk: [-8, -24], bft: [-16, 0] },
+      jab: { hip: [4, -48], neck: [11, -89], head: [14, -104], fe: [36, -88], ff: [58, -91], be: [10, -76], bf: [18, -92], fk: [16, -24], fft: [24, 0], bk: [-10, -22], bft: [-20, 0] },
+      kick: { hip: [-2, -54], neck: [-12, -92], head: [-15, -107], fe: [6, -84], ff: [16, -98], be: [-8, -74], bf: [2, -88], fk: [26, -66], fft: [64, -74], bk: [-6, -28], bft: [-10, 0] },
+      block: { hip: [0, -45], neck: [0, -87], head: [0, -102], fe: [16, -92], ff: [15, -108], be: [12, -84], bf: [12, -100], fk: [12, -22], fft: [18, 0], bk: [-10, -22], bft: [-18, 0] },
+      charge: { hip: [0, -38], neck: [-5, -78], head: [-7, -93], fe: [-12, -60], ff: [-24, -50], be: [-15, -62], bf: [-27, -54], fk: [16, -20], fft: [24, 0], bk: [-14, -20], bft: [-24, 0] },
+      super: { hip: [6, -76], neck: [12, -118], head: [14, -134], fe: [24, -134], ff: [30, -160], be: [-2, -100], bf: [6, -112], fk: [18, -54], fft: [14, -28], bk: [-6, -52], bft: [-12, -26] },
+      hit: { hip: [-5, -46], neck: [-15, -86], head: [-22, -99], fe: [0, -74], ff: [10, -84], be: [-12, -72], bf: [-4, -80], fk: [8, -24], fft: [14, 0], bk: [-14, -22], bft: [-22, 0] },
+      down: { hip: [-22, -10], neck: [-58, -10], head: [-74, -12], fe: [-46, -26], ff: [-36, -4], be: [-60, -2], bf: [-70, 4], fk: [0, -16], fft: [22, -4], bk: [-4, -8], bft: [20, -2] },
+      win: { hip: [0, -48], neck: [0, -90], head: [0, -106], fe: [14, -112], ff: [18, -136], be: [-12, -110], bf: [-14, -134], fk: [10, -24], fft: [16, 0], bk: [-10, -24], bft: [-16, 0] },
+    };
+    const J = Object.keys(P.idle);
+    const disp = [null, null];
+    function targetPose(f, i) {
+      let p = P.idle; const t = tk * 6 + i;
+      switch (f.st) {
+        case 'jab': { const m = MOVES.jab; p = f.t >= m.st && f.t < m.st + m.act + .05 ? P.jab : P.idle; break; }
+        case 'kick': { const m = MOVES.kick; p = f.t >= m.st * .6 && f.t < m.st + m.act + .08 ? P.kick : P.block; break; }
+        case 'super': p = f.t < MOVES.super.st ? P.charge : P.super; break;
+        case 'block': p = (f.holdT || 0) >= CHARGE ? P.charge : P.block; break;
+        case 'hit': case 'stun': case 'dizzy': p = P.hit; break;
+        case 'down': case 'ko': case 'fly': p = P.down; break;
+        case 'win': p = P.win; break;
+      }
+      const o = {}; for (const k of J) o[k] = p[k].slice();
+      if (f.st === 'idle' || f.st === 'walk' || f.st === 'block' || f.st === 'dizzy') { const b = Math.sin(t) * 2.2; ['hip', 'neck', 'head', 'fe', 'ff', 'be', 'bf'].forEach(k => o[k][1] += b); }
+      if (f.st === 'walk') { const s = Math.sin(tk * 12 + i); o.fk[0] += s * 6; o.fft[0] += s * 10; o.bk[0] -= s * 6; o.bft[0] -= s * 10; o.fft[1] -= Math.max(0, s) * 4; o.bft[1] -= Math.max(0, -s) * 4; }
+      if (f.st === 'dizzy' || f.st === 'stun') { const w = Math.sin(tk * 7) * 10; o.neck[0] += w * .6; o.head[0] += w; }
+      return o;
+    }
+    function drawFighter(g, f, i) {
+      const tp = targetPose(f, i);
+      if (!disp[i]) disp[i] = tp;
+      const k = Math.min(1, (api.dt || 1 / 60) * 26);
+      for (const j of J) { disp[i][j][0] += (tp[j][0] - disp[i][j][0]) * k; disp[i][j][1] += (tp[j][1] - disp[i][j][1]) * k; }
+      const p = disp[i], dir = face(i), col = i ? C.bot : C.you, dark = i ? C.botDark : C.youDark;
+      const fy = f.flyY || 0, rot = f.st === 'fly' && f.fly ? f.fly.r : 0;
+      g.save(); g.translate(f.x, GY + fy); if (rot) g.rotate(rot); g.scale(dir, 1);
+      // shadow
+      g.fillStyle = 'rgba(0,0,0,.28)'; g.beginPath(); g.ellipse(0, -fy + 2, 30, 7, 0, 0, 7); g.fill();
+      // super charge aura
+      if ((f.st === 'block' && f.holdT >= CHARGE) || (f.st === 'super' && f.t < MOVES.super.st + MOVES.super.act)) {
+        const a = .35 + .25 * Math.sin(tk * 30); g.fillStyle = `rgba(255,214,10,${a})`; g.beginPath(); g.ellipse(0, -60, 44, 70, 0, 0, 7); g.fill();
+      } else if (f.st === 'block' && f.holdT > HOLD) {
+        const c = Math.min(1, (f.holdT - HOLD) / (CHARGE - HOLD)); g.strokeStyle = `rgba(255,214,10,${.25 + c * .5})`; g.lineWidth = 3; g.beginPath(); g.arc(0, -60, 40 + c * 8, -Math.PI / 2, -Math.PI / 2 + c * Math.PI * 2); g.stroke();
+      }
+      const line = (a, b, w, c) => { g.strokeStyle = c; g.lineWidth = w; g.lineCap = 'round'; g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke(); };
+      const limb = (a, b, c) => { line(a, b, 13, '#140a28'); line(b, c, 13, '#140a28'); line(a, b, 9, dark); line(b, c, 9, dark); };
+      // back limbs (darker), body, front limbs
+      limb(p.hip, p.bk, p.bft); limb(p.neck, p.be, p.bf);
+      line(p.hip, p.neck, 22, '#140a28'); line(p.hip, p.neck, 17, col);
+      g.fillStyle = '#140a28'; g.fillRect(p.hip[0] - 11, p.hip[1] - 3, 22, 7); // belt
+      const leg = (a, b, c) => { line(a, b, 13, '#140a28'); line(b, c, 13, '#140a28'); line(a, b, 9, col); line(b, c, 9, col); };
+      leg(p.hip, p.fk, p.fft);
+      line(p.neck, p.fe, 12, '#140a28'); line(p.fe, p.ff, 12, '#140a28'); line(p.neck, p.fe, 8, col); line(p.fe, p.ff, 8, col);
+      // fists
+      for (const q of [p.bf, p.ff]) { g.fillStyle = '#140a28'; g.beginPath(); g.arc(q[0], q[1], 8.5, 0, 7); g.fill(); g.fillStyle = q === p.ff ? '#ffffff' : '#d9d9e6'; g.beginPath(); g.arc(q[0], q[1], 6.5, 0, 7); g.fill(); }
+      // head: masked ninja with eyes
+      const hd = p.head; g.fillStyle = '#140a28'; g.beginPath(); g.arc(hd[0], hd[1], 14, 0, 7); g.fill(); g.fillStyle = col; g.beginPath(); g.arc(hd[0], hd[1], 12, 0, 7); g.fill();
+      g.fillStyle = '#f6d3a8'; g.fillRect(hd[0] - 2, hd[1] - 5, 13, 7);
+      g.fillStyle = '#140a28'; g.fillRect(hd[0] + 4, hd[1] - 3, 3, 3);
+      if (f.st === 'ko' || f.st === 'down' || f.st === 'fly' || f.st === 'dizzy') { g.strokeStyle = '#140a28'; g.lineWidth = 1.6; g.beginPath(); g.moveTo(hd[0] + 3, hd[1] - 4); g.lineTo(hd[0] + 8, hd[1] + 1); g.moveTo(hd[0] + 8, hd[1] - 4); g.lineTo(hd[0] + 3, hd[1] + 1); g.stroke(); }
+      // headband tails
+      const fl = Math.sin(tk * 10 + i) * 3; line([hd[0] - 10, hd[1] - 4], [hd[0] - 24, hd[1] - 2 + fl], 4, C.yellow); line([hd[0] - 10, hd[1] - 2], [hd[0] - 22, hd[1] + 5 + fl], 4, C.yellow);
+      g.restore();
+      // dizzy stars
+      if (f.st === 'dizzy' || f.st === 'stun') for (let s = 0; s < 3; s++) { const a = tk * 4 + s * 2.1; api.emoji('⭐', f.x + Math.cos(a) * 20, GY - 130 + Math.sin(a) * 6, 13); }
+    }
+
+    function drawStage(g) {
+      const sky = g.createLinearGradient(0, 0, 0, GY); sky.addColorStop(0, '#1d0b3f'); sky.addColorStop(.55, '#7b2ff7'); sky.addColorStop(1, '#ff6a3d');
+      g.fillStyle = sky; g.fillRect(0, 0, W, GY);
+      api.circle(270, 150, 46, 'rgba(255,214,10,.85)'); api.circle(270, 150, 60, 'rgba(255,214,10,.15)');
+      // temple silhouette
+      g.fillStyle = 'rgba(29,19,64,.85)';
+      g.beginPath(); g.moveTo(40, GY - 60); g.lineTo(60, GY - 150); g.lineTo(20, GY - 150); g.lineTo(80, GY - 190); g.lineTo(140, GY - 150); g.lineTo(100, GY - 150); g.lineTo(120, GY - 60); g.closePath(); g.fill();
+      g.fillRect(55, GY - 230, 6, 45);
+      g.beginPath(); g.moveTo(0, GY - 40); for (let x = 0; x <= W; x += 30) g.lineTo(x, GY - 40 - ((x * 37) % 23)); g.lineTo(W, GY); g.lineTo(0, GY); g.fill();
+      // lanterns
+      for (const lx of [150, 330]) { g.strokeStyle = 'rgba(29,19,64,.9)'; g.lineWidth = 2; g.beginPath(); g.moveTo(lx, 60); g.lineTo(lx, 96); g.stroke(); api.circle(lx, 104, 9, '#ff3d5a'); api.circle(lx, 104, 13, 'rgba(255,61,90,.2)'); }
+      // floor
+      const fl = g.createLinearGradient(0, GY, 0, H); fl.addColorStop(0, '#5a2d0c'); fl.addColorStop(1, '#1d1340'); g.fillStyle = fl; g.fillRect(0, GY, W, H - GY);
+      g.strokeStyle = 'rgba(255,255,255,.08)'; g.lineWidth = 1; for (let k = -6; k <= 6; k++) { g.beginPath(); g.moveTo(W / 2 + k * 30, GY); g.lineTo(W / 2 + k * 90, H); g.stroke(); }
+    }
+    function drawHud(g) {
+      for (let i = 0; i < 2; i++) {
+        const f = F[i], x0 = i ? W / 2 + 26 : 12, w = W / 2 - 38, col = i ? C.bot : C.you;
+        api.rr(x0, 16, w, 16, 6); g.fillStyle = 'rgba(0,0,0,.45)'; g.fill();
+        const hw = w * Math.max(0, f.hp) / 100; api.rr(i ? x0 + w - hw : x0, 16, Math.max(0, hw), 16, 6); g.fillStyle = f.hp < 30 ? C.red : col; g.fill();
+        api.rr(x0, 35, w, 5, 2); g.fillStyle = 'rgba(0,0,0,.45)'; g.fill();
+        const gw = w * f.guard / 100; api.rr(i ? x0 + w - gw : x0, 35, Math.max(0, gw), 5, 2); g.fillStyle = f.guard < 30 ? C.orange : '#ffffff'; g.fill();
+        api.text(api.name(i ? 'bot' : 'you'), i ? x0 + w : x0, 52, 13, col, i ? 'right' : 'left');
+        for (let r = 0; r < 2; r++) api.circle(i ? x0 + w - 70 - r * 14 : x0 + 70 + r * 14, 52, 5, r < S.w[i] ? C.yellow : 'rgba(255,255,255,.25)');
+      }
+      api.circle(W / 2, 28, 19, 'rgba(0,0,0,.5)', C.yellow, 2); api.text(String(Math.ceil(S.tm)), W / 2, 29, 16, '#fff');
+      // "you" marker over my fighter
+      const mi = idx(api.me), mf = F[mi];
+      if (mf.st !== 'fly') api.text(TR('▼ ТЫ', '▼ YOU'), mf.x, GY - 152 + Math.sin(tk * 5) * 3, 12, mi ? C.bot : C.you);
+    }
+    function drawButton(g) {
+      const mi = idx(api.me), f = F[mi], held = api.isGuest ? localHold : f.hold, ht = api.isGuest ? localHoldT : f.holdT;
+      const cx = W / 2, cy = 490, r = 34 + (held ? -3 : Math.sin(tk * 4) * 1.5);
+      api.circle(cx, cy + 5, 36, 'rgba(0,0,0,.35)');
+      api.circle(cx, cy + (held ? 3 : 0), r, held ? '#ff8a00' : C.red, '#140a28', 4);
+      if (held && ht > HOLD) { const c = Math.min(1, (ht - HOLD) / (CHARGE - HOLD)); g.strokeStyle = c >= 1 ? C.yellow : '#fff'; g.lineWidth = 5; g.beginPath(); g.arc(cx, cy + 3, r + 8, -Math.PI / 2, -Math.PI / 2 + c * Math.PI * 2); g.stroke(); }
+      api.text(held ? (ht >= CHARGE ? TR('ОТПУСТИ!', 'RELEASE!') : ht > HOLD ? TR('БЛОК', 'BLOCK') : '…') : TR('ЖМИ', 'TAP'), cx, cy + (held ? 3 : 0), held && ht >= CHARGE ? 12 : 15, '#fff');
+      api.text(TR('тап — удар', 'tap — punch'), 64, 470, 12, 'rgba(255,255,255,.85)'); api.text(TR('2 тапа — пинок', '2 taps — kick'), 64, 492, 12, 'rgba(255,255,255,.85)');
+      api.text(TR('держи — блок', 'hold — block'), W - 64, 470, 12, 'rgba(255,255,255,.85)'); api.text(TR('держи 1 с — супер', 'hold 1 s — super'), W - 64, 492, 12, C.yellow);
+      api.text(TR('жать можно в любом месте экрана', 'tap anywhere on the screen'), cx, 540, 11, 'rgba(255,255,255,.55)');
+    }
+    function drawBanner(g) {
+      let t = '', col = '#fff', size = 40;
+      if (S.ph === 'intro') { t = S.pt < 1.1 ? TR(`РАУНД ${S.rd}`, `ROUND ${S.rd}`) : TR('БОЙ!', 'FIGHT!'); col = S.pt < 1.1 ? '#fff' : C.yellow; }
+      else if (S.ph === 'ko') { t = TR('НОКАУТ!', 'K.O.!'); col = C.red; size = 46; }
+      else if (S.ph === 'draw') t = TR('НИЧЬЯ', 'DRAW');
+      else if (S.ph === 'finish') { t = TR('ДОБЕЙ!', 'FINISH!'); col = C.red; size = 44 + Math.sin(tk * 10) * 3; }
+      else if (S.ph === 'final' && S.pt > .5) { t = TR('ПОБЕДА!', 'VICTORY!'); col = C.yellow; }
+      if (!t) return;
+      g.save(); g.globalAlpha = .4; g.fillStyle = '#000'; g.fillRect(0, 168, W, 62); g.restore();
+      api.text(String(t), W / 2 + 2, 202, size, '#140a28'); api.text(String(t), W / 2, 199, size, col);
+    }
+
+    return {
+      update(dt) { tk += dt; api.dt = dt; sim(dt); },
+      draw(g) { drawStage(g); for (const i of [0, 1].sort((a, b) => (F[a].st === 'super' ? 1 : 0) - (F[b].st === 'super' ? 1 : 0))) drawFighter(g, F[i], i); drawHud(g); drawBanner(g); drawButton(g); },
+      down(p) { press(idx(p.side || 'you')); },
+      up(p) { release(idx(p.side || 'you')); },
+      local(kind) { if (kind === 'down') { localHold = true; localHoldT = 0; } if (kind === 'up') localHold = false; },
+      snap() {
+        const r = Math.round;
+        return { f: F.map(f => [r(f.x), r(f.hp), r(f.guard), f.st, r(f.t * 100) / 100, f.hold ? r(f.holdT * 100) / 100 : 0, r(f.flyY || 0), f.fly ? r(f.fly.r * 100) / 100 : 0]),
+          ph: S.ph, pt: r(S.pt * 10) / 10, rd: S.rd, w: S.w, tm: r(S.tm * 10) / 10 };
+      },
+      load(s) {
+        tgt = s.f.map(q => q[0]);
+        s.f.forEach((q, i) => { const f = F[i]; if (Math.abs(f.x - q[0]) > 80) f.x = q[0]; f.hp = q[1]; f.guard = q[2]; f.st = q[3]; f.t = q[4]; f.hold = q[5] > 0; f.holdT = q[5]; f.flyY = q[6]; f.fly = q[3] === 'fly' ? { r: q[7], vx: 0, vy: 0 } : null; });
+        S.ph = s.ph; S.pt = s.pt; S.rd = s.rd; S.w = s.w; S.tm = s.tm;
+      },
+      guestUpdate(dt) {
+        tk += dt; api.dt = dt; if (localHold) localHoldT += dt;
+        if (tgt) F.forEach((f, i) => { f.x += (tgt[i] - f.x) * Math.min(1, dt * 14); });
+      },
+    };
+  },
+});
+
+})();
+
 window.Arcade = Arcade;
 })();
 </script>
@@ -15757,7 +16083,7 @@ $('bFind').onclick = () => { lobbyStart(); toast('🔍 ' + tr('Ищем случ
 /* ---------------- translations for the newer UI ---------------- */
 function applyExtrasLang() {
   const set = (id, ru, en) => { const e = $(id); if (e) e.textContent = tr(ru, en); };
-  set('arcTitle', '🕹️ Аркада · 40 игр', '🕹️ Arcade · 40 games'); set('classicTitle', '💞 Классика', '💞 Classics');
+  set('arcTitle', '🕹️ Аркада · 41 игра', '🕹️ Arcade · 41 games'); set('classicTitle', '💞 Классика', '💞 Classics');
   document.querySelectorAll('#modeSeg button').forEach(b => { b.textContent = { duo: tr('💞 Вдвоём', '💞 Together'), hotseat: tr('📱 На одном', '📱 One phone'), bot: tr('🤖 С ботом', '🤖 vs Bot') }[b.dataset.m]; });
   set('lvlLbl', 'Бот:', 'Bot:'); const lv = document.querySelectorAll('#lvl button'); [['лёгкий', 'easy'], ['нормальный', 'normal'], ['сильный', 'strong']].forEach((p, i) => lv[i] && (lv[i].textContent = tr(p[0], p[1])));
   set('maskTitle', '🎭 Маски', '🎭 Masks'); set('maskNote', 'Маска рисуется прямо в видео — друг тоже её видит. Смотри на себя в маленьком окошке сверху.', 'The mask is drawn right into your video — your friend sees it too. Watch yourself in the small window above.');
@@ -15791,7 +16117,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202610121758';
+const APP_VERSION = '202610131608';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
@@ -16749,7 +17075,7 @@ wLabels();
 /* ---------------- games under one button (opens in place) ---------------- */
 function renderGamesBtn() {
   const b = $('bGames'), open = !!S.gamesOpen; $('gamesBox').hidden = !open; b.classList.toggle('open', open);
-  b.innerHTML = ''; b.append(document.createTextNode(tr('🎮 Играть вместе · 46 игр', '🎮 Play together · 46 games')), h('span', { className: 'chev' }, '▾'));
+  b.innerHTML = ''; b.append(document.createTextNode(tr('🎮 Играть вместе · 47 игр', '🎮 Play together · 47 games')), h('span', { className: 'chev' }, '▾'));
 }
 $('bGames').onclick = () => { S.gamesOpen = !S.gamesOpen; save(); renderGamesBtn(); if (S.gamesOpen) setTimeout(() => $('bGames').scrollIntoView({ behavior: 'smooth', block: 'start' }), 60); };
 renderGamesBtn();
@@ -17468,7 +17794,7 @@ function plusLang() {
   set('setClipsL', '🎬 Видео-клипы: иногда записывать смешные моменты по 5 сек', '🎬 Video clips: sometimes record funny 5-second moments');
   chatLaunchers().forEach(b => { b.title = tr('Чат', 'Chat'); });
   $('bInstall2').textContent = '📲 ' + tr('Установить ярлык на рабочий стол', 'Install a desktop shortcut');
-  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 43 · 12.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
+  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 44 · 13.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
 }
 plusLang();
 try { document.documentElement.lang = LANG; } catch (e) {}
