@@ -18153,7 +18153,7 @@ setInterval(() => {
   if (pc && pc.connectionState === 'connected' && online) lastSeen = Math.max(lastSeen, Date.now() - 20000);
   // ICE watchdog: a link stuck in 'new' / 'failed' / 'disconnected' gets fresh ICE credentials and candidates
   if (pc && online) { const cs = pc.connectionState; if (cs === 'connected') pc._bad = 0; else if (pc.signalingState === 'stable' && (pc._bad = (pc._bad || 0) + 1) >= 3) { pc._bad = 0; if (isA()) { try { pc.restartIce(); } catch (e) {} } else send({ t: 'kick' }); } }
-  if (online) { if (Date.now() - lastSent > (dc ? 3000 : 7000)) send({ t: 'ping' }); if (Date.now() - lastSeen > 25000) setOnline(false); }
+  if (online) { if (!$('ph').classList.contains('hidden')) renderVideo(); if (Date.now() - lastSent > (dc ? 3000 : 7000)) send({ t: 'ping' }); if (Date.now() - lastSeen > 25000) setOnline(false); }
   else if (ptPresent) sayHi();
   renderNet();
 }, 3000);
@@ -18204,7 +18204,8 @@ function ensurePC() {
   const p = new RTCPeerConnection({ iceServers: q.get('mq') ? [] : ICE }); pc = p;
   p.onicecandidate = e => { if (pc === p && e.candidate) send({ t: 'sig', c: e.candidate.toJSON() }); };
   p.ontrack = e => { if (pc !== p) return; if (watchTrack(e)) return; remoteStream = e.streams[0] || new MediaStream([e.track]); const v = $('remoteV'); v.srcObject = remoteStream; v.muted = false; v.play().then(() => $('bSound').classList.add('hidden')).catch(() => $('bSound').classList.remove('hidden')); renderVideo(); };
-  p.onnegotiationneeded = async () => { if (pc !== p) return; try { makingOffer = true; await p.setLocalDescription(); send({ t: 'sig', d: p.localDescription.toJSON() }); } catch (e) {} finally { makingOffer = false; } };
+  // the very first offer always comes from player A: two offers at the same moment could loop forever (seen on phones: «connected, but no video/sound»)
+  p.onnegotiationneeded = () => { if (pc !== p) return; if (!isA() && !p.remoteDescription) { send({ t: 'nego' }); return; } negotiate(p); };
   p.onconnectionstatechange = () => { if (pc !== p) return; if (p.connectionState === 'failed') { try { p.restartIce(); } catch (e) {} p.fails = (p.fails || 0) + 1; if (p.fails === 3) toast(tr('Видео не проходит через эту сеть — попробуйте Wi-Fi или другой интернет', 'Video cannot get through this network — try Wi-Fi or another connection'), 5000); } else if (p.connectionState === 'connected') { p.fails = 0; prioAudio(p); } renderNet(); };
   if (localStream) outTracks().forEach(t => p.addTrack(t, localStream));
   watchAddTracks(p);
@@ -18216,7 +18217,12 @@ function ensurePC() {
   } catch (e) {}
   return p;
 }
+async function negotiate(p) { if (pc !== p || p.signalingState !== 'stable' || makingOffer) return; try { makingOffer = true; await p.setLocalDescription(); send({ t: 'sig', d: p.localDescription.toJSON() }); } catch (e) {} finally { makingOffer = false; } }
+// safety net: if offers/answers keep bouncing (more than 16 in 10 s), start the video link from scratch
+let sdpLog = [];
+function sdpStorm() { const n = Date.now(); sdpLog = sdpLog.filter(t => n - t < 10000); sdpLog.push(n); if (sdpLog.length <= 16) return false; sdpLog = []; closePC(); if (isA()) setTimeout(() => { if (online && !pc) ensurePC(); }, 900); return true; }
 async function onSig(m) {
+  if (m.d && sdpStorm()) return;
   const p = ensurePC(), polite = !isA();
   try {
     if (m.d) {
@@ -18290,7 +18296,7 @@ function renderVideo() {
   $('ph').classList.toggle('hidden', !!showRemote); $('remoteV').classList.toggle('live', !!showRemote);
   if (!showRemote) $('bSound').classList.add('hidden');
   $('phE').textContent = ptEmoji();
-  $('phT').textContent = !online ? T.phOffline(ptName()) : T.phNoCam(ptName());
+  $('phT').textContent = !online ? T.phOffline(ptName()) : (!pc || pc.connectionState !== 'connected') ? tr(`${ptName()} в сети! Соединяем видео и звук…`, `${ptName()} is online! Connecting video and sound…`) : T.phNoCam(ptName());
   $('bCam').className = 'ctrl ' + (localStream ? 'act' : 'offc'); $('bCam').textContent = localStream ? '📷' : '🚫';
   $('bMic').className = 'ctrl ' + (S.micOff ? 'offc' : 'act'); $('bMic').textContent = S.micOff ? '🔇' : '🎤';
   $('bFlip').disabled = !localStream; $('bFlip').style.opacity = localStream ? 1 : .5;
@@ -18313,6 +18319,7 @@ function onData(m) {
   if (!m || typeof m !== 'object') return;
   switch (m.t) {
     case 'ping': case 'hi': break;
+    case 'nego': if (isA()) { if (!pc) ensurePC(); else negotiate(pc); } break;
     case 'kick': if (pc && pc.connectionState !== 'connected') { try { pc.restartIce(); } catch (e) {} } break;
     case 'sig': onSig(m); break;
     case 'hello': if (m.lang === 'ru' || m.lang === 'en') Arcade.partnerLang = m.lang; if (!LOB.match) S.friend = true; S.partner = { name: String(m.name || T.friend).slice(0, 16), emoji: String(m.emoji || '🙂').slice(0, 4) }; save(); renderStatus(); renderVideo(); renderGrid(); if (gameId) send({ t: 'open', g: gameId }); else if (Arcade.current() && arcNet) send({ t: 'open', g: 'a' + Arcade.current().n }); watchHello(); break;
@@ -19638,7 +19645,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202610171703';
+const APP_VERSION = '202610171730';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
@@ -21319,7 +21326,7 @@ function plusLang() {
   set('setClipsL', '🎬 Видео-клипы: иногда записывать смешные моменты по 5 сек', '🎬 Video clips: sometimes record funny 5-second moments');
   chatLaunchers().forEach(b => { b.title = tr('Чат', 'Chat'); });
   $('bInstall2').textContent = '📲 ' + tr('Установить ярлык на рабочий стол', 'Install a desktop shortcut');
-  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 46 · 17.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
+  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 47 · 17.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
 }
 plusLang();
 try { document.documentElement.lang = LANG; } catch (e) {}
