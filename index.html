@@ -19638,7 +19638,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202610151245';
+const APP_VERSION = '202610171703';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
@@ -19734,7 +19734,9 @@ function wAC() { try { actx = actx || new (window.AudioContext || window.webkitA
 #wStage{position:absolute;inset:0;overflow:hidden;background:#000;touch-action:manipulation}
 #wLayer{position:absolute;inset:0;transform-origin:50% 50%}
 #wMovie{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
-#wYT,#wYT iframe,#wYT>div{position:absolute;inset:0;width:100%;height:100%;border:0;pointer-events:none}
+#wYT{position:absolute;inset:0;width:100%;height:100%;overflow:hidden;pointer-events:none}
+/* YouTube picks the picture quality from the player's size: the player is laid out 2x bigger and shrunk back, so it streams HD instead of a blurry small-player quality */
+#wYT iframe,#wYT>div{position:absolute;left:0;top:0;width:200%;height:200%;border:0;pointer-events:none;transform:scale(.5);transform-origin:0 0}
 #wfx{position:absolute;pointer-events:none;display:none}
 #wov{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3}
 #wFaces{position:absolute;right:10px;top:calc(54px + env(safe-area-inset-top));display:flex;flex-direction:column;gap:8px;z-index:5;touch-action:none;cursor:grab;transition:opacity .25s}
@@ -20006,7 +20008,7 @@ function renderWatchBox() {
 
 /* ---------------- sources ---------------- */
 function mv() { return $('wMovie'); }
-function resetMovieEl() { const v = mv(); try { v.pause(); } catch (e) {} v.srcObject = null; v.removeAttribute('src'); v.removeAttribute('crossorigin'); try { v.load(); } catch (e) {} }
+function resetMovieEl() { W.fxK = 0; const v = mv(); try { v.pause(); } catch (e) {} v.srcObject = null; v.removeAttribute('src'); v.removeAttribute('crossorigin'); try { v.load(); } catch (e) {} }
 function stopSource(silent) {
   const had = !!W.kind;
   if (W.owner && W.stream) {
@@ -20107,7 +20109,7 @@ function loadYT(id, t, p) {
   ytLoad().then(() => {
     if (W.kind !== 'yt' || W.ytId !== id) return;
     const d = h('div'); $('wYT').append(d);
-    W.yt = new YT.Player(d, { videoId: id, width: '100%', height: '100%', playerVars: { playsinline: 1, controls: 0, rel: 0, modestbranding: 1, disablekb: 1, fs: 0, iv_load_policy: 3, start: Math.floor(t || 0) },
+    W.yt = new YT.Player(d, { videoId: id, width: '100%', height: '100%', playerVars: { playsinline: 1, vq: 'hd1080', controls: 0, rel: 0, modestbranding: 1, disablekb: 1, fs: 0, iv_load_policy: 3, start: Math.floor(t || 0) },
       events: { onReady: () => { applyVol(); if (t) W.yt.seekTo(t, true); if (p) { W.yt.playVideo(); checkPlaying(); } try { const dt = W.yt.getVideoData(); if (dt && dt.title) { W.title = dt.title; wLabels(); } } catch (e) {} }, onStateChange: () => { wRenderBar(); micApply(); } } });
   }).catch(() => toast(tr('YouTube не загрузился 😢', 'YouTube failed to load 😢')));
 }
@@ -20306,7 +20308,9 @@ function readable() { if (W.kind === 'screen' || W.kind === 'file') return true;
 // performance: weaker devices (or a slow frame rate) switch to a lighter mode automatically
 const WP = { ema: 16, slowT: 0, low: false };
 function wLow() { return S.wLite === true || (S.wLite !== false && WP.low); }
-function wFxW() { return wLow() ? 540 : 720; } // movie effects canvas width
+// movie effects canvas width: as sharp as the movie looks on this screen (it is drawn OVER the video while effects run)
+function fxK(v) { return W.fxK || Math.min(1, wFxW(movieRect()) / v.videoWidth); }
+function wFxW(r) { const dpr = Math.min(3, devicePixelRatio || 1), want = Math.ceil(((r && r.w) || 720) * dpr); return Math.max(480, Math.min(want, wLow() ? 1280 : 1920)); }
 (function initLow() { const cores = navigator.hardwareConcurrency || 4, mem = navigator.deviceMemory || 4; WP.low = cores <= 4 || mem <= 3 || /Android|iPhone|iPad/i.test(navigator.userAgent); })();
 function wLoop(now) {
   if (!W.open) return; W.raf = requestAnimationFrame(wLoop);
@@ -20329,10 +20333,10 @@ function wLoop(now) {
   const fx = $('wfx'), v = mv();
   if (W.movieFns.size && readable() && v.videoWidth && v.readyState >= 2) {
     if (skip && fx.style.display === 'block') return;
-    const r = movieRect(), k = Math.min(1, wFxW() / v.videoWidth), cw = Math.round(v.videoWidth * k), ch = Math.round(v.videoHeight * k);
+    const r = movieRect(), k = W.fxK = Math.min(1, wFxW(r) / v.videoWidth), cw = Math.round(v.videoWidth * k), ch = Math.round(v.videoHeight * k);
     if (fx.width !== cw || fx.height !== ch) { fx.width = cw; fx.height = ch; W.faces = []; }
     Object.assign(fx.style, { display: 'block', left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px' });
-    const c = fx.getContext('2d', { willReadFrequently: true }); c.setTransform(1, 0, 0, 1, 0, 0);
+    const c = fx.getContext('2d'); c.setTransform(1, 0, 0, 1, 0, 0); c.imageSmoothingQuality = 'high';
     try { c.drawImage(v, 0, 0, cw, ch); } catch (e) { W.unreadable = true; }
     wSmoothFaces();
     const mdt = low ? Math.min(.1, dt * 2) : dt;
@@ -20353,7 +20357,7 @@ async function wFaceLoop() {
         const dc2 = W.detC || (W.detC = document.createElement('canvas')); if (dc2.width !== dw || dc2.height !== dh) { dc2.width = dw; dc2.height = dh; }
         dc2.getContext('2d').drawImage(v, 0, 0, dw, dh);
         const r = await faceapi.detectAllFaces(dc2, opts).withFaceLandmarks(true);
-        const k = Math.min(1, wFxW() / v.videoWidth) * v.videoWidth / dw, now = performance.now();
+        const k = fxK(v) * v.videoWidth / dw, now = performance.now();
         const found = r.slice(0, 6).map(d => { const b = d.detection.box; return { box: [b.x * k, b.y * k, b.width * k, b.height * k], tgt: d.landmarks.positions.map(p => [p.x * k, p.y * k]) }; });
         const old = W.faces.slice(), next = [];
         found.forEach(n => { const cx = n.box[0] + n.box[2] / 2, cy = n.box[1] + n.box[3] / 2; let best = null, bd = 1e9; old.forEach(o => { const d = Math.hypot(o.box[0] + o.box[2] / 2 - cx, o.box[1] + o.box[3] / 2 - cy); if (d < bd) { bd = d; best = o; } }); if (best && bd < Math.max(n.box[2], best.box[2]) * .9) { old.splice(old.indexOf(best), 1); best.box = n.box; best.tgt = n.tgt; best.seen = now; next.push(best); } else next.push({ id: W.nextFid++, box: n.box, tgt: n.tgt, lm: null, g: null, seen: now }); });
@@ -20570,7 +20574,7 @@ const WAPI = {
   isOpen: () => W.open, kind: () => W.kind, owner: () => W.owner, online: () => online || !!W.viewer, title: () => W.title,
   me: () => ({ name: S.me.name, emoji: S.me.emoji }), partner: () => ({ name: ptName(), emoji: ptEmoji() }), isA: () => !online || isA(),
   stage: () => $('wStage'), layer: () => $('wLayer'), overlay: () => $('wov'), movie: () => (W.kind && W.kind !== 'yt') ? mv() : null, ytIframe: () => $('wYT').querySelector('iframe'),
-  readable, movieRect, toMovieN, fromMovieN, movieSize: () => { const v = mv(); if (v.videoWidth) { const k = Math.min(1, wFxW() / v.videoWidth); return [Math.round(v.videoWidth * k), Math.round(v.videoHeight * k)]; } const c = $('wfx'); return c.width ? [c.width, c.height] : movieSize(); },
+  readable, movieRect, toMovieN, fromMovieN, movieSize: () => { const v = mv(); if (v.videoWidth) { const k = fxK(v); return [Math.round(v.videoWidth * k), Math.round(v.videoHeight * k)]; } const c = $('wfx'); return c.width ? [c.width, c.height] : movieSize(); },
   fx(k, d) { d = d || {}; emit(k, d, true); wsend({ t: 'w', a: 'fx', k, d }); },
   on(k, fn) { (W.handlers[k] = W.handlers[k] || []).push(fn); return () => { W.handlers[k] = W.handlers[k].filter(f => f !== fn); }; },
   tool(def) { W.tools.push(def); if (W.open) wRenderTools(); return () => { W.tools = W.tools.filter(t => t !== def); wRenderTools(); }; },
@@ -21315,7 +21319,7 @@ function plusLang() {
   set('setClipsL', '🎬 Видео-клипы: иногда записывать смешные моменты по 5 сек', '🎬 Video clips: sometimes record funny 5-second moments');
   chatLaunchers().forEach(b => { b.title = tr('Чат', 'Chat'); });
   $('bInstall2').textContent = '📲 ' + tr('Установить ярлык на рабочий стол', 'Install a desktop shortcut');
-  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 45 · 15.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
+  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 46 · 17.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
 }
 plusLang();
 try { document.documentElement.lang = LANG; } catch (e) {}
