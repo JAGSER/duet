@@ -19645,7 +19645,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202610171730';
+const APP_VERSION = '202610182209';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
@@ -21326,7 +21326,7 @@ function plusLang() {
   set('setClipsL', '🎬 Видео-клипы: иногда записывать смешные моменты по 5 сек', '🎬 Video clips: sometimes record funny 5-second moments');
   chatLaunchers().forEach(b => { b.title = tr('Чат', 'Chat'); });
   $('bInstall2').textContent = '📲 ' + tr('Установить ярлык на рабочий стол', 'Install a desktop shortcut');
-  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 47 · 17.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
+  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 48 · 18.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
 }
 plusLang();
 try { document.documentElement.lang = LANG; } catch (e) {}
@@ -21565,6 +21565,56 @@ renderWatchBox = wrapFn('renderWatchBox', () => {
   const who = S.partner ? ptName() : tr('друга', 'your friend');
   card.prepend(h('button', { className: 'btn y w invwatch', on: { click: () => shareGameInvite('w') } }, S.pending === 'w' ? '⏳ ' + tr('Ждём партнёра — позвать ещё раз', `Waiting for ${who} — invite again`) : '💌 ' + tr('Позвать смотреть вместе', `Invite ${who} to watch together`)));
 });
+
+/* ================= trailer on the first screen (before you enter your name) =================
+   A small poster card; a tap opens the 74-second trailer full screen with sound (RU / EN by app language).
+   The video files sit next to index.html (trailer-ru.mp4, trailer-en.mp4, trailer.jpg) and load only on tap. */
+(function () {
+  const css = `
+.trl{display:flex;align-items:center;gap:14px;width:100%;margin:0 0 16px;padding:10px;border:0;border-radius:22px;background:rgba(255,255,255,.18);color:#fff;font:inherit;text-align:left;cursor:pointer;box-shadow:0 6px 0 rgba(0,0,0,.12)}
+.trl:active{transform:translateY(2px)}
+.trl .pv{position:relative;flex:none;width:74px;height:132px;border-radius:14px;overflow:hidden;background:#1d1340 center/cover no-repeat;box-shadow:0 4px 14px rgba(0,0,0,.3)}
+.trl .pv::after{content:"▶";position:absolute;left:50%;top:50%;width:36px;height:36px;margin:-18px 0 0 -18px;border-radius:50%;background:rgba(255,255,255,.92);color:#f107a3;font-size:16px;line-height:36px;text-align:center;padding-left:3px;box-sizing:border-box;animation:trlp 1.6s ease-in-out infinite}
+@keyframes trlp{50%{transform:scale(1.12)}}
+.trl b{display:block;font-size:19px;line-height:1.2}
+.trl small{display:block;margin-top:6px;font-size:14px;font-weight:700;opacity:.9;line-height:1.35}
+.trl .dur{display:inline-block;margin-top:8px;background:#ffd60a;color:#1d1340;border-radius:10px;padding:3px 9px;font-size:13px}
+.trlov{position:fixed;inset:0;z-index:80;background:#000;display:flex;align-items:center;justify-content:center}
+.trlov video{width:100%;height:100%;object-fit:contain;background:#000}
+.trlov .x{position:absolute;top:calc(env(safe-area-inset-top) + 12px);right:12px;width:46px;height:46px;border:0;border-radius:50%;background:rgba(255,255,255,.2);color:#fff;font-size:22px;cursor:pointer;z-index:2}
+.trlov .go{position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom) + 28px);transform:translateX(-50%);z-index:2;white-space:nowrap}
+`;
+  document.head.append(h('style', {}, css));
+})();
+const trlSrc = () => (LANG === 'ru' ? 'trailer-ru.mp4' : 'trailer-en.mp4');
+function trlCard() {
+  return h('button', { className: 'trl', type: 'button', on: { click: trlOpen } },
+    h('span', { className: 'pv', style: "background-image:url('trailer.jpg')" }),
+    h('span', {}, h('b', {}, tr('Посмотри, как это работает', 'See how it works')),
+      h('small', {}, tr('Видеосвязь, игры вдвоём и кино вместе — за минуту', 'Video chat, games for two and movie nights — in a minute')),
+      h('span', { className: 'dur' }, '▶ ' + tr('Трейлер · 1:14', 'Trailer · 1:14'))));
+}
+function trlOpen() {
+  const v = h('video', { src: trlSrc(), poster: 'trailer.jpg', controls: true, autoplay: true, playsInline: true, preload: 'auto' });
+  v.setAttribute('playsinline', '');
+  const close = () => { try { v.pause(); } catch (e) {} ov.remove(); };
+  const go = h('button', { className: 'btn y go hidden', on: { click: () => { close(); const n = $('inName'); if (n) n.focus(); } } }, tr('Попробовать вдвоём →', 'Try it together →'));
+  const ov = h('div', { className: 'trlov' }, v, h('button', { className: 'x', on: { click: close } }, '✕'), go);
+  v.addEventListener('ended', () => go.classList.remove('hidden'));
+  document.body.append(ov);
+  v.play().catch(() => {});
+  try { track('trailer', { lang: LANG }); } catch (e) {}
+}
+function trlPlace() {
+  const scr = $('scrSetup'); if (!scr) return;
+  const old = scr.querySelector('.trl'); if (old) old.remove();
+  const card = scr.querySelector('.card'); if (!card) return;
+  const c = trlCard();
+  if (scr.querySelector('.invhero')) (scr.querySelector('.invnote') || card).after(c); // an invite already shows its game: the trailer goes below
+  else card.before(c);
+}
+setupScreen = wrapFn('setupScreen', () => trlPlace());
+applyStatic = wrapFn('applyStatic', () => { if (!started && $('scrSetup') && !$('scrSetup').classList.contains('hidden')) trlPlace(); });
 
 /* Soundboard samples (mp3). Rendered with the FluidR3 GM soundfont (MIT, Frank Wen) and taken from OpenRCT2 OpenSoundEffects (CC BY 4.0). */
 window.DUET_SFX = {
