@@ -5559,6 +5559,20 @@ function applySensPacket(m) {
    Network play: one session ('bot' | 'host' | 'guest').
    Same-phone play (hotseat): two sessions on one screen — the bottom one is the host, the top one (rotated 180° by CSS)
    is a local guest; they talk through an in-memory pipe exactly like over the network. */
+
+/* ---------- extended graphics: per-game sprite atlases (flat 2D, generated) ----------
+   Atlas files: <Arcade.sprBase>a<n>.webp + a<n>.json  {"name":[x,y,w,h], ...}. Loaded lazily when a game starts.
+   api.spr(name, x, y, w, h?, rot?, alpha?) draws the sprite CENTERED at x,y (h omitted -> keeps aspect) and returns
+   true; returns false when extended graphics are off or the sprite is missing -> the game draws its classic shapes.
+   Sprite names use colour words 'cyan' (host side 'you') / 'pink' ('bot'); on the guest the engine swaps them,
+   exactly like api.C does.  api.hd -> true when the atlas is ready (check once per frame for whole-scene swaps). */
+const SPR = { on: store.get('hd', true), atl: {} };
+function sprLoad(n) {
+  if (!SPR.on || SPR.atl[n]) return SPR.atl[n];
+  const base = Arcade.sprBase || 'sprites/', A = SPR.atl[n] = { ok: false, img: new Image(), map: null };
+  fetch(base + 'a' + n + '.json').then(r => r.ok ? r.json() : null).then(m => { if (!m) return; A.map = m; A.img.onload = () => { A.ok = true; }; A.img.src = base + 'a' + n + '.webp'; }).catch(() => {});
+  return A;
+}
 let g = null;                       // the context being drawn right now (api helpers and legacy code use it)
 let cur = null, LEVEL_ = null, PARTNER = 'Друг', MYNAME = 'Друг', HOTSEAT = false;
 const DEAD = { tilt: { x: 0, y: 0, ok: false }, motion: { ok: false, shake: 0, ax: 0, ay: 0, az: 0, spin: 0, jolt: 0 }, mic: { ok: false, level: 0 }, cam: { ok: false, motion: 0, left: 0, right: 0, bright: .5, grid: new Array(48).fill(0) } };
@@ -5567,6 +5581,7 @@ const Arcade = {
   send: null,            // shell sets: msg => deliver to partner
   onClose: null,         // shell hook: user left the game view (local action)
   lang: LANG_A,
+  get hd() { return SPR.on; }, set hd(v) { SPR.on = !!v; store.set('hd', SPR.on); },
 };
 // texts for the partner are worded in the PARTNER's language (Arcade.partnerLang, set by the shell)
 const evalText = (t, side, forPartner) => { if (t && typeof t === 'object' && t.ru != null) return String(forPartner && Arcade.partnerLang ? t[Arcade.partnerLang] : t); if (typeof t !== 'function') return t == null ? '' : String(t); const keep = LANG_A; if (forPartner && Arcade.partnerLang) LANG_A = Arcade.partnerLang; try { const r = t(side); return r == null ? '' : String(r); } finally { LANG_A = keep; } };
@@ -5579,7 +5594,7 @@ function Session(sfx) {
   const me = () => S.MODE === 'guest' ? 'bot' : 'you';
   const netSend = m => { if (S.send && S.MODE !== 'bot') { try { S.send(m); } catch (e) {} } };
   const moment = (kind, extra) => { if (!S.primary) return; try { Arcade.onMoment && cur && Arcade.onMoment(kind, Object.assign({ title: cur.title, n: cur.n, coop: !!(cur.coop || cur.mode === 'вместе'), hotseat: HOTSEAT, mode: S.MODE }, extra || {})); } catch (e) {} };
-  const sfxPlay = n => { if (!S.quiet) SFX[n] && SFX[n](); };
+  const sfxPlay = n => { if (S.quiet) return; try { if (Arcade.sample && Arcade.sample(n, cur && cur.n)) return; } catch (e) {} SFX[n] && SFX[n](); };
   const vib = ms => { if (S.quiet) return; try { if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return; navigator.vibrate && navigator.vibrate(ms); } catch (e) {} };
   S.fit = () => {
     const box = E('stageBox').getBoundingClientRect(); const s = Math.min(box.width / W, box.height / H); if (!(s > 0)) return;
@@ -5642,6 +5657,16 @@ function Session(sfx) {
       },
       emoji: (s, x, y, size = 32, rot = 0) => { g.save(); g.fillStyle = '#000'; g.translate(x, y); if (HOTSEAT) g.rotate(faceRot()); else if (S.flip) g.rotate(Math.PI); if (rot) g.rotate(rot); g.font = `${size}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(s, 0, size * .06); g.restore(); },
       field: (c1 = C0.field, c2 = C0.field2, line = true) => { const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, c1); gr.addColorStop(.5, c2); gr.addColorStop(1, c1); g.fillStyle = gr; g.fillRect(0, 0, W, H); if (line) { g.strokeStyle = 'rgba(255,255,255,.15)'; g.lineWidth = 3; g.setLineDash([10, 10]); g.beginPath(); g.moveTo(0, H / 2); g.lineTo(W, H / 2); g.stroke(); g.setLineDash([]); } },
+      hd: false,
+      spr: (name, x, y, w, h, rot = 0, alpha = 1) => {
+        const A = SPR.on && cur && SPR.atl[cur.n]; if (!A || !A.ok) return false;
+        if (MODE === 'guest') name = name.replace(/cyan|pink/g, c => c === 'cyan' ? 'pink' : 'cyan');
+        const r = A.map[name]; if (!r) return false;
+        if (h == null) h = w * r[3] / r[2];
+        g.save(); g.translate(x, y); if (rot) g.rotate(rot); if (alpha !== 1) g.globalAlpha *= alpha;
+        g.drawImage(A.img, r[0], r[1], r[2], r[3], -w / 2, -h / 2, w, h); g.restore(); return true;
+      },
+      has: name => { const A = SPR.on && cur && SPR.atl[cur.n]; return !!(A && A.ok && A.map[MODE === 'guest' ? name.replace(/cyan|pink/g, c => c === 'cyan' ? 'pink' : 'cyan') : name]); },
       _timers: timers,
     };
     return a;
@@ -5672,7 +5697,7 @@ function Session(sfx) {
     clearTimeout(S.swapT);
     S.flip = HOTSEAT ? (!!cur.flip && Math.random() < .5) : (S.MODE === 'guest' && !!cur.flip);
     $a('info2') && ($a('info2').textContent = '');
-    S.api = makeApi(); S.showScore();
+    sprLoad(cur.n); S.api = makeApi(); S.showScore();
     g = S.ctx;
     try { S.game = cur.make(S.api); } catch (e) { console.error(e); S.game = null; S.showError(e); return; }
     S.running = true; S.last = performance.now(); S.lastSnap = 0; moment('start');
@@ -5732,7 +5757,7 @@ function Session(sfx) {
     if (S.running && S.game) {
       if (S.MODE === 'guest') { try { S.game.guestUpdate && S.game.guestUpdate(dt); } catch (e) { console.error(e); } }
       else {
-        S.api.time += dt;
+        S.api.time += dt; { const A = SPR.atl[cur.n]; S.api.hd = !!(SPR.on && A && A.ok); }
         const ts = S.api._timers; for (let i = ts.length - 1; i >= 0; i--) if (S.api.time >= ts[i].t) { const t = ts.splice(i, 1)[0]; try { t.fn(); } catch (e) { console.error(e); } }
         try { S.game.update && S.running && S.game.update(dt); } catch (e) { console.error(e); S.running = false; S.showError(e); }
         if (S.MODE === 'host' && S.running && now - S.lastSnap > (HOTSEAT ? 16 : (cur.snapMs || Arcade.snapMs || 50))) { S.lastSnap = now; S.sendSnap(); }
@@ -6006,14 +6031,18 @@ registerGame({
         trail.forEach((t, i) => { g.globalAlpha = i / trail.length * .35; api.circle(t.x, t.y, PR * (i / trail.length), C.yellow); });
         g.globalAlpha = 1;
         g.fillStyle = 'rgba(0,0,0,.3)'; g.beginPath(); g.arc(puck.x + 3, puck.y + 4, PR, 0, 6.283); g.fill();
-        api.circle(puck.x, puck.y, PR, '#1d1340', C.yellow, 4);
-        api.circle(puck.x, puck.y, PR * .45, C.yellow);
-        // mallets
-        for (const s of sides) {
-          g.fillStyle = 'rgba(0,0,0,.3)'; g.beginPath(); g.arc(s.x + 3, s.y + 5, MR, 0, 6.283); g.fill();
-          api.circle(s.x, s.y, MR, s.dark); api.circle(s.x, s.y, MR - 5, s.color);
-          api.circle(s.x, s.y, MR * .42, s.dark, 'rgba(255,255,255,.7)', 3);
+        if (!api.spr('puck', puck.x, puck.y, PR * 2.2)) {
+          api.circle(puck.x, puck.y, PR, '#1d1340', C.yellow, 4);
+          api.circle(puck.x, puck.y, PR * .45, C.yellow);
         }
+        // mallets
+        sides.forEach((s, i) => {
+          g.fillStyle = 'rgba(0,0,0,.3)'; g.beginPath(); g.arc(s.x + 3, s.y + 5, MR, 0, 6.283); g.fill();
+          if (!api.spr(i ? 'pink_mallet' : 'cyan_mallet', s.x, s.y, MR * 2.2)) {
+            api.circle(s.x, s.y, MR, s.dark); api.circle(s.x, s.y, MR - 5, s.color);
+            api.circle(s.x, s.y, MR * .42, s.dark, 'rgba(255,255,255,.7)', 3);
+          }
+        });
         if (puck.wait > 0 && puck.wait < 9) api.text(TR('Готов?', 'Ready?'), W / 2, puck.y + (puck.y > H / 2 ? 40 : -40), 18, 'rgba(255,255,255,.8)');
         if (hint > 0) { g.globalAlpha = Math.min(1, hint); api.text(TR('👆 Тяни биту по своей половине', '👆 Drag your mallet in your half'), W / 2, api.me === 'you' ? H - 150 : 150, 16, '#fff'); g.globalAlpha = 1; }
       },
@@ -6092,9 +6121,9 @@ registerGame({
         api.field();
         trail.forEach((t, i) => { g.globalAlpha = i / trail.length * .4; api.circle(t.x, t.y, ball.r * (i / trail.length), C.yellow); });
         g.globalAlpha = 1;
-        api.rr(me.x - PW / 2, me.y - PH / 2, PW, PH, 7); g.fillStyle = C.you; g.fill();
-        api.rr(bot.x - PW / 2, bot.y - PH / 2, PW, PH, 7); g.fillStyle = C.bot; g.fill();
-        api.circle(ball.x, ball.y, ball.r, C.yellow);
+        if (!api.spr('cyan_paddle', me.x, me.y, PH * 1.4, PW * 1.04, Math.PI / 2)) { api.rr(me.x - PW / 2, me.y - PH / 2, PW, PH, 7); g.fillStyle = C.you; g.fill(); }
+        if (!api.spr('pink_paddle', bot.x, bot.y, PH * 1.4, PW * 1.04, Math.PI / 2)) { api.rr(bot.x - PW / 2, bot.y - PH / 2, PW, PH, 7); g.fillStyle = C.bot; g.fill(); }
+        if (!api.spr('ball', ball.x, ball.y, ball.r * 2.6)) api.circle(ball.x, ball.y, ball.r, C.yellow);
         if (ball.wait > 0) api.text(TR('Готов?', 'Ready?'), W / 2, H / 2 + 40, 20, 'rgba(255,255,255,.7)');
       },
       down(p) { this.move(p); },
@@ -6284,6 +6313,11 @@ registerGame({
         g.globalAlpha = 1;
         for (const w of walls) {
           g.fillStyle = 'rgba(0,0,0,.25)'; api.rr(w.x + 3, w.y + 4, w.w, w.h, 5); g.fill();
+          if (api.hd && api.has('brick')) {
+            const sz = Math.min(w.w, w.h), nx = Math.max(1, Math.round(w.w / sz)), ny = Math.max(1, Math.round(w.h / sz)), tw = w.w / nx, th = w.h / ny;
+            for (let a = 0; a < nx; a++) for (let b = 0; b < ny; b++) api.spr('brick', w.x + tw * (a + .5), w.y + th * (b + .5), tw, th);
+            continue;
+          }
           g.fillStyle = '#c97b3a'; api.rr(w.x, w.y, w.w, w.h, 5); g.fill();
           g.strokeStyle = '#8a4b1c'; g.lineWidth = 2; g.stroke();
           g.strokeStyle = 'rgba(138,75,28,.5)'; g.beginPath();
@@ -6294,9 +6328,16 @@ registerGame({
           const col = i ? C.bot : C.you; g.globalAlpha = .6; g.strokeStyle = col; g.lineWidth = 2; g.setLineDash([5, 6]); g.beginPath(); g.moveTo(t.x, t.y); g.lineTo(d.x, d.y); g.stroke(); g.setLineDash([]); api.circle(d.x, d.y, 10, null, col, 2); g.globalAlpha = 1;
         });
         tanks.forEach((t, i) => {
-          if (t.hp <= 0) { api.emoji('💥', t.x, t.y, 40); return; }
+          if (t.hp <= 0) { if (!api.spr('boom', t.x, t.y, 52)) api.emoji('💥', t.x, t.y, 40); return; }
           g.save(); g.translate(t.x, t.y);
           g.fillStyle = 'rgba(0,0,0,.3)'; g.beginPath(); g.arc(3, 4, RAD + 2, 0, 6.283); g.fill();
+          const pre = i ? 'pink_' : 'cyan_', fa = t.flash > 0 ? .45 : 1;
+          if (api.spr(pre + 'tank', -Math.cos(t.a) * 2.5, -Math.sin(t.a) * 2.5, RAD * 2, null, t.a + Math.PI / 2, fa)) { // hull sprite faces up
+            // turret sprite: barrel points down in the image; its round head sits ~0.18*h above the image centre
+            const TW = 21, TH = TW * 499 / 350, off = TH * .18;
+            api.spr(pre + 'turret', Math.cos(t.ta) * off, Math.sin(t.ta) * off, TW, TH, t.ta - Math.PI / 2, fa);
+            g.restore();
+          } else {
           g.rotate(t.a);
           g.fillStyle = '#222'; g.fillRect(-RAD, -RAD, RAD * 2, 7); g.fillRect(-RAD, RAD - 7, RAD * 2, 7);
           g.fillStyle = t.flash > 0 ? '#fff' : t.color; api.rr(-RAD + 2, -RAD + 5, RAD * 2 - 4, RAD * 2 - 10, 5); g.fill();
@@ -6304,9 +6345,13 @@ registerGame({
           g.fillStyle = t.dark; g.fillRect(0, -3.5, RAD + 9, 7);
           api.circle(0, 0, 8, t.dark, '#fff', 2);
           g.restore();
+          }
           for (let h = 0; h < ROUND_HITS; h++) api.circle(t.x - 12 + h * 12, t.y + (i ? -RAD - 10 : RAD + 10), 4, h < t.hp ? (i ? C.bot : C.you) : 'rgba(0,0,0,.35)', '#fff', 1.5);
         });
-        for (const b of bullets) { api.circle(b.x, b.y, 4.5, '#fff', b.side ? C.bot : C.you, 2.5); }
+        for (const b of bullets) {
+          if (api.hd && api.has('shell')) { g.globalAlpha = .55; api.circle(b.x, b.y, 6, b.side ? C.bot : C.you); g.globalAlpha = 1; if (api.spr('shell', b.x, b.y, 6.5, 14, Math.atan2(b.vy, b.vx) + Math.PI / 2)) continue; }
+          api.circle(b.x, b.y, 4.5, '#fff', b.side ? C.bot : C.you, 2.5);
+        }
         if (hint > 0) {
           g.globalAlpha = Math.min(1, hint); g.fillStyle = 'rgba(0,0,0,.45)'; api.rr(40, api.me === 'you' ? H / 2 + 50 : H / 2 - 106, W - 80, 56, 14); g.fill();
           api.text(TR('✋ держи палец — едешь', '✋ hold to drive'), W / 2, SY(H / 2 + 67), 15, '#fff'); api.text(TR('👆 тап — выстрел', '👆 tap to fire'), W / 2, SY(H / 2 + 89), 15, C.yellow); g.globalAlpha = 1;
@@ -6476,10 +6521,13 @@ registerGame({
           if (s.alive) g.lineTo(hx, hy);
           g.stroke(); g.shadowBlur = 0;
           g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 2; g.stroke();
-          if (s.alive) { api.circle(hx, hy, 7, '#fff', s.color, 3); }
+          if (s.alive) {
+            const i = snakes.indexOf(s), dx = DIRS[s.d][0], dy = DIRS[s.d][1]; // head sprite faces down (tongue at the bottom)
+            if (!api.spr(i ? 'pink_head' : 'cyan_head', hx + dx * 2, hy + dy * 2, 19, null, Math.atan2(dy, dx) - Math.PI / 2)) api.circle(hx, hy, 7, '#fff', s.color, 3);
+          }
         });
         g.lineCap = 'butt';
-        crash.forEach(c => api.emoji('💥', c.x, c.y, 34));
+        crash.forEach(c => { if (!api.spr('boom', c.x, c.y, 46)) api.emoji('💥', c.x, c.y, 34); });
         if (state === 'ready') {
           const me = snakes[MI], SY = v => MI ? H - v : v;
           api.text(wait > .5 ? TR('Приготовься…', 'Get ready…') : TR('Старт!', 'Go!'), W / 2, H / 2, 30, C.yellow);
@@ -6719,14 +6767,17 @@ registerGame({
           const col = b.side === 'you' ? C.you : C.bot, dk = b.side === 'you' ? C.youDark : C.botDark;
           api.circle(b.x + 2, b.y + 4, b.r, 'rgba(0,0,0,.25)');
           if (S.phase === 'aim' && S.turn === me && b.side === me && !S.aim) api.circle(b.x, b.y, b.r + 5 + pulse * 4, null, 'rgba(255,255,255,' + (.35 + pulse * .4) + ')', 3);
+          if (api.spr(b.side === 'you' ? 'cyan_disc' : 'pink_disc', b.x, b.y, b.r * 2 * 1.06)) continue;
           const gr = g.createRadialGradient(b.x - 6, b.y - 6, 2, b.x, b.y, b.r); gr.addColorStop(0, '#fff'); gr.addColorStop(.35, col); gr.addColorStop(1, dk);
           api.circle(b.x, b.y, b.r, gr, '#fff', 2.5);
           api.circle(b.x, b.y, b.r * .45, null, 'rgba(255,255,255,.6)', 2);
         }
         const ball = ballOf(S.bodies);
         api.circle(ball.x + 2, ball.y + 3, BR, 'rgba(0,0,0,.25)');
-        api.circle(ball.x, ball.y, BR, '#fff');
-        api.emoji('⚽', ball.x, ball.y, BR * 2.2, S.spin);
+        if (!api.spr('ball', ball.x, ball.y, BR * 2 * 1.05, null, S.spin)) {
+          api.circle(ball.x, ball.y, BR, '#fff');
+          api.emoji('⚽', ball.x, ball.y, BR * 2.2, S.spin);
+        }
         const A = api.isGuest && ldrag ? ldrag.aim : S.aim;
         if (A && S.bodies[A.i]) { const d = S.bodies[A.i]; if (A.bot) api.circle(d.x, d.y, d.r + 6, null, C.yellow, 3); drawAim(g, d, A.vx, A.vy, A.s === 'you' ? C.you : C.bot, A.fx, A.fy); }
         const M = S.msg;
@@ -6946,6 +6997,7 @@ registerGame({
 
     function drawBall(b) {
       api.circle(b.x + 1.5, b.y + 2.5, BR, 'rgba(0,0,0,.3)');
+      if (api.spr(b.side === 'cue' ? 'cue_ball' : b.side === 'you' ? 'cyan_ball' : 'pink_ball', b.x, b.y, BR * 2.1)) return;
       if (b.side === 'cue') api.circle(b.x, b.y, BR, '#fdfdf5');
       else if (b.side === 'you') { api.circle(b.x, b.y, BR, C.you); api.circle(b.x, b.y, BR, null, C.youDark, 1.5); }
       else { api.circle(b.x, b.y, BR, '#fff'); g0.save(); g0.beginPath(); g0.arc(b.x, b.y, BR, 0, 7); g0.clip(); g0.fillStyle = C.bot; g0.fillRect(b.x - BR, b.y - BR * .5, BR * 2, BR); g0.restore(); }
@@ -6970,9 +7022,11 @@ registerGame({
       const ex = c.x + ux * hit.t, ey = c.y + uy * hit.t;
       // cue stick, pulled back by power
       const back = 14 + pw * 45;
+      if (!api.spr('cue', c.x - ux * (back + 85), c.y - uy * (back + 85), 170, null, Math.atan2(uy, ux))) {
       g.lineCap = 'round'; g.strokeStyle = '#7a4a1f'; g.lineWidth = 7; g.beginPath(); g.moveTo(c.x - ux * back, c.y - uy * back); g.lineTo(c.x - ux * (back + 170), c.y - uy * (back + 170)); g.stroke();
       g.strokeStyle = '#f2d39b'; g.lineWidth = 5; g.beginPath(); g.moveTo(c.x - ux * back, c.y - uy * back); g.lineTo(c.x - ux * (back + 60), c.y - uy * (back + 60)); g.stroke();
       g.strokeStyle = color; g.lineWidth = 6; g.beginPath(); g.moveTo(c.x - ux * back, c.y - uy * back); g.lineTo(c.x - ux * (back + 5), c.y - uy * (back + 5)); g.stroke(); g.lineCap = 'butt';
+      }
       // power bar on the side
       api.circle(c.x, c.y, BR + 9, null, 'rgba(0,0,0,.3)', 5);
       g.strokeStyle = pw > .85 ? C.red : pw > .5 ? C.yellow : C.lime; g.lineWidth = 5; g.beginPath(); g.arc(c.x, c.y, BR + 9, -Math.PI / 2, -Math.PI / 2 + pw * Math.PI * 2); g.stroke();
@@ -7013,7 +7067,7 @@ registerGame({
         api.rr(L - 10, T - 10, R - L + 20, B - T + 20, 10); g.fillStyle = felt; g.fill();
         g.strokeStyle = 'rgba(255,255,255,.15)'; g.lineWidth = 2; g.beginPath(); g.moveTo(L, 430); g.lineTo(R, 430); g.stroke();
         api.circle(W / 2, 190, 3, 'rgba(255,255,255,.3)');
-        for (const [px, py] of POCKETS) { api.circle(px, py, PR + 3, '#3a1a06'); api.circle(px, py, PR, '#0a0614'); }
+        for (const [px, py] of POCKETS) if (!api.spr('pocket', px, py, (PR + 3) * 2.1)) { api.circle(px, py, PR + 3, '#3a1a06'); api.circle(px, py, PR, '#0a0614'); }
         for (const b of S.balls) if (!b.in) drawBall(b);
         const pulse = .5 + .5 * Math.sin(tk * 6), A = api.isGuest && ldrag ? ldrag.aim : S.aim;
         if (S.phase === 'aim' && S.turn === api.me && !A) api.circle(cue().x, cue().y, BR + 5 + pulse * 4, null, 'rgba(255,255,255,' + (.3 + pulse * .5) + ')', 2);
@@ -7247,10 +7301,14 @@ registerGame({
         for (const s of segs) { g.beginPath(); g.moveTo(s[0], s[1]); g.lineTo(s[2], s[3]); g.stroke(); }
         // tee & hole
         api.rr(h.tee[0] - 30, h.tee[1] - 12, 60, 24, 8); g.fillStyle = 'rgba(255,255,255,.18)'; g.fill();
-        api.circle(h.hole[0], h.hole[1], HR + 3, 'rgba(0,0,0,.18)'); api.circle(h.hole[0], h.hole[1], HR, '#111');
-        g.strokeStyle = '#eee'; g.lineWidth = 2; g.beginPath(); g.moveTo(h.hole[0], h.hole[1]); g.lineTo(h.hole[0], h.hole[1] - 36); g.stroke();
-        g.fillStyle = C.red; g.beginPath(); g.moveTo(h.hole[0], h.hole[1] - 36); g.lineTo(h.hole[0] + 20, h.hole[1] - 30 + Math.sin(S.clock * 5) * 2); g.lineTo(h.hole[0], h.hole[1] - 24); g.fill();
+        if (!api.spr('hole', h.hole[0] + HR * 1.1, h.hole[1] - HR * 1.6, HR * 5.4)) {
+          api.circle(h.hole[0], h.hole[1], HR + 3, 'rgba(0,0,0,.18)'); api.circle(h.hole[0], h.hole[1], HR, '#111');
+          g.strokeStyle = '#eee'; g.lineWidth = 2; g.beginPath(); g.moveTo(h.hole[0], h.hole[1]); g.lineTo(h.hole[0], h.hole[1] - 36); g.stroke();
+          g.fillStyle = C.red; g.beginPath(); g.moveTo(h.hole[0], h.hole[1] - 36); g.lineTo(h.hole[0] + 20, h.hole[1] - 30 + Math.sin(S.clock * 5) * 2); g.lineTo(h.hole[0], h.hole[1] - 24); g.fill();
+        }
         for (const b of barSegs(S.clock)) {
+          const L = Math.hypot(b.s[2] - b.s[0], b.s[3] - b.s[1]), an = Math.atan2(b.s[3] - b.s[1], b.s[2] - b.s[0]);
+          if (api.spr('wall', (b.s[0] + b.s[2]) / 2, (b.s[1] + b.s[3]) / 2, L + b.th, b.th * 3, an)) { if (b.rot) api.spr('windmill_base', b.rot.x, b.rot.y, 30); continue; }
           g.strokeStyle = '#7b2ff7'; g.lineWidth = b.th * 2; g.beginPath(); g.moveTo(b.s[0], b.s[1]); g.lineTo(b.s[2], b.s[3]); g.stroke();
           g.strokeStyle = '#c4a5ff'; g.lineWidth = 3; g.beginPath(); g.moveTo(b.s[0], b.s[1]); g.lineTo(b.s[2], b.s[3]); g.stroke();
           if (b.rot) api.circle(b.rot.x, b.rot.y, 7, C.yellow, '#7b2ff7', 3);
@@ -7261,7 +7319,8 @@ registerGame({
         for (const side of ['bot', 'you']) {
           const o = S.balls[side]; if (o.done) continue;
           if (S.turn === side && S.phase === 'aim') api.circle(o.x, o.y, BR + 6 + pulse * 3, null, side === 'you' ? C.you : C.bot, 2);
-          api.circle(o.x + 1.5, o.y + 2.5, BR, 'rgba(0,0,0,.25)'); api.circle(o.x, o.y, BR, side === 'you' ? C.you : C.bot, '#fff', 2.5); api.circle(o.x - 2.5, o.y - 2.5, 2, 'rgba(255,255,255,.8)');
+          api.circle(o.x + 1.5, o.y + 2.5, BR, 'rgba(0,0,0,.25)');
+          if (!api.spr(side === 'you' ? 'ball_cyan' : 'ball_pink', o.x, o.y, BR * 2.2)) { api.circle(o.x, o.y, BR, side === 'you' ? C.you : C.bot, '#fff', 2.5); api.circle(o.x - 2.5, o.y - 2.5, 2, 'rgba(255,255,255,.8)'); }
         }
         const A = api.isGuest && ldrag ? ldrag.aim : S.aim;
         if (A) { const o = S.balls[A.s]; drawAim(g, o, A.vx, A.vy, A.s === api.me ? '#fff' : A.s === 'you' ? C.you : C.bot, A.ox == null ? null : o.x + A.ox, A.oy == null ? null : o.y + A.oy); }
@@ -7400,6 +7459,7 @@ registerGame({
       const s = Math.max(0, 1 - o.fall * 1.6); if (s <= 0) return;
       const x = o.x, y = o.y + o.fall * 30, r = BR * s;
       api.circle(x + 3, y + 6, r, 'rgba(0,0,0,.3)');
+      if (api.spr(col === C.you ? 'cyan_sumo' : 'pink_sumo', x, y, r * 2.5, null, api.clamp(o.vx / 900, -.4, .4))) return;
       const gr = g0.createRadialGradient(x - r * .35, y - r * .4, r * .1, x, y, r); gr.addColorStop(0, '#fff'); gr.addColorStop(.3, col); gr.addColorStop(1, dk);
       api.circle(x, y, r, gr, '#fff', 3);
       api.emoji(face, x, y, r * 1.25, api.clamp(o.vx / 900, -.4, .4));
@@ -7435,17 +7495,17 @@ registerGame({
         // shrinking zone (crumbling) + arena
         api.circle(CX, CY, R0 + 8, 'rgba(0,0,0,.25)');
         if (S.R < R0) { api.circle(CX, CY, R0, 'rgba(120,70,30,.35)'); }
-        const sg = g.createRadialGradient(CX, CY, 10, CX, CY, S.R); sg.addColorStop(0, '#ffe7a8'); sg.addColorStop(1, '#e8b960'); api.circle(CX, CY, S.R, sg);
+        if (!api.spr('ring', CX, CY, S.R * 2.06)) { const sg = g.createRadialGradient(CX, CY, 10, CX, CY, S.R); sg.addColorStop(0, '#ffe7a8'); sg.addColorStop(1, '#e8b960'); api.circle(CX, CY, S.R, sg); }
         const warn = S.phase === 'fight' && S.R > RMIN ? .5 + .5 * Math.sin(ripple * 8) : 0;
         api.circle(CX, CY, S.R, null, `rgba(255,${80 + warn * 80},60,${.6 + warn * .4})`, 7);
-        api.circle(CX, CY, S.R - 9, null, 'rgba(255,255,255,.5)', 2);
-        g.strokeStyle = 'rgba(160,100,40,.6)'; g.lineWidth = 4;
-        g.beginPath(); g.moveTo(CX - 26, CY - 22); g.lineTo(CX + 26, CY - 22); g.moveTo(CX - 26, CY + 22); g.lineTo(CX + 26, CY + 22); g.stroke();
+        if (!api.hd) api.circle(CX, CY, S.R - 9, null, 'rgba(255,255,255,.5)', 2);
+        if (!api.hd) { g.strokeStyle = 'rgba(160,100,40,.6)'; g.lineWidth = 4;
+        g.beginPath(); g.moveTo(CX - 26, CY - 22); g.lineTo(CX + 26, CY - 22); g.moveTo(CX - 26, CY + 22); g.lineTo(CX + 26, CY + 22); g.stroke(); }
         const me = api.me, mo = S[me], F = api.isGuest ? lfinger : (mo.in.on ? mo.in : null), mc = me === 'you' ? C.you : C.bot;
         if (F && S.phase === 'fight') { g.strokeStyle = mc; g.globalAlpha = .6; g.lineWidth = 3; g.setLineDash([6, 6]); g.beginPath(); g.moveTo(mo.x, mo.y); g.lineTo(F.x, F.y); g.stroke(); g.setLineDash([]); g.globalAlpha = 1; api.circle(F.x, F.y, 16 + Math.sin(ripple * 10) * 3, null, mc, 3); }
         drawBall(S.bot, C.bot, C.botDark, me === 'bot' ? '😤' : '😈');
         drawBall(S.you, C.you, C.youDark, me === 'you' ? '😤' : '😈');
-        S.sparks.forEach(s => api.emoji('💥', s.x, s.y, 44 * (1 + (.25 - s.t) * 3)));
+        S.sparks.forEach(s => { if (!api.spr('boom', s.x, s.y, 50 * (1 + (.25 - s.t) * 3), null, 0, Math.min(1, s.t * 6))) api.emoji('💥', s.x, s.y, 44 * (1 + (.25 - s.t) * 3)); });
         // round dots
         for (let i = 0; i < WINS; i++) { api.circle(W / 2 - 24 + i * 24, 28, 8, i < S.score[1] ? C.bot : 'rgba(255,255,255,.2)'); api.circle(W / 2 - 24 + i * 24, H - 28, 8, i < S.score[0] ? C.you : 'rgba(255,255,255,.2)'); }
         api.text(api.name('bot'), W / 2 - 40, 28, 14, C.bot, 'right'); api.text(api.name('you'), W / 2 - 40, H - 28, 14, C.you, 'right');
@@ -7497,6 +7557,7 @@ registerGame({
     const S = { t: DUR, spawnT: .6, sides: [mkSide(), mkSide()], over: false };
     let clock = 0, tgt = null; // clock: local animation time (also ticks on the guest)
     const TK = Object.keys(TYPES);
+    const SPR = { apple: 'apple', banana: 'banana', grape: 'strawberry', pear: 'orange', melon: 'melon', star: 'star', bomb: 'bomb' }; // HD sprite per item type
     const lv = api.level;
     const AI = { react: [.45, .32, .16][lv], speed: [180, 260, 420][lv], err: [36, 20, 6][lv], bombBlind: [.35, .12, 0][lv], next: 0 };
 
@@ -7601,7 +7662,8 @@ registerGame({
             if (it.done) continue;
             const y = sy(side, it.d), sc = .6 + Math.min(1, it.d / 60) * .4;
             if (it.type === 'star' || it.type === 'bomb') { g.globalAlpha = .35 + .2 * Math.sin(clock * 10); api.circle(it.x, y, 20, it.type === 'star' ? C.yellow : C.red); g.globalAlpha = 1; }
-            api.emoji(TYPES[it.type].e, it.x, y, 30 * sc, it.spin * it.d / 100 + (side ? Math.PI : 0));
+            const rt = it.spin * it.d / 100 + (side ? Math.PI : 0);
+            if (!api.spr(SPR[it.type], it.x, y, 36 * sc, null, rt)) api.emoji(TYPES[it.type].e, it.x, y, 30 * sc, rt);
           }
         });
         // baskets
@@ -7609,10 +7671,12 @@ registerGame({
           const y = sy(side, CATCH_D), col = side ? C.bot : C.you, sq = s.squash;
           g.save(); g.translate(s.x, y); if (side) g.scale(1, -1);
           g.scale(1 + sq * .15, 1 - sq * .15);
-          api.rr(-BW / 2, -6, BW, 30, 10); g.fillStyle = col; g.fill();
-          g.strokeStyle = 'rgba(255,255,255,.5)'; g.lineWidth = 2;
-          for (let i = -2; i <= 2; i++) { g.beginPath(); g.moveTo(i * 13, -2); g.lineTo(i * 11, 20); g.stroke(); }
-          api.rr(-BW / 2 - 4, -10, BW + 8, 9, 5); g.fillStyle = side ? C.botDark : C.youDark; g.fill();
+          if (!api.spr(side ? 'pink_basket' : 'cyan_basket', 0, 1, BW + 4)) {
+            api.rr(-BW / 2, -6, BW, 30, 10); g.fillStyle = col; g.fill();
+            g.strokeStyle = 'rgba(255,255,255,.5)'; g.lineWidth = 2;
+            for (let i = -2; i <= 2; i++) { g.beginPath(); g.moveTo(i * 13, -2); g.lineTo(i * 11, 20); g.stroke(); }
+            api.rr(-BW / 2 - 4, -10, BW + 8, 9, 5); g.fillStyle = side ? C.botDark : C.youDark; g.fill();
+          }
           g.restore();
           if (s.streak >= 3) api.text('×' + s.streak, s.x, y + (side ? -40 : 40), 14, col);
         });
@@ -7804,7 +7868,7 @@ registerGame({
         g.fillStyle = gr; g.fillRect(0, 0, W, H);
         g.strokeStyle = 'rgba(90,140,220,.25)'; g.lineWidth = 3; g.setLineDash([10, 10]);
         g.beginPath(); g.moveTo(0, H / 2); g.lineTo(W, H / 2); g.stroke(); g.setLineDash([]);
-        for (const s of splats) { g.globalAlpha = Math.min(1, s.t) * .8; g.fillStyle = '#fff'; g.beginPath(); g.ellipse(s.x, s.y, 11, 5, 0, 0, 6.283); g.fill(); g.strokeStyle = 'rgba(120,170,230,.5)'; g.lineWidth = 1.5; g.stroke(); }
+        for (const s of splats) { g.globalAlpha = Math.min(1, s.t) * .8; if (api.spr('splat', s.x, s.y, 26, 13)) continue; g.fillStyle = '#fff'; g.beginPath(); g.ellipse(s.x, s.y, 11, 5, 0, 0, 6.283); g.fill(); g.strokeStyle = 'rgba(120,170,230,.5)'; g.lineWidth = 1.5; g.stroke(); }
         g.globalAlpha = 1;
         api.text(Math.ceil(time) + TR(' с', ' s'), W / 2, H / 2, 16, 'rgba(60,100,170,.55)');
         // far side first so walls hide the far player (far = top in host view, whoever looks)
@@ -7827,10 +7891,11 @@ registerGame({
         for (const b of balls) { // shadow on the ground, ball lifted by its height
           const q = posAt(b, b.u), k = 1 - Math.min(.6, q.z / 220), lift = q.z * (api.isGuest ? -1 : 1);
           g.fillStyle = 'rgba(40,70,130,' + (.28 * k) + ')'; g.beginPath(); g.ellipse(q.x, q.y, 7 * k, 3.2 * k, 0, 0, 6.283); g.fill();
-          api.circle(q.x, q.y - lift, 6.5 + q.z * .035, '#fff', col(b.s), 2);
+          const br = 6.5 + q.z * .035;
+          if (!api.spr('snowball', q.x, q.y - lift, br * 2.1)) api.circle(q.x, q.y - lift, br, '#fff', col(b.s), 2);
         }
         g.fillStyle = 'rgba(255,255,255,.9)';
-        for (const f of flakes) { const y = api.isGuest ? H - f.y : f.y; g.beginPath(); g.arc(f.x, y, f.r, 0, 6.283); g.fill(); }
+        for (const f of flakes) { const y = api.isGuest ? H - f.y : f.y; if (api.spr('flake', f.x, y, f.r * 3.4, null, f.s)) continue; g.beginPath(); g.arc(f.x, y, f.r, 0, 6.283); g.fill(); }
         if (banner.t > 0) {
           g.globalAlpha = Math.min(1, banner.t * 2);
           api.rr(W / 2 - 110, H / 2 - 20 - (api.isGuest ? -32 : 32), 220, 40, 20); g.fillStyle = 'rgba(29,19,64,.75)'; g.fill();
@@ -7844,6 +7909,7 @@ registerGame({
             g.fillStyle = 'rgba(60,100,170,.18)'; g.beginPath(); g.ellipse(w.x, y + 4 * up, SW / 2 + 4, 7, 0, 0, 6.283); g.fill();
             if (w.hp <= 0) { for (let i = -2; i <= 2; i++) api.circle(w.x + i * 13, y - (3 + (i % 2) * 2) * up, 7, '#fff', '#b9d8f5', 1.5); continue; }
             const h = wallH(w) + 8, top = y - h * up;
+            if (api.has('wall')) { g.save(); g.translate(w.x + wob, y + 6 * up); if (up < 0) g.rotate(Math.PI); api.spr('wall', 0, -(h + 6) / 2, SW + 8, h + 6); g.restore(); continue; }
             api.rr(w.x - SW / 2 + wob, Math.min(top, y + 6 * up), SW, h + 6, 9);
             const wg = g.createLinearGradient(0, top, 0, y + 6 * up); wg.addColorStop(0, '#ffffff'); wg.addColorStop(1, '#a9d1f7');
             g.fillStyle = wg; g.fill(); g.globalAlpha = .5; g.strokeStyle = col(s); g.lineWidth = 2; g.stroke(); g.globalAlpha = 1;
@@ -7856,9 +7922,18 @@ registerGame({
           const p = P[s], up = api.isGuest ? -1 : 1, bob = Math.sin(api.time * 10 + s) * Math.min(1, Math.abs(p.vx) / 80) * 2;
           g.fillStyle = 'rgba(40,70,130,.25)'; g.beginPath(); g.ellipse(p.x, p.y + 2 * up, 16, 5, 0, 0, 6.283); g.fill();
           const cy = p.y - (14 - bob) * up;
+          if (api.has('cyan_kid')) { // near kid (own, bottom of each viewer's screen) = back view 'cyan_kid'; far kid = front view 'pink_kid' (engine swaps on the guest)
+            const nm = (s ? 'pink_kid' : 'cyan_kid') + (p.throwT > 0 ? '_throw' : ''), KW = { cyan_kid: 24, cyan_kid_throw: 36, pink_kid: 27, pink_kid_throw: 35 };
+            g.save(); g.translate(p.x, p.y + (3 + bob) * up); if (up < 0) g.rotate(Math.PI);
+            if (p.hitT > 0) g.rotate(-.35);
+            api.spr(nm, 0, -26, KW[api.isGuest ? nm.replace(/cyan|pink/, c => c === 'cyan' ? 'pink' : 'cyan') : nm], 52);
+            if (p.hitT > 0) api.spr('splat', 4, -38, 22, null, 0, Math.min(1, p.hitT * 2));
+            g.restore();
+          } else {
           api.circle(p.x, cy, 17, col(s), '#fff', 3);
           api.emoji(p.hitT > 0 ? '😵' : (s && api.isBot) ? '🤖' : (p.throwT > 0 ? '😆' : '😊'), p.x, cy, 22);
           if (p.hitT > 0) api.circle(p.x + 6, cy - 7 * up, 6, 'rgba(255,255,255,.95)');
+          }
           if (p.cd > 0) { g.strokeStyle = colD(s); g.lineWidth = 3; g.beginPath(); g.arc(p.x, cy, 22, -Math.PI / 2, -Math.PI / 2 + 6.283 * (1 - p.cd / CD)); g.stroke(); }
         }
       },
@@ -7998,6 +8073,7 @@ registerGame({
       }
     }
     function drawCar(g, c) {
+      if (api.spr(c === cars[0] ? 'cyan_car' : 'pink_car', c.x, c.y, 19, 32, c.a + Math.PI / 2)) return; // sprite faces up
       g.save(); g.translate(c.x, c.y); g.rotate(c.a);
       g.fillStyle = 'rgba(0,0,0,.35)'; api.rr(-13, -7, 30, 18, 6); g.fill();
       g.fillStyle = '#111'; g.fillRect(-11, -11, 7, 4); g.fillRect(6, -11, 7, 4); g.fillRect(-11, 7, 7, 4); g.fillRect(6, 7, 7, 4);
@@ -8035,7 +8111,7 @@ registerGame({
         path(); g.lineWidth = 2; g.strokeStyle = 'rgba(255,255,255,.45)'; g.setLineDash([16, 16]); g.stroke(); g.setLineDash([]);
         // infield decoration
         g.fillStyle = '#000';
-        api.emoji('🌳', CX - 40, TY + 20, 34); api.emoji('🏁', CX, (TY + BY) / 2, 46); api.emoji('🌲', CX + 40, BY - 20, 34);
+        api.emoji('🌳', CX - 40, TY + 20, 34); if (!api.spr('flag', CX, (TY + BY) / 2, 44)) api.emoji('🏁', CX, (TY + BY) / 2, 46); api.emoji('🌲', CX + 40, BY - 20, 34);
         api.text(TR(`Круг ${Math.min(LAPS, cars[MI].lap + 1)}/${LAPS}`, `Lap ${Math.min(LAPS, cars[MI].lap + 1)}/${LAPS}`), CX, (TY + BY) / 2 + 46, 18, '#fff');
         // finish line (checker)
         for (let i = 0; i < 8; i++) for (let j = 0; j < 2; j++) { g.fillStyle = (i + j) % 2 ? '#111' : '#fff'; g.fillRect(CX + R - HW + i * 10, BY - 5 + j * 5, 10, 5); }
@@ -8091,6 +8167,8 @@ registerGame({
     const { W, H, C } = api;
     const DUR = 60, GRAV = 520;
     const FRUITS = [['🍉', 2, 30], ['🍊', 1, 24], ['🍎', 1, 24], ['🍋', 1, 22], ['🥝', 1, 22], ['🍑', 1, 24], ['🍍', 2, 28], ['🍌', 1, 24]];
+    // extended graphics: emoji -> [sprite, width in units of r] (other fruits keep their emoji)
+    const SPR = { '🍎': ['apple', 2.15], '🍊': ['orange', 2.15], '🍉': ['watermelon', 2.1], '🍍': ['pineapple', 1.45] };
     const BOMB = ['💣', -3, 26], KINDS = FRUITS.concat([BOMB]);
     let clock = 0, fid = 0;
     const S = { t: DUR, waveT: 1, fruits: [], halves: [], score: [0, 0], swipe: [{ n: 0, t: 0 }, { n: 0, t: 0 }], over: false, flash: 0 };
@@ -8203,6 +8281,13 @@ registerGame({
         const vg = g.createRadialGradient(W / 2, H / 2, 120, W / 2, H / 2, 420); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(60,20,0,.45)');
         g.fillStyle = vg; g.fillRect(0, 0, W, H);
         for (const h of S.halves) {
+          const sp = SPR[h.e];
+          if (sp && api.hd) {
+            const a = Math.min(1, h.life * 2);
+            g.save(); g.translate(h.x, h.y); g.rotate(h.rot); g.scale(h.k, 1);
+            const ok = api.spr(sp[0] + '_half', h.r * .35, 0, h.r * sp[1] * .95, null, 0, a); g.restore();
+            if (ok) continue;
+          }
           g.save(); g.globalAlpha = Math.min(1, h.life * 2); g.translate(h.x, h.y); g.rotate(h.rot);
           g.beginPath(); g.rect(h.k < 0 ? -h.r * 1.4 : 0, -h.r * 1.4, h.r * 1.4, h.r * 2.8); g.clip();
           g.rotate(-h.rot); api.emoji(h.e, 0, 0, h.r * 2, 0); g.restore();
@@ -8210,7 +8295,8 @@ registerGame({
         for (const f of S.fruits) {
           if (f.dead) continue;
           if (f.bomb) { g.globalAlpha = .4 + .3 * Math.sin(clock * 14); api.circle(f.x, f.y, f.r + 8, C.red); g.globalAlpha = 1; }
-          api.emoji(f.e, f.x, f.y, f.r * 2, f.rot);
+          const sp = SPR[f.e];
+          if (!(sp && api.spr(sp[0], f.x, f.y, f.r * sp[1], null, f.rot)) && !(f.bomb && api.spr('bomb', f.x + f.r * .08, f.y - f.r * .12, f.r * 2.7, null, f.rot))) api.emoji(f.e, f.x, f.y, f.r * 2, f.rot);
         }
         // blades
         blades.forEach((b, side) => {
@@ -8286,7 +8372,7 @@ registerGame({
     const lvl = api.level;
     const ships = [mkShip(H - 50, -1, C.you), mkShip(50, 1, C.bot)];
     const bot = { speed: [140, 200, 260][lvl], lead: [0, .5, 1][lvl], dodge: [.15, .45, .8][lvl], re: 0, want: W / 2, dodgeT: 0 };
-    let over = false, tgt = null;
+    let over = false, tgt = null, booms = [null, null];
     let shots = [], rocks = [], items = [], stars = [], kills = [0, 0], hint = 3, rockT = 0;
     for (let i = 0; i < 50; i++) stars.push({ x: api.rand(0, W), y: api.rand(0, H), s: api.rand(.5, 2), v: api.rand(10, 40) });
     function mkShip(y, dir, color) { return { x: W / 2, px: W / 2, vx: 0, y, tx: W / 2, dir, color, hp: HP, shield: 0, triple: 0, fire: .6, dead: 0, inv: 1, flash: 0 }; }
@@ -8346,14 +8432,19 @@ registerGame({
       if (s.dead > 0) return;
       g.save(); g.translate(s.x, s.y); if (s.dir > 0) g.rotate(Math.PI);
       if (s.inv > 0 && Math.floor(s.inv * 10) % 2) g.globalAlpha = .4;
+      const ga = g.globalAlpha;
+      if (api.spr(i ? 'pink_ship' : 'cyan_ship', 0, 2, SR * 2.6)) {
+        if (s.flash > 0) { g.globalAlpha = ga * .6; api.circle(0, 2, SR, '#fff'); }
+      } else {
       // flame
       g.fillStyle = C.orange; g.beginPath(); g.moveTo(-7, 14); g.lineTo(0, 22 + Math.random() * 10); g.lineTo(7, 14); g.fill();
       g.fillStyle = s.flash > 0 ? '#fff' : s.color;
       g.beginPath(); g.moveTo(0, -SR - 4); g.lineTo(SR, 14); g.lineTo(6, 9); g.lineTo(-6, 9); g.lineTo(-SR, 14); g.closePath(); g.fill();
       g.strokeStyle = '#fff'; g.lineWidth = 2; g.stroke();
       api.circle(0, -2, 5, '#1d1340', '#fff', 2);
+      }
       g.restore(); g.globalAlpha = 1;
-      if (s.shield > 0) { g.globalAlpha = .35 + .1 * Math.sin(api.time * 8); api.circle(s.x, s.y, SR + 10, null, '#9ff', 4); g.globalAlpha = 1; }
+      if (s.shield > 0) { g.globalAlpha = .35 + .1 * Math.sin(api.time * 8); if (!api.spr('shield', s.x, s.y, (SR + 14) * 2, null, 0, 1.8)) api.circle(s.x, s.y, SR + 10, null, '#9ff', 4); g.globalAlpha = 1; }
       // hp bar
       const bw = 50, by = s.y + s.dir * (SR + 14); // hp bar in front of the nose
       g.fillStyle = 'rgba(0,0,0,.5)'; api.rr(s.x - bw / 2 - 2, by - 4, bw + 4, 8, 4); g.fill();
@@ -8406,6 +8497,7 @@ registerGame({
         g.fillStyle = gr; g.fillRect(0, 0, W, H);
         for (const st of stars) { g.fillStyle = `rgba(255,255,255,${st.s / 2.5})`; g.fillRect(st.x, st.y, st.s, st.s); }
         for (const r of rocks) {
+          if (api.spr('rock', r.x, r.y, r.r * 2.2, null, r.rot)) { if (r.hit > 0) { g.globalAlpha = .5; api.circle(r.x, r.y, r.r * .9, '#fff'); g.globalAlpha = 1; } continue; }
           g.save(); g.translate(r.x, r.y); g.rotate(r.rot);
           g.fillStyle = r.hit > 0 ? '#fff' : '#8b7565'; g.beginPath();
           for (let k = 0; k < 9; k++) { const a = k / 9 * 6.283, rr = r.r * (k % 2 ? .82 : 1); g.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); }
@@ -8414,8 +8506,13 @@ registerGame({
           g.restore();
         }
         for (const it of items) { api.circle(it.x, it.y, 15, 'rgba(255,255,255,.2)', C.yellow, 2); api.emoji(it.kind === 'triple' ? '⚡' : '🛡️', it.x, it.y, 18); }
-        for (const u of shots) { g.fillStyle = u.side ? C.bot : C.you; api.rr(u.x - 2.5, u.y - 8, 5, 16, 3); g.fill(); g.fillStyle = '#fff'; g.fillRect(u.x - 1, u.y - 5, 2, 10); }
+        for (const u of shots) { if (api.spr(u.side ? 'pink_shot' : 'cyan_shot', u.x, u.y, 7, 28, Math.atan2(u.vx, -u.vy))) continue; g.fillStyle = u.side ? C.bot : C.you; api.rr(u.x - 2.5, u.y - 8, 5, 16, 3); g.fill(); g.fillStyle = '#fff'; g.fillRect(u.x - 1, u.y - 5, 2, 10); }
         ships.forEach((s, i) => drawShip(g, s, i));
+        if (api.hd) ships.forEach((s, i) => { // HD explosion where a ship was shot down (local timer, works on host and guest)
+          if (s.dead > 0 && !booms[i]) booms[i] = { x: s.x, y: s.y, t: api.time }; else if (s.dead <= 0) booms[i] = null;
+          const b = booms[i], k = b ? (api.time - b.t) / .7 : 1;
+          if (k < 1) api.spr('explosion', b.x, b.y, 50 + 70 * k, null, k, 1 - k * k);
+        });
         for (let k = 0; k < KILLS; k++) { api.text(k < kills[0] ? '★' : '☆', W - 18 - k * 18, H - 14, 16, C.you); api.text(k < kills[1] ? '★' : '☆', W - 18 - k * 18, 14, 16, C.bot); }
         if (hint > 0) { g.globalAlpha = Math.min(1, hint); g.fillStyle = 'rgba(0,0,0,.5)'; const mine = api.me === 'you'; api.rr(40, mine ? H - 160 : 110, W - 80, 50, 14); g.fill(); api.text(TR('👈 Води пальцем 👉  огонь сам', '👆 Drag sideways · auto-fire'), W / 2, mine ? H - 135 : 135, 16, '#fff'); g.globalAlpha = 1; }
       },
@@ -8581,7 +8678,10 @@ registerGame({
         for (let x = 0; x < W; x += 20) { g.beginPath(); g.moveTo(x, 26); g.lineTo(x + 10, 36); g.stroke(); }
         const showBlock = phase === 'aim' && !(crane.hide > 0), cx = falling ? falling.x : craneX();
         api.rr(cx - 16, 22, 32, 18, 5); g.fillStyle = '#ff8a00'; g.fill();
-        g.strokeStyle = '#333'; g.lineWidth = 2; g.beginPath(); g.moveTo(cx, 40); g.lineTo(cx, showBlock ? CRANE_Y : 60); g.stroke();
+        const clawB = showBlock ? CRANE_Y + 5 : 64, CLW = 34, CLH = CLW * 559 / 352;
+        if (api.hd && api.has('claw')) {
+          g.strokeStyle = '#333'; g.lineWidth = 2; g.beginPath(); g.moveTo(cx, 40); g.lineTo(cx, clawB - CLH + 2); g.stroke();
+        } else { g.strokeStyle = '#333'; g.lineWidth = 2; g.beginPath(); g.moveTo(cx, 40); g.lineTo(cx, showBlock ? CRANE_Y : 60); g.stroke(); }
         if (showBlock) {
           drawBlock(cx, CRANE_Y, crane.w, turn);
           const top = stack[stack.length - 1], ty = sy(stack.length * BH);
@@ -8593,13 +8693,16 @@ registerGame({
             api.emoji('🤖', ax, CRANE_Y - 34, 20);
           } else if (turn === ME) api.emoji('👆', W / 2, H - 34, 30 * (1 + Math.sin(api.time * 8) * .08));
         }
+        if (api.hd) api.spr('claw', cx, clawB - CLH / 2, CLW, CLH);
         if (falling) drawBlock(falling.x, sy(falling.wb) - BH, falling.w, falling.side);
         if (banner) {
           g.globalAlpha = Math.min(1, banner.t * 2);
           api.rr(W / 2 - 115, 150, 230, 42, 21); g.fillStyle = 'rgba(29,19,64,.78)'; g.fill();
           const mine = banner.s === ME, nm = api.name(SIDES[banner.s]);
           const txt = banner.k === 't' ? (mine ? TR('Твой ход — жми!', 'Your turn — tap!') : api.isBot ? TR('Ход бота…', 'Bot\'s turn…') : TR(`Ходит ${nm}…`, `${nm}'s turn…`)) : (mine ? TR('Раунд твой!', 'Round is yours!') : TR(`Раунд: ${nm}`, `Round: ${nm}`));
-          api.text(txt, W / 2, 171, 20, banner.s ? C.bot : C.you); g.globalAlpha = 1;
+          api.text(txt, W / 2, 171, 20, banner.s ? C.bot : C.you);
+          if (banner.k === 'r') api.spr('crown', W / 2, 128, 54);
+          g.globalAlpha = 1;
         }
         // round pips: mine on the left
         [ME, 1 - ME].forEach((s, j) => {
@@ -8607,6 +8710,7 @@ registerGame({
           api.text(api.name(SIDES[s]), j ? W - 46 : 46, 52, 12, '#fff', j ? 'right' : 'left');
         });
         function drawBlock(x, y, w, side) {
+          if (api.spr(side === -1 ? 'base_block' : side ? 'pink_block' : 'cyan_block', x - w / 2 + w / .93 / 2, y + BH - BH / .84 / 2, w / .93, BH / .84)) return; // sprite: front face ~93% wide, top face ~16% tall
           const col = side === -1 ? '#6d5a9e' : side ? C.bot : C.you, dark = side === -1 ? '#4a3a78' : side ? C.botDark : C.youDark;
           api.rr(x - w / 2, y, w, BH, 5); g.fillStyle = col; g.fill();
           g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(x - w / 2 + 3, y + 3, Math.max(0, w - 6), 4);
@@ -8811,7 +8915,7 @@ registerGame({
         g.globalAlpha = 1;
         trail.forEach((p, i) => { g.globalAlpha = i / trail.length * .5; api.circle(p.x, p.y, 3, '#fff'); });
         g.globalAlpha = 1;
-        if (shell) api.circle(shell.x, shell.y, 5.5, '#222', '#ffd60a', 2);
+        if (shell && !api.spr('ball', shell.x, shell.y, 13)) api.circle(shell.x, shell.y, 5.5, '#222', '#ffd60a', 2);
         // wind indicator
         api.rr(W / 2 - 62, 12, 124, 40, 12); g.fillStyle = 'rgba(29,19,64,.6)'; g.fill();
         api.text(TR('Ветер', 'Wind'), W / 2, 23, 11, '#fff');
@@ -8828,12 +8932,23 @@ registerGame({
         }
         function drawCannon(s) {
           const c = CN[s], x = c.x, y = cy(s), cl = col(s), sh = c.hurt > 0 ? Math.sin(api.time * 60) * 2 : 0;
+          if (api.hd && api.has('cyan_barrel')) { // sprites face right; the right-hand cannon is mirrored
+            const nm = s ? 'pink_' : 'cyan_', a = s ? Math.PI - c.ang : c.ang;
+            g.save(); g.translate(x + sh, 0); if (s) g.scale(-1, 1);
+            g.save(); g.translate(0, y - 12); g.rotate(a + .18);
+            api.spr(nm + 'barrel', 9.3, -2.8, 32);
+            g.restore();
+            api.spr(nm + 'carriage', -7.6, y - 8.4, 42);
+            if (c.flash > 0) { g.translate(0, y - 12); g.rotate(a); api.spr('flash', 32, 0, 30 * c.flash / .25 + 8); }
+            g.restore();
+          } else {
           g.save(); g.translate(x + sh, y - 12); g.rotate(c.ang);
           api.rr(-4, -6, 28, 12, 5); g.fillStyle = '#333'; g.fill(); g.fillStyle = cl; g.fillRect(16, -6, 4, 12);
           if (c.flash > 0) api.circle(30, 0, 9 * c.flash / .25 + 3, '#ffd60a');
           g.restore();
           api.rr(x - 14 + sh, y - 16, 28, 14, 7); g.fillStyle = cl; g.fill();
           api.circle(x - 8 + sh, y - 3, 6, '#3a2a1a', '#fff', 2); api.circle(x + 8 + sh, y - 3, 6, '#3a2a1a', '#fff', 2);
+          }
           api.emoji(c.hurt > 0 ? '😵' : (s && api.isBot) ? '🤖' : '😎', x + sh, y - 34, 18);
           for (let i = 0; i < MAXHP; i++) api.text('♥', x - 14 + i * 14, y - 54, 13, i < c.hp ? cl : 'rgba(0,0,0,.25)');
           if (turn === s && phase === 'aim') api.text('▼', x, y - 70 + Math.sin(api.time * 6) * 3, 14, cl);
@@ -8963,8 +9078,9 @@ registerGame({
       const res = a.passed === b.passed ? (Math.abs(a.d - b.d) < 10 ? 'draw' : a.d > b.d ? 'win' : 'lose') : a.passed > b.passed ? 'win' : 'lose';
       api.end(res, v => v === 'you' ? TR(`Трубы: ${a.passed} : ${b.passed}`, `Pipes: ${a.passed} : ${b.passed}`) : TR(`Трубы: ${b.passed} : ${a.passed}`, `Pipes: ${b.passed} : ${a.passed}`));
     }
-    function drawBird(g, x, y, rot, col, dark, wing, alpha, blink) {
+    function drawBird(g, x, y, rot, col, dark, wing, alpha, blink, side) {
       g.save(); g.globalAlpha = alpha * (blink ? (Math.sin(api.time * 30) > 0 ? 1 : .3) : 1); g.translate(x, y); g.rotate(rot);
+      if (api.spr((side ? 'pink_bird' : 'cyan_bird') + (wing > 0 ? '_up' : ''), 2, -1, 46)) { g.restore(); return; }
       g.beginPath(); g.ellipse(0, 0, R + 3, R, 0, 0, 6.283); g.fillStyle = col; g.fill(); g.lineWidth = 2.5; g.strokeStyle = dark; g.stroke();
       g.beginPath(); g.ellipse(-4, wing > 0 ? -8 : 3, 8, 5, wing > 0 ? -.6 : .3, 0, 6.283); g.fillStyle = '#fff'; g.fill(); g.strokeStyle = dark; g.lineWidth = 2; g.stroke();
       api.circle(7, -5, 4.5, '#fff'); api.circle(8.5, -5, 2.2, '#1d1340');
@@ -8999,20 +9115,25 @@ registerGame({
           const p = pipes[i], x = p.x - cam;
           if (x < -PW || x > W + PW) continue;
           const top = p.gy - GAP / 2, bot = p.gy + GAP / 2;
+          if (api.hd && api.has('pipe_body')) { // HD pipes: stretched tube + cap sprite (cap hangs over the gap edge like the classic 20px lip)
+            api.spr('pipe_body', x, (top - 40) / 2, PW, top + 40); api.spr('pipe_body', x, (bot + GROUND + 20) / 2, PW, GROUND + 20 - bot);
+            const ch = (PW + 10) * .75; api.spr('pipe_cap', x, top - ch / 2, PW + 10, ch, Math.PI); api.spr('pipe_cap', x, bot + ch / 2, PW + 10, ch);
+          } else {
           const gr = g.createLinearGradient(x - PW / 2, 0, x + PW / 2, 0); gr.addColorStop(0, '#2bbf4a'); gr.addColorStop(.4, '#7cff4f'); gr.addColorStop(1, '#1d8f36');
           g.fillStyle = gr; g.fillRect(x - PW / 2, -10, PW, top + 10); g.fillRect(x - PW / 2, bot, PW, GROUND - bot);
           g.fillRect(x - PW / 2 - 5, top - 20, PW + 10, 20); g.fillRect(x - PW / 2 - 5, bot, PW + 10, 20);
           g.strokeStyle = '#13652a'; g.lineWidth = 3; g.strokeRect(x - PW / 2 - 5, top - 20, PW + 10, 20); g.strokeRect(x - PW / 2 - 5, bot, PW + 10, 20);
+          }
           if (i < GOAL) api.text(String(i + 1), x, bot + 40, 16, 'rgba(255,255,255,.9)');
           if (i === GOAL - 1) api.emoji('🏁', x, top - 40, 26);
         }
         g.fillStyle = '#e8b04a'; g.fillRect(0, GROUND, W, H - GROUND); g.fillStyle = '#7cd34a'; g.fillRect(0, GROUND, W, 10);
         g.fillStyle = 'rgba(0,0,0,.12)'; for (let x = -(cam % 24); x < W; x += 24) g.fillRect(x, GROUND + 14, 12, 4);
-        for (const f of feathers) { g.globalAlpha = Math.min(1, f.life * 2); api.circle(SX + f.d - me.d, f.y, 3, f.c); } g.globalAlpha = 1;
+        for (const f of feathers) { g.globalAlpha = Math.min(1, f.life * 2); if (!api.spr('feather', SX + f.d - me.d, f.y, 11, null, f.vx * .02 + f.life * 6)) api.circle(SX + f.d - me.d, f.y, 3, f.c); } g.globalAlpha = 1;
         const ocol = OPP === 0 ? C.you : C.bot, odark = OPP === 0 ? C.youDark : C.botDark;
         const bx = SX + op.d - me.d;
         if (bx > -20 && bx < W + 20) {
-          drawBird(g, bx, op.y, op.rot, ocol, odark, op.wing, .6, op.crash > 0 || op.inv > 0);
+          drawBird(g, bx, op.y, op.rot, ocol, odark, op.wing, .6, op.crash > 0 || op.inv > 0, OPP);
           if (op.fl > 0) { g.globalAlpha = op.fl / .15; api.circle(bx, op.y, R + 10 * (1 - op.fl / .15) + 6, null, ocol, 2); g.globalAlpha = 1; }
           api.text(api.name(SIDES[OPP]).toLowerCase(), bx, op.y - 26, 12, odark);
         } else {
@@ -9020,7 +9141,7 @@ registerGame({
           api.circle(ax, ay, 16, ocol); api.text(right ? '▶' : '◀', ax, ay, 14, '#fff');
           api.text(Math.round(Math.abs(op.d - me.d) / 10) + TR(' м', ' m'), ax + (right ? -38 : 38), ay, 13, odark);
         }
-        drawBird(g, SX, me.y, me.rot, ME === 0 ? C.you : C.bot, ME === 0 ? C.youDark : C.botDark, me.wing, 1, me.crash > 0 || me.inv > 0);
+        drawBird(g, SX, me.y, me.rot, ME === 0 ? C.you : C.bot, ME === 0 ? C.youDark : C.botDark, me.wing, 1, me.crash > 0 || me.inv > 0, ME);
         for (const p of pops) {
           g.globalAlpha = Math.min(1, p.life); const x = api.clamp(SX + p.d - me.d, 60, W - 60), y = p.y - 24 - (1.2 - p.life) * 30;
           if (p.k === 'pass') api.text('+1', SX, y, 18, ME === 0 ? C.you : C.bot);
@@ -9083,6 +9204,7 @@ registerGame({
     const BPM = 112, BEAT = 60 / BPM, SONG = 45, TRAVEL = 1.25, LEAD = 2.4;
     const MID = H / 2, YOU_HIT = 480, YOU_SPAWN = MID + 14, BOT_HIT = 80, BOT_SPAWN = MID - 14, HITY = [YOU_HIT, BOT_HIT];
     const LANES = 3, LW = W / LANES, LANE_COL = [C.yellow, C.lime, C.orange], PITCH = [392, 494, 587];
+    const HD_KEY = ['y', 'b', 'm'], HD_COL = ['#ffc21a', '#22d3ff', '#ff3fae']; // HD sprites: gold / blue / magenta lanes
     const WIN_P = .055, WIN_G = .11, WIN_MISS = .17, NET = !api.isBot, ME = api.me === 'you' ? 0 : 1;
     const LABELS = { p: ['Perfect', C.yellow], g: ['Good', C.lime], m: ['Miss', C.red], x: [TR('Мимо', 'Oops'), '#c9c2ff'] };
     let ac = null;
@@ -9192,17 +9314,21 @@ registerGame({
           for (let i = 0; i < LANES; i++) {
             const x = i * LW;
             g.fillStyle = i % 2 ? 'rgba(255,255,255,.04)' : 'rgba(255,255,255,.08)'; g.fillRect(x, y0, LW, y1 - y0);
-            if (s.flash[i] > 0) { const gr = g.createLinearGradient(0, hit, 0, MID); gr.addColorStop(0, LANE_COL[i]); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.globalAlpha = s.flash[i] / .18 * .45; g.fillStyle = gr; g.fillRect(x, y0, LW, y1 - y0); g.globalAlpha = 1; }
+            if (s.flash[i] > 0) { const gr = g.createLinearGradient(0, hit, 0, MID); gr.addColorStop(0, api.hd ? HD_COL[i] : LANE_COL[i]); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.globalAlpha = s.flash[i] / .18 * .45; g.fillStyle = gr; g.fillRect(x, y0, LW, y1 - y0); g.globalAlpha = 1; }
           }
           g.fillStyle = col; g.globalAlpha = .5 + pulse * .5; g.fillRect(8, hit - 2, W - 16, 4); g.globalAlpha = 1;
-          for (let i = 0; i < LANES; i++) { const r = 24 + (s.flash[i] > 0 ? 4 : 0) + pulse * 3; api.circle(i * LW + LW / 2, hit, r, 'rgba(0,0,0,.25)', LANE_COL[i], 3); }
+          for (let i = 0; i < LANES; i++) {
+            const r = 24 + (s.flash[i] > 0 ? 4 : 0) + pulse * 3;
+            if (!api.spr('ring_' + HD_KEY[i], i * LW + LW / 2, hit, r * 2.5)) api.circle(i * LW + LW / 2, hit, r, 'rgba(0,0,0,.25)', LANE_COL[i], 3);
+            if (s.flash[i] > 0) api.spr('spark', i * LW + LW / 2, hit, 70 + (.18 - s.flash[i]) * 160, null, 0, s.flash[i] / .18);
+          }
           for (let i = 0; i < chart.length; i++) {
             const n = chart[i], dtt = n.t - songT; if (dtt > TRAVEL + .1) break;
             const res = s.res[i];
             if ((res && res !== 'm') || dtt < -.35) continue;
             const y = laneY(side, dtt), x = n.lane * LW + LW / 2;
             g.globalAlpha = res === 'm' ? .3 : 1;
-            api.circle(x, y, 19, LANE_COL[n.lane], '#fff', 3); api.circle(x - 5, y - 5, 5, 'rgba(255,255,255,.6)');
+            if (!api.spr('note_' + HD_KEY[n.lane], x, y, 42)) { api.circle(x, y, 19, LANE_COL[n.lane], '#fff', 3); api.circle(x - 5, y - 5, 5, 'rgba(255,255,255,.6)'); }
             g.globalAlpha = 1;
           }
           if (s.label) { const lb = LABELS[s.label.c]; g.globalAlpha = Math.min(1, s.label.t * 3); api.text(lb[0], s.label.lane * LW + LW / 2, hit + (side === 0 ? -48 : 48) - (.6 - s.label.t) * 30 * (side ? -1 : 1), s.label.c === 'p' ? 22 : 18, lb[1]); g.globalAlpha = 1; }
@@ -9338,6 +9464,14 @@ registerGame({
     }
     function drawMole(g, h) {
       const k = h.kind, rise = h.up, y = h.y + 46 - rise * 70, x = h.x;
+      if (api.hd && api.has('mole')) { // HD: mole-in-hole sprite slides up out of the hole sprite
+        g.save(); g.beginPath(); g.rect(x - 70, h.y - 130, 140, 150); g.clip();
+        api.spr(k === 'rabbit' ? 'rabbit' : k === 'gold' ? 'gold_mole' : 'mole', x, h.y - 26 + (1 - rise) * 62, 108);
+        g.restore();
+        if (h.state === 'hit' && k !== 'rabbit') api.spr('dizzy', x, h.y - 72 + (1 - rise) * 30, 70, null, 0, Math.min(1, h.hitT * 3));
+        if (k === 'gold' && h.state !== 'hit') { g.globalAlpha = .6 + .4 * Math.sin(clock * 12); api.text('★', x, h.y - 80 + (1 - rise) * 62, 18, '#fff'); g.globalAlpha = 1; }
+        return;
+      }
       g.save(); g.beginPath(); g.rect(x - 60, h.y - 110, 120, 110); g.clip();
       if (k === 'rabbit') { api.emoji('🐰', x, y - 4, 58); }
       else {
@@ -9355,6 +9489,7 @@ registerGame({
     }
     function drawHammer(g, x, y, swing, col) {
       g.save(); g.translate(x + 26, y + 18); g.rotate(-.9 + swing * .9);
+      if (api.spr(col === C.bot ? 'pink_hammer' : 'cyan_hammer', 2, 6, 64, null, .78)) { g.restore(); return; }
       api.rr(-4, -6, 8, 46, 4); g.fillStyle = '#d9a066'; g.fill();
       api.rr(-22, -24, 44, 24, 8); g.fillStyle = col; g.fill(); g.strokeStyle = '#fff'; g.lineWidth = 2; g.stroke();
       g.restore();
@@ -9386,6 +9521,11 @@ registerGame({
         for (let i = 0; i < 40; i++) { const x = (i * 97) % W, y = (i * 61) % H; g.fillRect(x, y, 3, 8); }
         for (const h of holes) {
           if (h.state === 'hit') { g.globalAlpha = h.hitT * 2; api.circle(h.x, h.y - 30, 52, null, h.hitBy ? C.bot : C.you, 5); g.globalAlpha = 1; }
+          if (api.spr('hole', h.x, h.y - 26, 108)) {
+            if (h.kind) drawMole(g, h);
+            if (h.state === 'hit') api.spr('bonk', h.x, h.y - 40, 60 + (.5 - h.hitT) * 80, null, 0, Math.min(1, h.hitT * 2.5));
+            continue;
+          }
           g.beginPath(); g.ellipse(h.x, h.y, 50, 18, 0, 0, 6.283); g.fillStyle = '#2b1a0e'; g.fill();
           if (h.kind) drawMole(g, h);
           g.beginPath(); g.ellipse(h.x, h.y + 4, 54, 16, 0, 0, Math.PI); g.fillStyle = '#6b4524'; g.fill();
@@ -9595,11 +9735,12 @@ registerGame({
         // timer ring at top
         api.rr(W / 2 - 60, 2, 120, 6, 3); g.fillStyle = 'rgba(255,255,255,.15)'; g.fill();
         api.rr(W / 2 - 60, 2, 120 * Math.max(0, left / TIME), 6, 3); g.fillStyle = left < 10 ? C.red : C.yellow; g.fill();
-        for (const r of ripple) { g.globalAlpha = r.t / .4; api.circle(r.x, r.y, 14 + (1 - r.t / .4) * 30, null, r.col, 3); } g.globalAlpha = 1;
+        for (const r of ripple) { g.globalAlpha = r.t / .4; if (!api.spr('sparkle', r.x, r.y, 30 + (1 - r.t / .4) * 50)) api.circle(r.x, r.y, 14 + (1 - r.t / .4) * 30, null, r.col, 3); } g.globalAlpha = 1;
         for (const s of stars) {
           const blink = s.life < 2 && Math.sin(api.time * 18) < 0;
           if (blink) continue;
           const pul = 1 + Math.sin(api.time * 5 + s.x) * .08, sz = (22 + s.type * 5) * pul;
+          if (api.spr(s.type === 3 ? 'star_big' : s.type === 2 ? 'star_spin' : 'star', s.x, s.y, sz * (s.type === 2 ? 1.35 : 1.15), null, s.type === 2 ? api.time * 2 : 0)) continue;
           if (s.type === 3) { g.globalAlpha = .35; api.circle(s.x, s.y, sz * .8, C.yellow); g.globalAlpha = 1; }
           api.emoji(s.type === 3 ? '🌟' : s.type === 2 ? '💫' : '⭐', s.x, s.y, sz, s.type === 2 ? api.time * 2 : 0);
         }
@@ -9613,8 +9754,11 @@ registerGame({
         [[1, C.bot, C.botDark, api.isBot ? '🤖' : '😺'], [0, C.you, C.youDark, '😎']].sort((x, y) => (x[0] === ME) - (y[0] === ME)).forEach(([i, col, dark, face]) => {
           const p = pl[i];
           g.globalAlpha = .25; api.circle(p.x + 3, p.y + 6, R, '#000'); g.globalAlpha = 1;
-          api.circle(p.x, p.y, R + (p.face > 0 ? 3 : 0), col, p.stun > 0 ? '#fff' : dark, 3);
-          api.emoji(p.stun > 0 ? '😵' : p.face > 0 ? '🤩' : i === ME ? '😎' : api.isBot ? '🤖' : '😺', p.x, p.y, 22);
+          const rr = R + (p.face > 0 ? 3 : 0);
+          if (!api.spr(i === 0 ? 'cyan_blob' : 'pink_blob', p.x, p.y - 1, rr * 2.5, null, p.stun > 0 ? Math.sin(api.time * 18) * .25 : 0, p.stun > 0 ? .75 : 1)) {
+            api.circle(p.x, p.y, rr, col, p.stun > 0 ? '#fff' : dark, 3);
+            api.emoji(p.stun > 0 ? '😵' : p.face > 0 ? '🤩' : i === ME ? '😎' : api.isBot ? '🤖' : '😺', p.x, p.y, 22);
+          }
           if (p.stun > 0) for (let s = 0; s < 3; s++) { const a = api.time * 6 + s * 2.1; api.emoji('💫', p.x + Math.cos(a) * 20, p.y - 22 + Math.sin(a) * 5, 12); }
         });
       },
@@ -9799,7 +9943,8 @@ registerGame({
         // exit
         const ex = cx(EXIT);
         g.fillStyle = 'rgba(124,255,79,.25)'; g.fillRect(ex - CS / 2, OY - 40, CS, 46);
-        api.emoji('🏁', ex, OY - 24, 26);
+        if (api.spr('exit_hole', ex, OY - 18, CS * 1.05)) api.emoji('🏁', ex + 2, OY - 30, 18);
+        else api.emoji('🏁', ex, OY - 24, 26);
         api.text(TR('ВЫХОД', 'EXIT'), ex + 54, OY - 24, 13, C.lime);
         // bot's next steps
         g.fillStyle = 'rgba(255,79,184,.45)';
@@ -9816,7 +9961,7 @@ registerGame({
           trail[i].forEach((t, k) => { g.globalAlpha = k / trail[i].length * .35; api.circle(t.x, t.y, BR * k / trail[i].length, col); });
           g.globalAlpha = 1;
           const gr = g.createRadialGradient(b.x - 3, b.y - 4, 2, b.x, b.y, BR); gr.addColorStop(0, '#fff'); gr.addColorStop(.35, col); gr.addColorStop(1, dark);
-          api.circle(b.x, b.y, BR + (b.hit ? 2 : 0), gr);
+          if (!api.spr(i === 0 ? 'cyan_ball' : 'pink_ball', b.x, b.y, (BR + (b.hit ? 2 : 0)) * 2.3)) api.circle(b.x, b.y, BR + (b.hit ? 2 : 0), gr);
         });
         // tilt indicator (bubble level)
         const tx = W - 30, ty = H - 16;
@@ -9985,19 +10130,20 @@ registerGame({
         api.rr(hx + BB_X - 5, BB_TOP - 4, 12, BB_BOT - BB_TOP + 8, 4); g.fillStyle = '#f5f5ff'; g.fill(); g.strokeStyle = C.red; g.lineWidth = 2; g.stroke();
         g.strokeStyle = 'rgba(255,255,255,.85)'; g.lineWidth = 1.5;
         const wob = Math.sin(S.clock * 30) * S.wob * 5, nb = RIM_Y + 40 + S.wob * 8;
-        for (let i = 0; i <= 6; i++) { const xt = hx - RIM_HW + i * RIM_HW / 3, xb = hx - RIM_HW * .6 + i * RIM_HW * .2 + wob; g.beginPath(); g.moveTo(xt, RIM_Y); g.lineTo(xb, nb); g.stroke(); }
-        for (let k = 1; k <= 3; k++) { const y = RIM_Y + (nb - RIM_Y) * k / 3, hw = RIM_HW * (1 - .4 * k / 3); g.beginPath(); g.moveTo(hx - hw + wob * k / 3, y); g.lineTo(hx + hw + wob * k / 3, y); g.stroke(); }
+        if (!api.spr('hoop', hx + wob * .5, RIM_Y + 24 + S.wob * 4, RIM_HW * 2.45, null, wob * .02)) for (let i = 0; i <= 6; i++) { const xt = hx - RIM_HW + i * RIM_HW / 3, xb = hx - RIM_HW * .6 + i * RIM_HW * .2 + wob; g.beginPath(); g.moveTo(xt, RIM_Y); g.lineTo(xb, nb); g.stroke(); }
+        if (!api.hd) for (let k = 1; k <= 3; k++) { const y = RIM_Y + (nb - RIM_Y) * k / 3, hw = RIM_HW * (1 - .4 * k / 3); g.beginPath(); g.moveTo(hx - hw + wob * k / 3, y); g.lineTo(hx + hw + wob * k / 3, y); g.stroke(); }
         const ballBehind = S.ball.y < RIM_Y;
         const drawBall = () => {
           trail.forEach((p, i) => { g.globalAlpha = i / trail.length * .35; api.circle(p[0], p[1], BR * i / trail.length, C.orange); }); g.globalAlpha = 1;
           const b = S.ball, sh = Math.max(.3, 1 - (FLOOR - b.y) / 500);
           g.fillStyle = 'rgba(0,0,0,.25)'; g.beginPath(); g.ellipse(b.x, FLOOR + 4, BR * sh, 5 * sh, 0, 0, 7); g.fill();
-          emo('🏀', b.x, b.y, BR * 2.2, S.spin);
+          if (!api.spr('ball', b.x, b.y, BR * 2.15, null, S.spin)) emo('🏀', b.x, b.y, BR * 2.2, S.spin);
         };
         if (ballBehind) drawBall();
         g.strokeStyle = C.orange; g.lineWidth = 6; g.lineCap = 'round'; g.beginPath(); g.moveTo(hx - RIM_HW, RIM_Y); g.lineTo(hx + RIM_HW, RIM_Y); g.stroke(); g.lineCap = 'butt';
         api.circle(hx - RIM_HW, RIM_Y, RIM_R, '#ff5a00'); api.circle(hx + RIM_HW, RIM_Y, RIM_R, '#ff5a00');
         if (!ballBehind) drawBall();
+        if (S.wob > 0) api.spr(S.turn === 'you' ? 'cyan_swish' : 'pink_swish', hx, RIM_Y + 14, 110 + (1 - S.wob) * 40, null, 0, Math.min(1, S.wob * 1.5));
         // turn marker under the ball
         if (S.phase === 'aim') {
           const mine = api.mine(S.turn); emo(mine ? '🙂' : api.isBot ? '🤖' : '💞', S.ball.x - 34, FLOOR + 18, 20); api.text(api.name(S.turn), S.ball.x + 22, FLOOR + 18, 14, '#fff', 'left');
@@ -10162,6 +10308,7 @@ registerGame({
         [[RINGS[4], 118], [RINGS[3], 82], [RINGS[2], 42]].forEach(([rg, d]) => api.text(String(rg[1]), BX + d * .7071 + 2, BY - d * .7071 - 2, 11, 'rgba(255,214,10,.95)'));
         // stuck darts
         for (const s of stuck) drawDart(s.x, s.y, s.side, 1, Math.sin(api.time * 40) * s.wob * .15);
+        for (const s of stuck) if (s.wob > 0 && score(s.x, s.y) === 50) api.spr('bull_spark', BX, BY, 40 + (1 - s.wob) * 50, null, (1 - s.wob) * .8, s.wob);
         // crosshair
         if (phase === 'aim') {
           const col = turn ? C.bot : C.you;
@@ -10205,6 +10352,7 @@ registerGame({
         }
         function drawDart(x, y, side, sc, rot) {
           g.save(); g.translate(x, y); g.rotate(.5 + rot); g.scale(sc, sc);
+          if (api.spr(side ? 'pink_dart' : 'cyan_dart', 0, 16, 14, 32, Math.PI)) { g.restore(); return; }
           g.strokeStyle = '#ccc'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(0, 0); g.lineTo(0, 7); g.stroke();
           api.rr(-2, 7, 4, 14, 2); g.fillStyle = '#555'; g.fill();
           g.fillStyle = side ? C.bot : C.you;
@@ -10385,7 +10533,9 @@ registerGame({
         const arm = kp.dive > 0 ? -34 : -10;
         g.beginPath(); g.moveTo(-12, -12); g.lineTo(-30, arm); g.moveTo(12, -12); g.lineTo(30, arm); g.stroke();
         g.beginPath(); g.moveTo(-7, 20); g.lineTo(-9, 38); g.moveTo(7, 20); g.lineTo(9, 38); g.stroke(); g.lineCap = 'butt';
-        emo('🧤', -31, arm - 4, 15); emo('🧤', 31, arm - 4, 15);
+        const gl = kp.side ? 'pink_glove' : 'cyan_glove';
+        if (!api.spr(gl, 31, arm - 4, 19)) emo('🧤', 31, arm - 4, 15);
+        g.save(); g.scale(-1, 1); const glOk = api.spr(gl, 31, arm - 4, 19); g.restore(); if (!glOk) emo('🧤', -31, arm - 4, 15);
         emo(kp.side && api.isBot ? '🤖' : '😠', 0, -30, 22);
         g.restore();
         // swipe trail (only the viewer's own swipe — the keeper must not see it)
@@ -10399,7 +10549,7 @@ registerGame({
         if (shooter === 1 && api.isBot && phase !== 'after') { const run = striker.t > 0 ? (1 - striker.t / .25) * 20 : 0; emo('🤖', striker.x - run, striker.y - run, 34); }
         // ball + shadow
         g.fillStyle = 'rgba(0,0,0,.25)'; g.beginPath(); g.ellipse(ball.x, ball.y + ball.r * .9 + (shot && phase === 'fly' ? (1 - Math.abs(shot.t * 2 - 1)) * 20 : 0), ball.r, ball.r * .35, 0, 0, 6.283); g.fill();
-        emo('⚽', ball.x, ball.y, ball.r * 2.1, (shot ? shot.t * 12 : 0));
+        if (!api.spr('ball', ball.x, ball.y, ball.r * 2.1, null, (shot ? shot.t * 12 : 0))) emo('⚽', ball.x, ball.y, ball.r * 2.1, (shot ? shot.t * 12 : 0));
         if (phase === 'ready' && shooter === ME && !swipe) { const pulse = 22 + Math.sin(api.time * 6) * 4; api.circle(BALL.x, BALL.y, pulse, null, 'rgba(255,255,255,.7)', 3); emo('👆', BALL.x + 30, BALL.y + 34 - Math.abs(Math.sin(api.time * 4)) * 14, 28); }
         // kick dots
         for (let j = 0; j < 2; j++) {
@@ -10591,6 +10741,7 @@ registerGame({
         // wind streaks
         g.strokeStyle = 'rgba(255,255,255,' + Math.min(.35, Math.abs(S.wind) / 200) + ')'; g.lineWidth = 2; g.lineCap = 'round';
         for (const s of streaks) { g.beginPath(); g.moveTo(s.x, s.y); g.lineTo(s.x + Math.sign(S.wind || 1) * s.l, s.y); g.stroke(); }
+        if (Math.abs(S.wind) > 25 && api.hd) { g.save(); g.globalAlpha = Math.min(.6, Math.abs(S.wind) / 110); if (S.wind < 0) { g.scale(-1, 1); api.spr('wind', -W / 2, 86, 104); } else api.spr('wind', W / 2, 86, 104); g.restore(); }
         if (Math.abs(S.wind) > 25) api.text(S.wind > 0 ? TR('Ветер →', 'Wind →') : TR('← Ветер', '← Wind'), W / 2, 80, 16, 'rgba(255,255,255,.75)');
         // progress + lives
         const t = total();
@@ -10605,8 +10756,14 @@ registerGame({
         for (const side of S.turn === 'you' ? ['bot', 'you'] : ['you', 'bot']) {
           const p = S.pads[side], col = side === 'you' ? C.you : C.bot, my = S.turn === side;
           if (my && S.ball) { g.globalAlpha = .35 + .25 * Math.sin(clock * 8); api.circle(p.x, PY, PR + 12, col); g.globalAlpha = 1; }
+          if (api.hd && api.has('cyan_hand')) {
+            api.circle(p.x, PY, PR + p.glow * 6, 'rgba(255,255,255,.12)', col, my ? 4 : 2);
+            api.spr(side === 'you' ? 'cyan_hand' : 'pink_hand', p.x, PY - 2 - p.glow * 4, (PR * 2 + p.glow * 8) * .95);
+            if (p.glow > 0) { g.globalAlpha = p.glow; api.spr('pop', p.x, PY - PR - BR * .6, 40 + (1 - p.glow) * 40); g.globalAlpha = 1; }
+          } else {
           api.circle(p.x, PY, PR + p.glow * 6, col, '#fff', my ? 4 : 2);
           api.emoji(side === 'you' ? '✋' : '🤚', p.x, PY + 2, 30);
+          }
           if (side === 'bot' && api.isBot) api.emoji('🤖', p.x + 22, PY + 22, 14);
           if (my && S.ball) api.text(api.mine(side) ? TR('ТВОЙ УДАР', 'YOUR HIT') : TR('УДАР: ', 'HIT: ') + api.label(side), p.x, PY - PR - 16, 12, col);
         }
@@ -10619,10 +10776,12 @@ registerGame({
           g.globalAlpha = 1;
           const col = S.turn === 'you' ? C.you : C.bot;
           api.circle(b.x, b.y, BR + 5, null, col, 4);
+          if (!api.spr('ball', b.x, b.y, BR * 2.1, null, b.rot)) {
           g.save(); g.translate(b.x, b.y); g.rotate(b.rot);
           const seg = ['#ff3d5a', '#ffd60a', '#00d1ff', '#ffffff'];
           for (let i = 0; i < 4; i++) { g.beginPath(); g.moveTo(0, 0); g.arc(0, 0, BR, i * Math.PI / 2, (i + 1) * Math.PI / 2); g.fillStyle = seg[i]; g.fill(); }
           api.circle(0, 0, 5, '#fff'); g.restore();
+          }
           if (S.pause > 0 && !msg) api.text(api.mine(S.turn) ? TR('Подставь ладонь!', 'Get your hand under it!') : TR(`Подаёт: ${api.name(S.turn)}`, `${api.name(S.turn)} serves`), W / 2, 250, 22, '#fff');
           // arrow above ball when it leaves the screen top
         }
@@ -10673,6 +10832,7 @@ registerGame({
     const botSpeed = [200, 300, 430][lvl], botErr = [36, 18, 6][lvl];
     const COLS = 8, ROWS = 6, BW = 38, BHt = 18, GAP = 4, BX0 = (W - (COLS * BW + (COLS - 1) * GAP)) / 2, BY0 = 196;
     const ROWCOL = ['#ff3d5a', '#ff8a00', '#ffd60a', '#7cff4f', '#00d1ff', '#b37bff'];
+    const BRSPR = { '#ff3d5a': 'brick_red', '#ff8a00': 'brick_orange', '#ffd60a': 'brick_yellow', '#7cff4f': 'brick_green', '#00d1ff': 'brick_cyan', '#b37bff': 'brick_purple' };
     const S = {
       pads: { you: { x: W / 2, tx: W / 2, y: H - 34, w: BASEW, wideT: 0 }, bot: { x: W / 2, tx: W / 2, y: 34, w: BASEW, wideT: 0 } },
       balls: [], bricks: [], drops: [], broke: { you: 0, bot: 0 }, lives: 3, serve: null, over: false,
@@ -10821,14 +10981,20 @@ registerGame({
         g.fillStyle = C.bot; g.fillRect(0, 0, W, 70); g.globalAlpha = 1;
         // bricks
         for (const br of S.bricks) {
-          if (br.hp <= 0) continue;
+          if (br.hp <= 0) { if (br.hitT > 0 && api.hd) { g.globalAlpha = br.hitT * 5; api.spr('debris', br.x + BW / 2, br.y + BHt / 2 + (.2 - br.hitT) * 60, BW * (1.6 - br.hitT * 2)); g.globalAlpha = 1; } continue; }
           const j = br.hitT * 10;
+          if (api.spr(BRSPR[br.col], br.x + BW / 2, br.y + BHt / 2, BW + j + 2, BHt + j + 2)) {
+            if (br.hitT > 0) { g.globalAlpha = .6; api.rr(br.x - j / 2, br.y - j / 2, BW + j, BHt + j, 5); g.fillStyle = '#fff'; g.fill(); g.globalAlpha = 1; }
+            if (br.max > 1) { api.rr(br.x, br.y, BW, BHt, 5); g.strokeStyle = br.hp > 1 ? 'rgba(255,255,255,.9)' : 'rgba(0,0,0,.35)'; g.lineWidth = 2; g.stroke(); if (br.hp > 1) api.text('2', br.x + BW / 2, br.y + BHt / 2 + 1, 11, 'rgba(0,0,0,.5)'); }
+            continue;
+          }
           api.rr(br.x - j / 2, br.y - j / 2, BW + j, BHt + j, 5); g.fillStyle = br.hitT > 0 ? '#fff' : br.col; g.fill();
           if (br.max > 1) { g.strokeStyle = br.hp > 1 ? 'rgba(255,255,255,.85)' : 'rgba(0,0,0,.35)'; g.lineWidth = 2.5; g.stroke(); if (br.hp > 1) api.text('2', br.x + BW / 2, br.y + BHt / 2 + 1, 11, 'rgba(0,0,0,.45)'); }
           g.fillStyle = 'rgba(255,255,255,.3)'; g.fillRect(br.x + 4, br.y + 3, BW - 8, 3);
         }
         // drops
         for (const d of S.drops) {
+          if (api.spr(d.kind === 'wide' ? 'pw_wide' : 'pw_multi', d.x, d.y, 38)) continue;
           api.circle(d.x, d.y, 13, d.side === 'you' ? C.you : C.bot, '#fff', 2);
           api.emoji(d.kind === 'wide' ? '↔️' : '⚪', d.x, d.y, 15);
         }
@@ -10836,13 +11002,14 @@ registerGame({
         for (const b of S.balls) {
           const col = b.owner === 'you' ? C.you : C.bot;
           b.trail.forEach((t, i) => { g.globalAlpha = i / b.trail.length * .4; api.circle(t.x, t.y, BR * i / b.trail.length, col); });
-          g.globalAlpha = 1; api.circle(b.x, b.y, BR, '#fff', col, 3);
+          g.globalAlpha = 1; if (api.hd) { api.circle(b.x, b.y, BR + 2, null, col, 2); if (api.spr('ball', b.x, b.y, BR * 3.4)) continue; } api.circle(b.x, b.y, BR, '#fff', col, 3);
         }
         // paddles
         for (const k of ['you', 'bot']) {
           const p = S.pads[k], col = k === 'you' ? C.you : C.bot;
           if (p.wideT > 0) { g.globalAlpha = .4; api.rr(p.x - p.w / 2 - 4, p.y - PH / 2 - 4, p.w + 8, PH + 8, 10); g.fillStyle = C.yellow; g.fill(); g.globalAlpha = 1; }
-          api.rr(p.x - p.w / 2, p.y - PH / 2, p.w, PH, 7); g.fillStyle = col; g.fill();
+          if (!api.spr(k === 'you' ? 'cyan_paddle' : 'pink_paddle', p.x, p.y, p.w + 4, PH + 6)) { api.rr(p.x - p.w / 2, p.y - PH / 2, p.w, PH, 7); g.fillStyle = col; g.fill(); }
+          if (S.serve && S.serve.side === k && api.spr('ball', p.x, p.y + (k === 'you' ? -1 : 1) * (PH / 2 + BR + 1), BR * 3.4)) continue;
           if (S.serve && S.serve.side === k) api.circle(p.x, p.y + (k === 'you' ? -1 : 1) * (PH / 2 + BR + 1), BR, '#fff', col, 3);
         }
         if (api.isBot) api.emoji('🤖', S.pads.bot.x, S.pads.bot.y - 1, 13);
@@ -10905,6 +11072,7 @@ registerGame({
       shark: { e: '🦈', v: 5, r: 28, reel: 95, sp: [55, 75] },
       boot: { e: '👢', v: -1, r: 14, reel: 320, sp: [18, 30] },
     };
+    const FSPR = { small: 'fish_blue', mid: 'fish_clown', big: 'fish_green', shark: 'fish_gold', boot: 'boot' };
     const mkHook = tipX => ({ tip: { x: tipX, y: SURF - 44 }, x: tipX, y: SURF - 44, tx: 0, ty: 0, state: 'idle', fish: null, waitT: 0 });
     const S = { t: DUR, fish: [], hooks: [mkHook(92), mkHook(W - 92)], score: [0, 0], over: false, spawnT: 0 };
     const lv = api.level;
@@ -11031,15 +11199,19 @@ registerGame({
         g.fillStyle = 'rgba(255,255,255,.05)';
         for (let i = 0; i < 4; i++) { const x = 40 + i * 90 + Math.sin(clock * .5 + i) * 10; g.beginPath(); g.moveTo(x, SURF); g.lineTo(x + 30, SURF); g.lineTo(x - 20, H); g.lineTo(x - 60, H); g.fill(); }
         g.strokeStyle = '#1c7a4a'; g.lineWidth = 5; g.lineCap = 'round';
-        for (let i = 0; i < 7; i++) { const x = 20 + i * 54; g.beginPath(); g.moveTo(x, H); g.quadraticCurveTo(x + Math.sin(clock * 1.5 + i) * 14, H - 40, x + Math.sin(clock + i) * 8, H - 70 - (i % 3) * 14); g.stroke(); }
+        if (api.hd) for (let i = 0; i < 7; i++) { const x = 20 + i * 54; g.save(); g.translate(x, H + 4); g.rotate(Math.sin(clock * 1.5 + i) * .08); api.spr('seaweed', 0, -(36 + (i % 3) * 8), 48 + (i % 3) * 8); g.restore(); }
+        if (!api.hd) for (let i = 0; i < 7; i++) { const x = 20 + i * 54; g.beginPath(); g.moveTo(x, H); g.quadraticCurveTo(x + Math.sin(clock * 1.5 + i) * 14, H - 40, x + Math.sin(clock + i) * 8, H - 70 - (i % 3) * 14); g.stroke(); }
         g.fillStyle = 'rgba(255,255,255,.3)';
-        for (let i = 0; i < 10; i++) { const y = H - ((clock * 40 + i * 57) % (H - SURF)); g.beginPath(); g.arc((i * 73) % W + Math.sin(clock * 2 + i) * 4, y, 2 + (i % 3), 0, 6.283); g.fill(); }
+        for (let i = 0; i < 10; i++) { const y = H - ((clock * 40 + i * 57) % (H - SURF)); if (i % 3 === 0 && api.spr('bubbles', (i * 73) % W + Math.sin(clock * 2 + i) * 4, y, 16 + (i % 2) * 6)) continue; g.beginPath(); g.arc((i * 73) % W + Math.sin(clock * 2 + i) * 4, y, 2 + (i % 3), 0, 6.283); g.fill(); }
         // fish
         for (const f of S.fish) {
           const k = KINDS[f.kind]; g.save(); g.translate(f.x, f.y);
           if (f.hookedBy >= 0) g.rotate(Math.sin(clock * 25) * .3 + (f.dir > 0 ? -.6 : .6));
+          if (api.hd && api.has(FSPR[f.kind])) { if (f.dir < 0 && f.kind !== 'boot') g.scale(-1, 1); api.spr(FSPR[f.kind], 0, 0, k.r * (f.kind === 'boot' ? 2.2 : 2.45)); g.restore(); }
+          else {
           if (f.dir > 0) g.scale(-1, 1);
           api.emoji(k.e, 0, 0, k.r * 2.1); g.restore();
+          }
           if (k.v >= 3 && f.hookedBy < 0) { g.globalAlpha = .5 + .3 * Math.sin(clock * 6); api.text('+' + k.v, f.x, f.y - k.r - 8, 12, C.yellow); g.globalAlpha = 1; }
         }
         // surface wave
@@ -11054,6 +11226,14 @@ registerGame({
           if (h.state === 'out' && api.mine(SD(side))) { g.globalAlpha = .6; api.circle(h.tx, h.ty, 12, null, col, 2); g.globalAlpha = 1; }
           g.strokeStyle = 'rgba(255,255,255,.85)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(h.tip.x, h.tip.y);
           g.quadraticCurveTo((h.tip.x + h.x) / 2, Math.max(h.tip.y, h.y) + 10, h.x, h.y); g.stroke();
+          if (api.hd && api.has('hook')) {
+            if (h.y > SURF + 24) { // bobber where the line crosses the surface
+              const y1 = Math.max(h.tip.y, h.y) + 10, mx = (h.tip.x + h.x) / 2;
+              for (let t = .05; t <= 1; t += .05) { const u = 1 - t, yy = u * u * h.tip.y + 2 * t * u * y1 + t * t * h.y; if (yy >= SURF) { api.spr('bobber', u * u * h.tip.x + 2 * t * u * mx + t * t * h.x, SURF - 5 + Math.sin(clock * 3 + side) * 2, 15); break; } }
+            }
+            api.circle(h.x, h.y, 4, col);
+            api.spr('hook', h.x, h.y + 13, 17);
+          } else
           api.circle(h.x, h.y, 6, col, '#fff', 2);
           api.circle(h.tip.x, h.tip.y, 3, col);
         });
@@ -11220,13 +11400,21 @@ registerGame({
         if (!st) return;
         if (st.phase === 'boom') {
           const k = Math.min(1, st.t * 2.5); g.globalAlpha = 1 - k; api.circle(st.x, st.y, 40 + k * 200, C.yellow); g.globalAlpha = 1;
-          api.emoji('💥', st.x, st.y, 90 + Math.sin(st.t * 20) * 6);
+          if (!api.spr('explosion', st.x, st.y, 150 + k * 60 + Math.sin(st.t * 20) * 8, null, 0, Math.max(0, 1 - Math.max(0, st.t - 1.2) * 1.5))) api.emoji('💥', st.x, st.y, 90 + Math.sin(st.t * 20) * 6);
           return;
         }
         // bomb (drawn fuse-up on this viewer's screen)
         const shake = heat * heat * 7 * (st.phase === 'live' ? 1 : .3), sx = st.x + api.rand(-shake, shake), sy = st.y + api.rand(-shake, shake);
         const sq = 1 + Math.sin(api.time * (6 + heat * 26)) * .04 * (1 + heat * 2);
         g.save(); g.translate(sx, sy); if (UP < 0) g.rotate(Math.PI); g.scale(sq, 2 - sq);
+        if (api.hd && api.has('bomb')) { // sprite potato bomb: red-hot glow grows with heat, sparks fly from its fuse tip
+          if (heat > .05) { const hg = g.createRadialGradient(0, 0, 10, 0, 0, BR * 1.6); hg.addColorStop(0, `rgba(255,70,30,${heat * .75})`); hg.addColorStop(1, 'rgba(255,70,30,0)'); g.fillStyle = hg; g.beginPath(); g.arc(0, 0, BR * 1.6, 0, 6.283); g.fill(); }
+          api.spr('bomb', 14, -22, 130);
+          const fx = 57, fy = -70;
+          for (const s of st.sparks) { g.globalAlpha = s.life / .4; api.circle(fx + s.x, fy + s.y, 2.5, Math.random() < .5 ? C.yellow : C.orange); }
+          g.globalAlpha = 1; api.spr('spark', fx, fy, 26 + Math.random() * 10, null, Math.random() * 6.28);
+          g.restore();
+        } else {
         const gr = g.createRadialGradient(-14, -16, 6, 0, 0, BR);
         const rC = Math.round(40 + heat * 215), gC = Math.round(40 + heat * 20);
         gr.addColorStop(0, `rgb(${Math.min(255, rC + 90)},${gC + 80},${gC + 60})`); gr.addColorStop(1, `rgb(${rC},${gC},${Math.round(60 - heat * 40)})`);
@@ -11236,6 +11424,7 @@ registerGame({
         for (const s of st.sparks) { g.globalAlpha = s.life / .4; api.circle(22 + s.x, -BR - 20 + s.y, 2.5, Math.random() < .5 ? C.yellow : C.orange); }
         g.globalAlpha = 1; api.circle(22, -BR - 20, 5 + Math.random() * 3, '#fff6a0');
         g.restore();
+        }
         if (st.phase === 'live') {
           const tp = targetPos(), mine = st.holder === ME, col = sideCol(st.holder);
           const armed = st.armed || (api.isGuest && mine && gl.armed), lock = api.isGuest ? gl.lock : st.lock;
@@ -11252,7 +11441,7 @@ registerGame({
           }
         }
         if (botHand && api.isBot && st.holder === 1 && st.phase === 'live') {
-          api.emoji('👇', botHand.x, botHand.y - 16, 30);
+          if (!api.spr('pink_hand', botHand.x, botHand.y - 22, 44, null, Math.PI)) api.emoji('👇', botHand.x, botHand.y - 16, 30);
           if (botHand.ring > 0) { g.globalAlpha = botHand.ring; api.circle(botHand.x, botHand.y, 26 - botHand.ring * 12, null, C.bot, 3); g.globalAlpha = 1; }
         }
         if (st.phase === 'ready') api.text(TR('Готов?', 'Ready?'), W / 2, H / 2 + 34 * UP, 22, '#fff');
@@ -11333,6 +11522,8 @@ registerGame({
       { col: '#00d1ff', dark: '#00546b', f: 587, x: 186, y: 276, ic: '🫐' },
     ];
     const PS = 144, ROUNDS = 2, TURN_T = 8;
+    // HD sprites: quarter pads drawn for the top-right corner; rotate so the arc faces outward
+    const SPR = [['red', -Math.PI / 2], ['yellow', 0], ['green', Math.PI], ['blue', Math.PI / 2]];
     const lvl = api.level;
     // chance that the bot fails a turn grows with sequence length
     const errBase = [.05, .02, .005][lvl], errGrow = [.045, .028, .016][lvl];
@@ -11459,10 +11650,15 @@ registerGame({
         // pads
         for (let i = 0; i < 4; i++) {
           const q = PADS[i], on = S.lit === i, bad = S.wrong === i && S.phase === 'wait';
+          const [sn, sr] = SPR[i];
+          const hl = on || (bad && Math.sin(api.time * 12) > 0); // the correct pad blinks after a mistake
+          if (api.spr(sn + (hl ? '_on' : '_off'), q.x + PS / 2, q.y + PS / 2, hl ? PS * 1.2 : PS * 1.03, null, sr)) {
+          } else {
           if (on) { g.shadowColor = q.col; g.shadowBlur = 40; }
           api.rr(q.x, q.y, PS, PS, 28); g.fillStyle = on ? q.col : q.dark; g.fill(); g.shadowBlur = 0;
           if (on) { api.rr(q.x + 10, q.y + 10, PS - 20, PS - 20, 20); g.fillStyle = 'rgba(255,255,255,.35)'; g.fill(); }
           g.strokeStyle = bad ? '#fff' : q.col; g.lineWidth = bad ? 6 : 3; api.rr(q.x, q.y, PS, PS, 28); g.stroke();
+          }
           api.emoji(q.ic, q.x + PS / 2, q.y + PS / 2, on ? 54 : 40);
           if (bad) api.text(TR('вот так!', 'this one!'), q.x + PS / 2, q.y + PS - 18, 14, '#fff');
         }
@@ -11717,11 +11913,11 @@ registerGame({
         } else {
           g.strokeStyle = S.drawer === 'you' ? C.youDark : C.botDark; g.lineWidth = 6;
           for (const s of S.strokes) { if (!s || !s.length) continue; g.beginPath(); g.moveTo(s[0], s[1]); for (let i = 2; i < s.length; i += 2) g.lineTo(s[i], s[i + 1]); if (s.length === 2) g.lineTo(s[0] + .1, s[1]); g.stroke(); }
-          if (S.phase === 'draw' && mine && !S.strokes.length) { api.text(TR('Рисуй здесь пальцем', 'Draw here with your finger'), W / 2, PAPER.y + PAPER.h / 2 - 10, 18, 'rgba(29,19,64,.35)'); api.emoji('👆', W / 2, PAPER.y + PAPER.h / 2 + 30, 34); }
+          if (S.phase === 'draw' && mine && !S.strokes.length) { api.text(TR('Рисуй здесь пальцем', 'Draw here with your finger'), W / 2, PAPER.y + PAPER.h / 2 - 10, 18, 'rgba(29,19,64,.35)'); if (!api.spr('pencil', W / 2 + 6, PAPER.y + PAPER.h / 2 + 34, 44)) api.emoji('👆', W / 2, PAPER.y + PAPER.h / 2 + 30, 34); }
           if (S.phase === 'draw' && !mine && !S.strokes.length) api.text(TR(`${api.name(S.drawer)} начинает рисовать${dd}`, `${api.name(S.drawer)} is starting to draw${dd}`), W / 2, PAPER.y + PAPER.h / 2, 16, 'rgba(29,19,64,.35)');
         }
         g.restore();
-        if (S.phase === 'botDraw' && pen && S.prog < 1) api.emoji('✏️', pen[0] + 12, pen[1] - 12, 30);
+        if (S.phase === 'botDraw' && pen && S.prog < 1 && !api.spr('pencil', pen[0] + 20, pen[1] - 22, 46)) api.emoji('✏️', pen[0] + 12, pen[1] - 12, 30);
         if (S.phase === 'botDraw') { api.rr(PAPER.x + 10, PAPER.y + PAPER.h - 16, (PAPER.w - 20) * (1 - S.prog), 6, 3); g.fillStyle = C.bot; g.fill(); api.text(`+${Math.max(1, 5 - Math.floor(S.prog * 4))}`, PAPER.x + PAPER.w - 22, PAPER.y + 20, 18, C.botDark); }
         if (S.phase === 'draw' || S.phase === 'wait') {
           const T = S.phase === 'draw' ? 30 : 10;
@@ -11730,7 +11926,8 @@ registerGame({
           if (!api.isBot && !mine) api.text(`+${speedPts()}`, PAPER.x + 26, PAPER.y + 20, 18, sideCol(guesser));
         }
         if (S.phase === 'draw' && mine) {
-          api.rr(CLEAR.x, CLEAR.y, CLEAR.w, CLEAR.h, 18); g.fillStyle = 'rgba(255,255,255,.2)'; g.fill(); api.text(TR('🧽 Стереть', '🧽 Erase'), CLEAR.x + CLEAR.w / 2, CLEAR.y + CLEAR.h / 2, 16, '#fff');
+          api.rr(CLEAR.x, CLEAR.y, CLEAR.w, CLEAR.h, 18); g.fillStyle = 'rgba(255,255,255,.2)'; g.fill(); if (api.spr('eraser', CLEAR.x + 26, CLEAR.y + CLEAR.h / 2, 36)) api.text(TR('Стереть', 'Erase'), CLEAR.x + CLEAR.w / 2 + 16, CLEAR.y + CLEAR.h / 2, 15, '#fff');
+          else api.text(TR('🧽 Стереть', '🧽 Erase'), CLEAR.x + CLEAR.w / 2, CLEAR.y + CLEAR.h / 2, 16, '#fff');
           api.rr(DONE.x, DONE.y, DONE.w, DONE.h, 18); g.fillStyle = C.yellow; g.fill(); api.text(TR('✅ Готово', '✅ Done'), DONE.x + DONE.w / 2, DONE.y + DONE.h / 2, 20, '#1d1340');
           api.text(TR(`${api.name(guesser)} будет выбирать из 4 слов`, `${api.name(guesser)} will pick from 4 words`), W / 2, 500, 13, 'rgba(255,255,255,.7)');
         } else if (S.phase !== 'intro') {
@@ -11742,7 +11939,8 @@ registerGame({
             if (rev && right) fill = C.lime; else if (rev && S.pick && S.pick.i === i) fill = C.red;
             api.rr(b.x, b.y, b.w, b.h, 18); g.fillStyle = fill; g.fill();
             api.text(wd(w), b.x + b.w / 2, b.y + b.h / 2, 19, canPick || rev ? '#1d1340' : '#fff');
-            if (S.pick && S.pick.i === i) api.emoji(api.mine(S.pick.side) ? '🙂' : api.isBot ? '🤖' : '💬', b.x + b.w - 16, b.y + 14, 20);
+            if (S.pick && S.pick.i === i) { const em = api.mine(S.pick.side) ? '🙂' : api.isBot ? '🤖' : '💬'; if (em !== '💬' || !api.spr('bubble', b.x + b.w - 16, b.y + 12, 28)) api.emoji(em, b.x + b.w - 16, b.y + 14, 20); }
+            if (rev && right) api.spr('sparkle', b.x + 22, b.y + 22, 22 + Math.sin(api.time * 8) * 4);
           }
           if (S.phase === 'botGuess' || (S.phase === 'wait' && mine)) { const x = BTN(Math.floor(dots * 2.5) % 4); g.strokeStyle = sideCol(guesser); g.lineWidth = 4; api.rr(x.x, x.y, x.w, x.h, 18); g.stroke(); }
         }
@@ -11853,13 +12051,17 @@ registerGame({
       // string + nozzle (pump)
       g.strokeStyle = 'rgba(255,255,255,.6)'; g.lineWidth = 2; g.beginPath(); g.moveTo(x + jx, BASE_Y - up); g.quadraticCurveTo(x + 10, BASE_Y + 20 - up, x, BASE_Y + 34 - up); g.stroke();
       g.save(); g.translate(x + jx, y); g.scale(sx * (1 + tr * .04), 1.08 / sx);
+      if (api.spr(i ? 'pink_balloon' : 'cyan_balloon', 0, r * .19, r * 2.1)) {
+        if (tr > 0) { g.beginPath(); g.arc(0, 0, r, 0, 6.283); g.globalAlpha = tr * .6; g.strokeStyle = C.red; g.lineWidth = 3 + tr * 3; g.stroke(); g.globalAlpha = 1; }
+      } else {
       const gr = g.createRadialGradient(-r * .35, -r * .4, 2, 0, 0, r * 1.15); gr.addColorStop(0, '#fff'); gr.addColorStop(.25, col); gr.addColorStop(1, dark);
       g.beginPath(); g.arc(0, 0, r, 0, 6.283); g.fillStyle = gr; g.fill();
       if (tr > 0) { g.globalAlpha = tr * .6; g.strokeStyle = C.red; g.lineWidth = 3 + tr * 3; g.stroke(); g.globalAlpha = 1; }
       g.beginPath(); g.moveTo(-6, r - 1); g.lineTo(6, r - 1); g.lineTo(0, r + 9); g.closePath(); g.fillStyle = dark; g.fill();
+      }
       g.restore();
       // air puffs while blowing
-      if (p.inp > .15 && p.st === 'blow') for (let k = 0; k < 3; k++) { const a = ((clock * 2 + k / 3) % 1); g.globalAlpha = (1 - a) * .7; api.circle(x + Math.sin(k * 2 + clock * 5) * 10, BASE_Y + 40 - a * 30, 4 + a * 6, '#fff'); }
+      if (p.inp > .15 && p.st === 'blow') for (let k = 0; k < 3; k++) { const a = ((clock * 2 + k / 3) % 1); g.globalAlpha = (1 - a) * .7; const px = x + Math.sin(k * 2 + clock * 5) * 10, py = BASE_Y + 40 - a * 30, pr = 4 + a * 6; if (!api.spr('puff', px, py, pr * 2.6)) api.circle(px, py, pr, '#fff'); }
       g.globalAlpha = 1;
       if (tr > .3) api.text(tr > .7 ? '😱' : '😬', x + jx, y, 18 + r * .4);
     }
@@ -12000,10 +12202,11 @@ registerGame({
       const ox = Math.sin(clock * 37 + i) * k * 7, oy = Math.cos(clock * 29 + i) * k * 6, rot = Math.sin(clock * 23 + i * 2) * k * .08;
       g.save(); g.translate(x + ox, (top + bot) / 2 + oy); g.rotate(rot); g.translate(-x, -(top + bot) / 2);
       // cup body (metal) with a glass window
-      g.beginPath(); g.moveTo(x - 58, top + 40); g.lineTo(x + 58, top + 40); g.lineTo(x + 44, bot); g.lineTo(x - 44, bot); g.closePath();
+      const hdS = api.spr('shaker', x, (top + bot) / 2 - 12, 300 * 93 / 200, 300);
       const mg = g.createLinearGradient(x - 58, 0, x + 58, 0); mg.addColorStop(0, '#8a96a8'); mg.addColorStop(.35, '#f2f6fb'); mg.addColorStop(.6, '#b9c3d1'); mg.addColorStop(1, '#6d7889');
-      g.fillStyle = mg; g.fill();
-      const wx = x - 34, ww = 68, wy = top + 58, wh = bot - wy - 14;
+      if (!hdS) { g.beginPath(); g.moveTo(x - 58, top + 40); g.lineTo(x + 58, top + 40); g.lineTo(x + 44, bot); g.lineTo(x - 44, bot); g.closePath();
+      g.fillStyle = mg; g.fill(); }
+      const wx = hdS ? x - 29 : x - 34, ww = hdS ? 58 : 68, wy = hdS ? top + 84 : top + 58, wh = bot - wy - (hdS ? 22 : 14);
       api.rr(wx, wy, ww, wh, 12); g.fillStyle = 'rgba(20,20,50,.55)'; g.fill();
       g.save(); api.rr(wx, wy, ww, wh, 12); g.clip();
       const lvl = wy + wh * (1 - api.clamp(p.prog, 0, 1));
@@ -12018,22 +12221,23 @@ registerGame({
       // ice cubes rattling
       for (let c = 0; c < 3; c++) {
         const ix = wx + 14 + c * 20 + Math.sin(clock * 31 + c * 3) * k * 9, iy = Math.max(lvl + 10, wy + wh - 22 - c * 12) + Math.cos(clock * 27 + c) * k * 12;
-        g.save(); g.translate(ix, iy); g.rotate(clock * k * 6 + c); api.rr(-8, -8, 16, 16, 4); g.fillStyle = 'rgba(220,245,255,.85)'; g.fill(); g.strokeStyle = '#fff'; g.lineWidth = 1.5; g.stroke(); g.restore();
+        g.save(); g.translate(ix, iy); g.rotate(clock * k * 6 + c); if (!api.spr('ice', 0, 0, 19)) { api.rr(-8, -8, 16, 16, 4); g.fillStyle = 'rgba(220,245,255,.85)'; g.fill(); g.strokeStyle = '#fff'; g.lineWidth = 1.5; g.stroke(); } g.restore();
       }
       g.restore();
       // cap
-      api.rr(x - 50, top + 10, 100, 34, 10); g.fillStyle = mg; g.fill();
+      if (!hdS) { api.rr(x - 50, top + 10, 100, 34, 10); g.fillStyle = mg; g.fill();
       api.rr(x - 18, top - 10, 36, 24, 8); g.fillStyle = '#9aa6b8'; g.fill();
-      api.circle(x, top - 14, 9, '#c7d0dc');
+      api.circle(x, top - 14, 9, '#c7d0dc'); }
       g.restore();
       // spill drops
-      if (p.spill > 0) for (let d = 0; d < 6; d++) { const a = (clock * 3 + d / 6) % 1; g.globalAlpha = (1 - a) * p.spill; api.circle(x + (d - 2.5) * 16 * a * 2, top + 20 - a * 40 + a * a * 140, 5, drink(i)); }
+      if (p.spill > 0 && api.hd) { const a = (clock * 2.5) % 1; api.spr(i ? 'pink_splash' : 'cyan_splash', x + Math.sin(clock * 9) * 6, top + 6 - a * 26, 70 + a * 30, null, Math.sin(clock * 5) * .3, p.spill * (1 - a * .6)); }
+      else if (p.spill > 0) for (let d = 0; d < 6; d++) { const a = (clock * 3 + d / 6) % 1; g.globalAlpha = (1 - a) * p.spill; api.circle(x + (d - 2.5) * 16 * a * 2, top + 20 - a * 40 + a * a * 140, 5, drink(i)); }
       g.globalAlpha = 1;
     }
     function drawSide(g, i) {
       const p = S.P[i], x0 = CW * i, x = cx(i), side = SIDES[i];
       api.text(api.label(side), x, 76, 16, drink(i));
-      for (let w = 0; w < 2; w++) api.text(w < S.wins[i] ? '🍹' : '○', x - 14 + w * 28, 104, 18, 'rgba(255,255,255,.6)');
+      for (let w = 0; w < 2; w++) if (!(w < S.wins[i] && api.spr(i ? 'pink_glass' : 'cyan_glass', x - 14 + w * 28, 103, 26))) api.text(w < S.wins[i] ? '🍹' : '○', x - 14 + w * 28, 104, 18, 'rgba(255,255,255,.6)');
       drawShaker(g, i);
       // progress % + shake gauge
       api.text(Math.round(api.clamp(p.prog, 0, 1) * 100) + '%', x, 432, 18, '#fff');
@@ -12223,17 +12427,29 @@ registerGame({
       // pan
       const tiltA = p.tx * .18;
       g.save(); g.translate(p.pan, PAN_Y); g.rotate(tiltA);
+      const PW = PR * 2.25 / .654; // sprite: bowl = left 65% of the width, handle to the right
+      if (!api.spr('pan', PW * (.5 - .327), 6, PW)) {
       g.fillStyle = '#5a3b22'; api.rr(PR - 4, -4, 52, 10, 5); g.fill();
       g.beginPath(); g.ellipse(0, 4, PR, 14, 0, 0, Math.PI); g.lineTo(-PR, 0); g.fillStyle = '#2b2b33'; g.fill();
-      g.beginPath(); g.ellipse(0, 0, PR, 8, 0, 0, 6.283); g.fillStyle = '#4a4a55'; g.fill(); g.strokeStyle = dark; g.lineWidth = 3; g.stroke();
+      g.beginPath(); g.ellipse(0, 0, PR, 8, 0, 0, 6.283); g.fillStyle = '#4a4a55'; g.fill(); g.strokeStyle = dark; g.lineWidth = 3; g.stroke(); }
       g.restore();
       // pancake: side view, thickness shows the spin; colour shows which face is up
       if (p.st !== 'gone') {
         const c = Math.cos(p.rot), h = 4 + Math.abs(c) * 11, raw = c < 0;
         g.save(); g.translate(p.x, p.y); g.rotate(p.st === 'pan' ? tiltA : Math.sin(p.rot) * .25);
-        g.beginPath(); g.ellipse(0, 0, BR, h, 0, 0, 6.283); g.fillStyle = brownCol(p.brown, raw); g.fill(); g.strokeStyle = 'rgba(90,50,20,.6)'; g.lineWidth = 2; g.stroke();
-        if (!raw && h > 9) { api.circle(-10, -2, 2.5, 'rgba(120,60,20,.45)'); api.circle(8, 2, 2, 'rgba(120,60,20,.45)'); api.circle(14, -3, 1.6, 'rgba(120,60,20,.45)'); }
+        if (api.hd) { // sprite squashed by the spin; raw face = pale glaze, burning = burnt sprite fading in
+          const sw = BR * 2.3, sh = Math.max(8, h * 2.3);
+          if (p.st === 'pan') g.translate(0, 6);
+          api.spr('pancake', 0, 0, sw, sh);
+          const pale = raw ? .62 : p.st === 'pan' ? api.clamp(1 - p.brown / READY, 0, 1) * .5 : 0;
+          if (pale > 0) { g.globalAlpha = pale; g.beginPath(); g.ellipse(0, 0, BR * 1.08, sh * .44, 0, 0, 6.283); g.fillStyle = '#fff1c1'; g.fill(); g.globalAlpha = 1; }
+          if (!raw && p.brown > .7) api.spr('pancake_burnt', 0, 0, sw, sh, 0, api.clamp((p.brown - .7) / .28, 0, 1));
+          if (p.st === 'pan' && p.brown < .2) api.spr('butter', 4, -sh * .3, 26 * (1 - p.brown * 3.5), null, .2, 1 - p.brown * 4);
+        } else {
+        g.beginPath(); g.ellipse(0, 0, BR, h, 0, 0, 6.283); g.fillStyle = brownCol(p.brown, raw); g.fill(); g.strokeStyle = 'rgba(90,50,20,.6)'; g.lineWidth = 2; g.stroke(); }
+        if (!api.hd && !raw && h > 9) { api.circle(-10, -2, 2.5, 'rgba(120,60,20,.45)'); api.circle(8, 2, 2, 'rgba(120,60,20,.45)'); api.circle(14, -3, 1.6, 'rgba(120,60,20,.45)'); }
         g.restore();
+        if (p.st === 'pan' && p.brown > .5 && api.hd) for (let k = 0; k < 2; k++) { const a = (api.time * .7 + k * .5) % 1; api.spr('steam', p.x + (k ? 14 : -12) + Math.sin(api.time * 3 + k) * 4, PAN_Y - 30 - a * 40, 22 + a * 14, null, 0, Math.sin(a * Math.PI) * api.clamp((p.brown - .5) * 3, 0, .85)); }
         if (p.st === 'air') api.text('×' + Math.max(0, Math.floor(p.rot / Math.PI)), p.x, p.y - 26, 14, 'rgba(255,255,255,.85)');
         if (p.st === 'pan') api.text(p.brown > .8 ? TR('🔥 горит! бросай!', '🔥 burning! toss it!') : p.brown >= READY ? TR('готов — подбрасывай!', 'ready — toss it!') : TR('жарится…', 'cooking…'), X, PAN_Y - 62, p.brown >= READY ? 13 : 12, p.brown > .8 ? C.red : p.brown >= READY ? C.yellow : 'rgba(255,255,255,.7)');
         if (p.st === 'pan') { api.rr(X - 30, PAN_Y - 48, 60, 6, 3); g.fillStyle = 'rgba(0,0,0,.3)'; g.fill(); api.rr(X - 30, PAN_Y - 48, 60 * api.clamp(p.brown, 0, 1), 6, 3); g.fillStyle = p.brown > .8 ? C.red : p.brown >= READY ? C.lime : C.yellow; g.fill(); }
@@ -12405,6 +12621,11 @@ registerGame({
       g.save(); g.globalAlpha = alpha * (r.crash > 0 || r.inv > 0 ? (Math.sin(api.time * 30) > 0 ? 1 : .35) : 1);
       g.translate(x, y); g.rotate(api.clamp(r.vy / 700, -.5, .5));
       const fl = 8 + r.th * 26 + Math.random() * 5; // flame grows with your voice
+      if (api.hd && api.has('flame')) { // sprite rocket faces right like the drawn one
+        api.spr('flame', -14 - fl * .55, 0, fl * 1.3 + 6, 9 + r.th * 8);
+        api.spr(col === C.you ? 'cyan_rocket' : 'pink_rocket', 2, 0, 40);
+        g.restore(); return;
+      }
       g.beginPath(); g.moveTo(-14, -5); g.lineTo(-14 - fl, 0); g.lineTo(-14, 5); g.fillStyle = C.orange; g.fill();
       g.beginPath(); g.moveTo(-14, -3); g.lineTo(-14 - fl * .55, 0); g.lineTo(-14, 3); g.fillStyle = C.yellow; g.fill();
       g.beginPath(); g.moveTo(18, 0); g.quadraticCurveTo(8, -11, -14, -9); g.lineTo(-14, 9); g.quadraticCurveTo(8, 11, 18, 0); g.fillStyle = col; g.fill(); g.strokeStyle = dark; g.lineWidth = 2; g.stroke();
@@ -12444,7 +12665,7 @@ registerGame({
           api.text(String(i + 1), x, t + 20, 13, '#fff');
         });
         const fx = FIN - cam; if (fx < W + 30) { for (let y = 0; y < H; y += 20) { g.fillStyle = (y / 20) % 2 ? '#fff' : '#1d1340'; g.fillRect(fx, y, 10, 20); g.fillStyle = (y / 20) % 2 ? '#1d1340' : '#fff'; g.fillRect(fx + 10, y, 10, 20); } api.emoji('🏁', fx + 10, 60, 30); }
-        for (const p of puffs) { g.globalAlpha = Math.min(1, p.life * 2); api.circle(SX + p.d - me.d, p.y, p.r, p.c); } g.globalAlpha = 1;
+        for (const p of puffs) { g.globalAlpha = Math.min(1, p.life * 2); if (!(p.c === 'rgba(255,255,255,.5)' && api.spr('cloud', SX + p.d - me.d, p.y, p.r * 3.4, null, 0, Math.min(1, p.life * 2) * .8))) api.circle(SX + p.d - me.d, p.y, p.r, p.c); } g.globalAlpha = 1;
         const ox = SX + op.d - me.d;
         if (ox > -20 && ox < W + 20) { drawRocket(g, ox, op.y, op, oc, od, .55); api.text(api.name(SIDES[OPP]).toLowerCase(), ox, op.y - 24, 12, '#fff'); }
         else { const right = ox > W, ax = right ? W - 40 : 40, ay = api.clamp(op.y, 40, H - 40); api.circle(ax, ay, 15, oc); api.text(right ? '▶' : '◀', ax, ay, 13, '#fff'); api.text(Math.round(Math.abs(op.d - me.d) / 10) + TR(' м', ' m'), ax + (right ? -36 : 36), ay, 12, '#fff'); }
@@ -12452,7 +12673,7 @@ registerGame({
         if (me.scrape > 0) for (let k = 0; k < 3; k++) api.circle(SX + api.rand(-12, 12), me.y + (me.vy < 0 ? 12 : -12), 2.5, C.yellow); // scraping the rock
         for (const p of pops) {
           g.globalAlpha = Math.min(1, p.life); const y = p.y - 24 - (1.2 - p.life) * 30;
-          if (p.k === 'gate') api.text('+1', SX, y, 18, C.lime);
+          if (p.k === 'gate') { api.spr('star', SX - 24, y, 22 + p.life * 6, null, (1 - p.life) * 2); api.text('+1', SX, y, 18, C.lime); }
           else if (p.k === 'crash' && p.s === ME) api.text(TR('Бум! назад', 'Bonk! Back'), SX + 50, y, 20, C.yellow);
           else if (p.k === 'crash') api.text(api.name(SIDES[p.s]) + TR(' врезался!', ' crashed!'), api.clamp(SX + p.d - me.d, 70, W - 70), y, 15, oc);
           else if (p.k === 'fin') api.text(p.s === ME ? TR('ФИНИШ! 🎉', 'FINISH! 🎉') : api.name(SIDES[p.s]) + TR(' на финише!', ' finished!'), W / 2, 140, 24, C.yellow);
@@ -12467,6 +12688,7 @@ registerGame({
         api.rr(8, my, 14, mh, 7); g.fillStyle = 'rgba(0,0,0,.45)'; g.fill();
         api.rr(8, my + mh * (1 - me.th), 14, mh * me.th, 7); g.fillStyle = me.th > .45 ? C.yellow : mc; g.fill();
         g.fillStyle = '#fff'; g.fillRect(4, my + mh * (1 - G / A) - 1, 22, 2); api.text('🎤', 15, my - 12, 15);
+        if (me.th > .08) api.spr('rings', 34, my - 12, 12 + me.th * 8, null, 0, .4 + me.th * .6);
         api.rr(W - 16, my + 40, 8, mh - 80, 4); g.fillStyle = 'rgba(0,0,0,.45)'; g.fill();
         api.rr(W - 16, my + 40 + (mh - 80) * (1 - op.th), 8, (mh - 80) * op.th, 4); g.fillStyle = oc; g.fill();
         if (!me.mic) { api.rr(W / 2 - 120, H - 52, 240, 40, 12); g.fillStyle = 'rgba(29,19,64,.75)'; g.fill(); api.text(TR('нет микрофона — держи палец на экране', 'no mic — hold a finger on the screen'), W / 2, H - 32, 12, C.yellow, 'center', 800); }
@@ -12621,7 +12843,7 @@ registerGame({
         for (let s = 0; s < 2; s++) for (let k = 0; k < 2; k++) {
           const p = P[s], y = s ? 0 : H - ZONE, col = s ? C.bot : C.you;
           g.globalAlpha = p.sw[k] > 0 ? .45 : .14; g.fillStyle = col; api.rr(LX[k] - 52, y + (s ? 4 : 0), 104, ZONE - 4, 18); g.fill(); g.globalAlpha = 1;
-          if (p.sw[k] > 0) { const a = (p.sw[k] / SWING - .5) * 1.6 * (s ? -1 : 1); api.emoji('🖐️', LX[k], s ? 80 : H - 80, 54, a); }
+          if (p.sw[k] > 0) { const a = (p.sw[k] / SWING - .5) * 1.6 * (s ? -1 : 1); if (!api.spr(s ? 'pink_hand' : 'cyan_hand', LX[k], s ? 80 : H - 80, 60, null, a + (s ? Math.PI : 0))) api.emoji('🖐️', LX[k], s ? 80 : H - 80, 54, a); }
         }
         g.strokeStyle = 'rgba(255,255,255,.12)'; g.lineWidth = 2; g.setLineDash([6, 10]);
         for (const x of LX) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }
@@ -12634,7 +12856,7 @@ registerGame({
         for (const b of balls) {
           const sc = 1 + (b.vy > 0 ? b.y / H : 1 - b.y / H) * .5;
           g.globalAlpha = .25; api.circle(b.x, b.y - b.vy * .04, 12 * sc, C.yellow); g.globalAlpha = 1;
-          api.emoji('🏐', b.x, b.y, 28 * sc, b.spin + api.time);
+          if (!api.spr('ball', b.x, b.y, 28 * sc, null, b.spin + api.time)) api.emoji('🏐', b.x, b.y, 28 * sc, b.spin + api.time);
           const tgtLane = LX[b.lane], ty = b.vy > 0 ? H - ZONE / 2 : ZONE / 2; // where it will arrive
           if (Math.abs(b.y - ty) < 260) { g.globalAlpha = .5; api.circle(tgtLane, ty, 30, null, '#fff', 3); g.globalAlpha = 1; }
         }
@@ -12784,11 +13006,13 @@ registerGame({
       g.fillStyle = 'rgba(0,0,0,.3)'; g.beginPath(); g.ellipse(x + 4, y + 6, RAD, RAD * .8, 0, 0, 6.283); g.fill();
       g.save(); g.translate(x, y); g.rotate(t.ang);
       if (t.fall) g.scale(1, .55);
+      if (!api.spr(i ? 'pink_top' : 'cyan_top', 0, 0, RAD * 2.3)) {
       api.circle(0, 0, RAD, dark); api.circle(0, 0, RAD - 4, col);
       for (let k = 0; k < 4; k++) { g.rotate(Math.PI / 2); g.fillStyle = k % 2 ? '#fff' : C.yellow; g.beginPath(); g.moveTo(0, 0); g.arc(0, 0, RAD - 5, 0, .5); g.fill(); }
-      api.circle(0, 0, 6, '#fff', dark, 2);
+      api.circle(0, 0, 6, '#fff', dark, 2); }
       g.restore();
-      if (t.spin > .05 && !t.fall) { g.globalAlpha = .25 + t.spin * .3; g.strokeStyle = col; g.lineWidth = 3; g.beginPath(); g.arc(x, y, RAD + 5 + Math.sin(api.time * 20) * 2, t.ang, t.ang + 4); g.stroke(); g.globalAlpha = 1; }
+      if (t.spin > .05 && !t.fall && api.spr('swirl', x, y, (RAD + 8) * 2.4, null, -t.ang * .5, .25 + t.spin * .45)) {}
+      else if (t.spin > .05 && !t.fall) { g.globalAlpha = .25 + t.spin * .3; g.strokeStyle = col; g.lineWidth = 3; g.beginPath(); g.arc(x, y, RAD + 5 + Math.sin(api.time * 20) * 2, t.ang, t.ang + 4); g.stroke(); g.globalAlpha = 1; }
     }
     function bar(g, x, y, v, col, label) {
       g.fillStyle = 'rgba(0,0,0,.45)'; api.rr(x - 70, y - 9, 140, 18, 9); g.fill();
@@ -12832,6 +13056,7 @@ registerGame({
           T.forEach((t, i) => bar(g, CX, i ? 22 : H - 22, t.spin, i ? C.bot : C.you, t.out ? TR('АУТ', 'OUT') : t.fall ? TR('УПАЛ', 'DOWN') : TR(`Вращение ${Math.round(t.spin * 100)}`, `Spin ${Math.round(t.spin * 100)}`)));
           if (phase === 'fight' && timer < 2.5) api.text(TR('Води пальцем — толкай свой волчок', 'Drag to push your top'), CX, api.me === 'you' ? H - 52 : 52, 13, 'rgba(255,255,255,.85)');
         }
+        if (sparks > 0 && phase !== 'charge') api.spr('spark', (T[0].x + T[1].x) / 2, (T[0].y + T[1].y) / 2, 50 + (.15 - sparks) * 300, null, sparks * 9, Math.min(1, sparks * 8));
         if (sparks > 0) { g.globalAlpha = sparks * 3; g.fillStyle = '#fff'; g.fillRect(0, 0, W, H); g.globalAlpha = 1; }
       },
       // finger: during charge — circles around your own top add turns; during the fight — the top is pushed toward the finger
@@ -12923,9 +13148,10 @@ registerGame({
     function drawDial(g, t, r) {
       const tw = twist(r);
       const gr = g.createRadialGradient(CX - 30, CY - 40, 10, CX, CY, DR + 20); gr.addColorStop(0, '#ffffff'); gr.addColorStop(1, '#d9ccff');
-      api.circle(CX, CY, DR + 16, '#1d1340'); api.circle(CX, CY, DR + 10, C.violet); api.circle(CX, CY, DR, gr);
+      if (api.spr('stopwatch', CX, CY - 31, 271)) api.circle(CX, CY, DR, gr);
+      else { api.circle(CX, CY, DR + 16, '#1d1340'); api.circle(CX, CY, DR + 10, C.violet); api.circle(CX, CY, DR, gr); }
       for (let i = 0; i < 60; i++) { const a = i / 60 * Math.PI * 2, l = i % 5 ? 6 : 14; g.strokeStyle = '#1d1340'; g.lineWidth = i % 5 ? 2 : 4; g.beginPath(); g.moveTo(CX + Math.sin(a) * (DR - 6), CY - Math.cos(a) * (DR - 6)); g.lineTo(CX + Math.sin(a) * (DR - 6 - l), CY - Math.cos(a) * (DR - 6 - l)); g.stroke(); }
-      api.circle(CX, CY - DR - 22, 12, '#1d1340'); api.rr(CX - 8, CY - DR - 40, 16, 12, 4); g.fillStyle = '#1d1340'; g.fill();
+      if (!api.hd) { api.circle(CX, CY - DR - 22, 12, '#1d1340'); api.rr(CX - 8, CY - DR - 40, 16, 12, 4); g.fillStyle = '#1d1340'; g.fill(); }
       // digits fade, then question marks
       const fade = api.clamp((tw.fade + .6 - t) / .6, 0, 1);
       if (S.ph === 'run' || S.ph === 'reveal') {
@@ -12934,8 +13160,10 @@ registerGame({
       }
       api.text(TR(`цель ${S.tg.toFixed(2)} с`, `target ${S.tg.toFixed(2)} s`), CX, CY - 40, 17, C.violet);
       const a = handA(S.ph === 'run' ? t : 0, r);
-      g.lineCap = 'round'; g.strokeStyle = C.red; g.lineWidth = 5; g.beginPath(); g.moveTo(CX - Math.sin(a) * 16, CY + Math.cos(a) * 16); g.lineTo(CX + Math.sin(a) * (DR - 20), CY - Math.cos(a) * (DR - 20)); g.stroke(); g.lineCap = 'butt';
-      api.circle(CX, CY, 8, C.red, '#fff', 2);
+      if (!api.spr('needle', CX + Math.sin(a) * 39, CY - Math.cos(a) * 39, 36, null, a)) {
+        g.lineCap = 'round'; g.strokeStyle = C.red; g.lineWidth = 5; g.beginPath(); g.moveTo(CX - Math.sin(a) * 16, CY + Math.cos(a) * 16); g.lineTo(CX + Math.sin(a) * (DR - 20), CY - Math.cos(a) * (DR - 20)); g.stroke(); g.lineCap = 'butt';
+        api.circle(CX, CY, 8, C.red, '#fff', 2);
+      }
     }
     function drawReveal(g) {
       const y = 462;
@@ -12989,8 +13217,8 @@ registerGame({
           // opponent status (top) and my big STOP button (bottom)
           api.text(`${api.name(opp)}: ${S.st[oi] != null ? TR('✋ нажал(а)', '✋ stopped') : TR('⏳ ждёт…', '⏳ waiting…')}`, CX, 395, 16, opp === 'you' ? C.you : C.bot);
           const myCol = api.me === 'you' ? C.you : C.bot, pr = 1 + .04 * Math.sin(tk * 6);
-          if (ms == null) { api.circle(CX, 478, 52 * pr, myCol, '#fff', 5); api.text(TR('СТОП', 'STOP'), CX, 478, 26, '#1d1340'); api.text(TR('жми в любом месте', 'tap anywhere'), CX, 545, 12, 'rgba(255,255,255,.6)'); }
-          else { api.circle(CX, 478, 52, 'rgba(255,255,255,.15)', myCol, 3); api.text(TR('✓ нажато', '✓ stopped'), CX, 478, 18, '#fff'); api.text(TR('ждём результат…', 'waiting for result…'), CX, 545, 12, 'rgba(255,255,255,.6)'); }
+          if (ms == null) { if (api.hd) { api.spr('glow_ring', CX, 478, 140 * pr, null, 0, .55 + .3 * Math.sin(tk * 6)); api.spr('stop_button', CX, 478, 118 * pr); api.text(TR('СТОП', 'STOP'), CX, 463, 22, '#fff'); } else { api.circle(CX, 478, 52 * pr, myCol, '#fff', 5); api.text(TR('СТОП', 'STOP'), CX, 478, 26, '#1d1340'); } api.text(TR('жми в любом месте', 'tap anywhere'), CX, 545, 12, 'rgba(255,255,255,.6)'); }
+          else { if (!api.spr('stop_button', CX, 486, 116, null, 0, .4)) api.circle(CX, 478, 52, 'rgba(255,255,255,.15)', myCol, 3); api.text(TR('✓ нажато', '✓ stopped'), CX, 478, 18, '#fff'); api.text(TR('ждём результат…', 'waiting for result…'), CX, 545, 12, 'rgba(255,255,255,.6)'); }
         }
         if (S.ph === 'reveal' || S.ph === 'done') drawReveal(g);
       },
@@ -13097,14 +13325,15 @@ registerGame({
       const i = idx(side), p = S.P[i], col = i ? C.bot : C.you, at = (x, y) => pos(side, x, y), mine = api.mine(side);
       // name + strikes
       let [x, y] = at(18, 24); api.text(api.name(side), x, y, 16, col, side === 'you' ? 'left' : 'right');
-      for (let k = 0; k < STRIKES; k++) { [x, y] = at(270 + k * 28, 24); api.emoji(k < p.k ? '❌' : '⚪', x, y, 18); }
+      for (let k = 0; k < STRIKES; k++) { [x, y] = at(270 + k * 28, 24); if (!api.spr(k < p.k ? 'warning' : 'snowflake', x, y, k < p.k ? 24 : 22)) api.emoji(k < p.k ? '❌' : '⚪', x, y, 18); }
       // face with tension ring
       [x, y] = at(85, 130);
       const face = p.hit > 0 ? '😵' : p.n < .25 ? '😐' : p.n < TH ? '😶' : p.n < .8 ? '😬' : '🤭';
-      api.circle(x, y, 54, 'rgba(255,255,255,.12)');
+      if (!api.spr('ice_cube', x, y, 100, null, 0, .55 + .25 * (1 - api.clamp(p.n, 0, 1)))) api.circle(x, y, 54, 'rgba(255,255,255,.12)');
       g.strokeStyle = p.ten > .66 ? C.red : p.ten > .33 ? C.orange : col; g.lineWidth = 8; g.beginPath(); g.arc(x, y, 54, -Math.PI / 2, -Math.PI / 2 + p.ten * Math.PI * 2); g.stroke();
       const wob = p.n > TH ? Math.sin(tk * 40) * p.n * 4 : 0;
       api.emoji(face, x + wob, y, 74);
+      if (p.hit > 0) api.spr('frost_burst', x, y, 110 + (1 - p.hit) * 70, null, (1 - p.hit) * .6, api.clamp(p.hit * 2, 0, 1));
       if (p.grace > 0 && S.ph === 'play') { const [gx, gy] = at(85, 200); api.text(TR('передышка…', 'breather…'), gx, gy, 12, 'rgba(255,255,255,.7)'); }
       // calm meter
       const [mx0, my] = at(20, 238), [mx1] = at(340, 238), xl = Math.min(mx0, mx1), wl = Math.abs(mx1 - mx0);
@@ -13325,7 +13554,7 @@ registerGame({
         api.text(`${gl.name} · ${gi + 1}/5`, W / 2, 16, 13, 'rgba(255,255,255,.75)');
         for (const s of [ME, 1 - ME]) drawSide(s);
         g.fillStyle = '#7fd3ff';
-        for (const d of drops) { g.beginPath(); g.arc(d.x, d.y, 2.6, 0, 6.283); g.fill(); }
+        for (const d of drops) { if (!api.spr('drop', d.x, d.y, 5.5)) { g.beginPath(); g.arc(d.x, d.y, 2.6, 0, 6.283); g.fill(); } }
         if (phase === 'count') { api.rr(W / 2 - 80, 205, 160, 44, 22); g.fillStyle = 'rgba(0,0,0,.6)'; g.fill(); api.text(pt > .6 ? TR('Готовься…', 'Get ready…') : TR('Лей!', 'Pour!'), W / 2, 227, 22, C.yellow); }
         if (phase === 'pour' && pt < 5) api.text(Math.ceil(pt) + '', W / 2, 250, 26, C.red);
 
@@ -13350,15 +13579,19 @@ registerGame({
           const ty = GB - gl.h * gl.tgt, tw = gl.hw(gl.tgt) + 10;
           g.strokeStyle = C.yellow; g.lineWidth = 2.5; g.setLineDash([6, 4]); g.beginPath(); g.moveTo(cx - tw, ty); g.lineTo(cx + tw, ty); g.stroke(); g.setLineDash([]);
           api.text('◀', cx + tw + 8, ty, 12, C.yellow);
-          if (p.st === 2) { g.fillStyle = '#6fd3ff'; for (let i = 0; i < 6; i++) { const yy = top + ((api.time * 120 + i * 30) % (gl.h + 10)); g.beginPath(); g.arc(cx + (i % 2 ? 1 : -1) * (gl.hw((GB - yy) / gl.h) + 6), yy, 3, 0, 6.283); g.fill(); } }
+          if (p.st === 2) { g.fillStyle = '#6fd3ff'; for (let i = 0; i < 6; i++) { const yy = top + ((api.time * 120 + i * 30) % (gl.h + 10)), xx = cx + (i % 2 ? 1 : -1) * (gl.hw((GB - yy) / gl.h) + 6); if (!api.spr('drop', xx, yy, 7)) { g.beginPath(); g.arc(xx, yy, 3, 0, 6.283); g.fill(); } }
+            api.spr('splash', cx, top - 6, gl.hw(1) * 2 + 40, null, 0, .85); }
           // jug
           const pv = pivot(s);
-          g.save(); g.translate(pv.x, pv.y); g.rotate(p.ang); g.scale(.85, .85);
+          g.save(); g.translate(pv.x, pv.y); g.rotate(p.ang);
+          g.scale(-1, 1); const jugHD = api.spr('jug', -4, -4, 66); g.scale(-1, 1); // sprite spout points left -> mirrored
+          if (jugHD) api.circle(2, 14, 6, col(s), '#fff', 2); // player badge on the jug
+          else { g.scale(.85, .85);
           g.strokeStyle = col(s); g.lineWidth = 7; g.beginPath(); g.arc(-30, -2, 18, Math.PI * .5, Math.PI * 1.5); g.stroke();
           api.rr(-28, -38, 56, 76, 12); g.fillStyle = 'rgba(255,255,255,.88)'; g.fill();
           api.rr(-24, -6, 48, 40, 9); g.fillStyle = '#4fb6f0'; g.fill();
           g.fillStyle = 'rgba(255,255,255,.88)'; g.beginPath(); g.moveTo(16, -38); g.lineTo(48, -44); g.lineTo(26, -24); g.closePath(); g.fill();
-          api.rr(-28, -38, 56, 8, 4); g.fillStyle = col(s); g.fill();
+          api.rr(-28, -38, 56, 8, 4); g.fillStyle = col(s); g.fill(); }
           g.restore();
           // sensor meter + hint
           const mx = mc - 70, my = 62;
@@ -13420,6 +13653,8 @@ registerGame({
     const SIDES = ['you', 'bot'], idx = s => s === 'bot' ? 1 : 0, ME = idx(api.me), col = s => s ? C.bot : C.you;
     const FW = 360, FH = 330, FY = H - FH, R = 30, MAXC = 5, MINI = .5, MX = (W - FW * MINI) / 2, MY = 40;
     const CC = ['#ff3d5a', '#ffd60a', '#7cff4f', '#b26bff', '#ff8a00'];
+    const CS = ['dot_red', 'dot_yellow', 'dot_green', 'dot_blue', null]; // HD sprites per colour index (orange stays drawn)
+    const dot = (c, x, y, r) => CS[c] != null && api.spr(CS[c], x, y, r * 2.1);
     const lv = api.level, BOT = { react: [1.1, .8, .55][lv], p0: [.07, .045, .03][lv], pk: [.035, .022, .013][lv] };
     const GRACE = api.isBot ? 0 : .25; // remote touches arrive a bit later
     const WHY = { lift: TR('отпустил палец', 'lifted a finger'), late: TR('не успел', 'too slow'), slip: TR('соскользнул', 'slipped off'), reach: TR('не дотянулся', 'couldn\'t reach'), drop: TR('сорвался', 'lost grip') };
@@ -13547,14 +13782,15 @@ registerGame({
             const x = ox + c.x * k, y = oy + c.y * k, r = R * k * (1 + c.j * .6);
             if (c.f == null) { // waiting: countdown ring + pulse
               const pul = 1 + Math.sin(api.time * 10) * .08;
-              api.circle(x, y, r * pul, CC[c.c], '#fff', 3 * k);
+              if (!dot(c.c, x, y, r * pul)) api.circle(x, y, r * pul, CC[c.c], '#fff', 3 * k);
               g.strokeStyle = '#fff'; g.lineWidth = 5 * k; g.beginPath(); g.arc(x, y, r + 8 * k, -Math.PI / 2, -Math.PI / 2 + 6.283 * api.clamp(c.t / limit(), 0, 1)); g.stroke();
               if (k === 1) api.emoji('👆', x, y, 26);
             } else {
-              api.circle(x, y, r + 6 * k, 'rgba(255,255,255,.18)');
-              api.circle(x, y, r, CC[c.c], col(s), 4 * k);
+              if (!api.spr('ring', x, y, (r + 6 * k) * 2.5, null, 0, .9)) api.circle(x, y, r + 6 * k, 'rgba(255,255,255,.18)');
+              if (!dot(c.c, x, y, r)) api.circle(x, y, r, CC[c.c], col(s), 4 * k);
+              else { g.strokeStyle = col(s); g.lineWidth = 3 * k; g.beginPath(); g.arc(x, y, r + 2 * k, 0, 6.283); g.stroke(); }
               if (c.mt > 0) { g.strokeStyle = 'rgba(255,255,255,.7)'; g.lineWidth = 3 * k; g.beginPath(); g.moveTo(x, y); g.lineTo(x + c.vx * .6 * k, y + c.vy * .6 * k); g.stroke(); if (k === 1) api.text(TR('веди!', 'follow!'), x, y - r - 12, 13, '#fff'); }
-              if (k < 1 || (s === 1 && api.isBot)) api.circle(x, y, 9 * k + 2, 'rgba(255,255,255,.55)'); // opponent's fingertip
+              if (k < 1 || (s === 1 && api.isBot)) { if (!api.spr('fingertip', x, y + 4 * k, 26 * k + 6, null, 0, .95)) api.circle(x, y, 9 * k + 2, 'rgba(255,255,255,.55)'); } // opponent's fingertip
             }
           }
           if (st.out && k < 1) api.text('💥 ' + why$(st.why), ox + FW * k / 2, oy + FH * k / 2, 14, '#fff');
@@ -13804,7 +14040,7 @@ registerGame({
       fitText(g, tag, F.x + F.w / 2, F.y + F.h - 18, 16, '#fff', F.w - 24);
       // border (pulsing for the leader)
       blobPath(g, F.x, F.y, F.w, F.h, tk + i * 2, amp); g.strokeStyle = lead ? (pulse > .5 ? C.yellow : col) : col; g.lineWidth = 4 + pulse * 5; g.stroke();
-      if (lead) emo('👑', F.x + F.w / 2 + Math.sin(tk * 6) * 6, F.y - 2 + Math.sin(tk * 10) * 3, 26, Math.sin(tk * 5) * .2);
+      if (lead && !api.spr('crown', F.x + F.w / 2 + Math.sin(tk * 6) * 6, F.y - 4 + Math.sin(tk * 10) * 3, 40, null, Math.sin(tk * 5) * .2)) emo('👑', F.x + F.w / 2 + Math.sin(tk * 6) * 6, F.y - 2 + Math.sin(tk * 10) * 3, 26, Math.sin(tk * 5) * .2);
       // meter
       const my = F.y + F.h + 14, mw = F.w - 8, mx = F.x + 4;
       api.rr(mx, my, mw, 24, 12); g.fillStyle = 'rgba(0,0,0,.4)'; g.fill();
@@ -13818,6 +14054,7 @@ registerGame({
       const s = slotOf(i), p = S.P[i], col = colOf(i), win = S.w === i || S.w === 2, k = api.clamp(L.rv / .45, 0, 1);
       const cx = s ? 266 : 94, cy = 204, rot = (s ? .07 : -.07) * (1 + Math.sin(tk * 2 + i) * .15), sc = .7 + .3 * (1 - Math.pow(1 - k, 3)) + (win && L.rv > 1.1 ? .05 * Math.sin(tk * 6) : 0);
       const w = 150, h = 196;
+      if (S.w === i && L.rv > 1.1) { const d = api.clamp((L.rv - 1.1) / .3, 0, 1); api.spr('confetti', cx, cy, 260 + d * 80, null, Math.sin(tk * 2) * .12, d); }
       g.save(); g.translate(cx, cy); g.rotate(rot); g.scale(sc, sc);
       g.fillStyle = 'rgba(0,0,0,.35)'; api.rr(-w / 2 - 6, -h / 2 - 2, w + 20, h + 54, 10); g.fill();
       g.fillStyle = '#fff'; api.rr(-w / 2 - 10, -h / 2 - 10, w + 20, h + 56, 8); g.fill();
@@ -13832,7 +14069,10 @@ registerGame({
       g.restore();
       if (L.rv > 1.1) {
         const d = api.clamp((L.rv - 1.1) / .3, 0, 1), y = cy - h / 2 - 26 - (1 - d) * 60;
-        if (win) emo('👑', cx + (s ? 10 : -10), y, 46, (s ? .25 : -.25) + Math.sin(tk * 5) * .08);
+        if (win) {
+          if (!api.spr('crown', cx + (s ? 10 : -10), y, 66, null, (s ? .25 : -.25) + Math.sin(tk * 5) * .08)) emo('👑', cx + (s ? 10 : -10), y, 46, (s ? .25 : -.25) + Math.sin(tk * 5) * .08);
+          if (S.w === i) api.spr('medal', cx + (s ? -64 : 64), cy + 112, 34, null, Math.sin(tk * 3) * .15);
+        }
         else emo(['🥔', '🐌', '🤡', '🧻'][(S.cap + S.rd) % 4], cx + (s ? 52 : -52), cy + 70, 40, Math.sin(tk * 4) * .3);
       }
     }
@@ -13910,7 +14150,8 @@ registerGame({
         const k = api.clamp((L.rv - 1.25) / .3, 0, 1), y = 392 + (1 - k) * 30;
         g.globalAlpha = k;
         const wl = S.w === 2 ? TR('Ничья — обе рожи шедевр!', 'Tie — both faces are art!') : S.w === ME ? TR('Твоя рожа круче! +1', 'Your face wins! +1') : TR(`${api.name(SIDES[S.w])} корчит лучше! +1`, `${api.name(SIDES[S.w])} pulls it better! +1`);
-        fitText(g, wl, W / 2, y, 22, S.w === 2 ? C.yellow : colOf(S.w), W - 30);
+        fitText(g, wl, W / 2, y, 22, S.w === 2 ? C.yellow : colOf(S.w), api.hd && S.w < 2 ? W - 100 : W - 30);
+        if (S.w < 2) api.spr('trophy', 30, y - 2, 34, null, Math.sin(tk * 4) * .12);
         api.rr(18, y + 22, W - 36, 64, 20); g.fillStyle = '#fff'; g.fill();
         g.beginPath(); g.moveTo(W / 2 - 12, y + 22); g.lineTo(W / 2, y + 10); g.lineTo(W / 2 + 12, y + 22); g.fill();
         const cap = c.c[S.cap % c.c.length];
@@ -13918,7 +14159,7 @@ registerGame({
         fitText(g, cap, W / 2 + 16, y + 54, 16, '#1d1340', W - 100, 'center', 800);
         g.globalAlpha = 1;
       }
-      if (L.rv > 2.7 && S.rd < ROUNDS) { const b = Math.abs(Math.sin(tk * 5)) * 8; fitText(g, S.rd === ROUNDS - 1 ? TR('Дальше — ФИНАЛ…', 'Next up — the FINALE…') : TR('Следующая гримаса…', 'Next face coming…'), W / 2, 508, 16, 'rgba(255,255,255,.8)', W - 40, 'center', 800); emo('🤔', W / 2, 540 - b, 26); }
+      if (L.rv > 2.7 && S.rd < ROUNDS) { const b = Math.abs(Math.sin(tk * 5)) * 8; fitText(g, S.rd === ROUNDS - 1 ? TR('Дальше — ФИНАЛ…', 'Next up — the FINALE…') : TR('Следующая гримаса…', 'Next face coming…'), W / 2, 508, 16, 'rgba(255,255,255,.8)', W - 40, 'center', 800); if (!api.spr('laugh_badge', W / 2, 540 - b, 34)) emo('🤔', W / 2, 540 - b, 26); }
     }
 
     return {
@@ -14202,6 +14443,30 @@ registerGame({
         const c = Math.min(1, (f.holdT - HOLD) / (CHARGE - HOLD)); g.strokeStyle = `rgba(255,214,10,${.25 + c * .5})`; g.lineWidth = 3; g.beginPath(); g.arc(0, -60, 40 + c * 8, -Math.PI / 2, -Math.PI / 2 + c * Math.PI * 2); g.stroke();
       }
       const line = (a, b, w, c) => { g.strokeStyle = c; g.lineWidth = w; g.lineCap = 'round'; g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke(); };
+      // extended graphics: cutout rig — each part laid along its bone (sprites point "down", proximal joint on top)
+      if (api.hd && api.has('cyan_torso')) {
+        const pre = i ? 'pink_' : 'cyan_';
+        const bone = (nm, a, b, asp, p0, p1) => {
+          const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L, h = L + p0 + p1;
+          const cx = a[0] - ux * p0 + ux * h / 2, cy = a[1] - uy * p0 + uy * h / 2;
+          return api.spr(pre + nm, cx, cy, h * asp, h, Math.atan2(dy, dx) - Math.PI / 2);
+        };
+        const dim = on => { if ('filter' in g) g.filter = on ? 'brightness(.7)' : 'none'; };
+        dim(true);
+        bone('uarm', p.neck, p.be, .55, 5, 4); bone('farm', p.be, p.bf, .49, 4, 6);
+        bone('thigh', p.hip, p.bk, .64, 6, 6); bone('shin', p.bk, p.bft, .66, 6, 1);
+        dim(false);
+        if (bone('torso', p.neck, p.hip, .82, 9, 12)) {
+          const hd = p.head, ha = Math.atan2(p.neck[1] - p.hip[1], p.neck[0] - p.hip[0]) + Math.PI / 2;
+          api.spr(pre + 'head', hd[0] - 3, hd[1] - 2, 50, null, ha);
+          bone('thigh', p.hip, p.fk, .64, 6, 6); bone('shin', p.fk, p.fft, .66, 6, 1);
+          bone('uarm', p.neck, p.fe, .55, 5, 4); bone('farm', p.fe, p.ff, .49, 4, 6);
+          g.restore();
+          if ((f.st === 'hit' || f.st === 'down') && f.t < .22) { const k = f.t / .22; api.spr('impact', f.x + dir * 12, GY - (f.st === 'down' ? 104 : 88), 30 + k * 34, null, k * 1.5, 1 - k * k); }
+          if (f.st === 'dizzy' || f.st === 'stun') for (let s = 0; s < 3; s++) { const a = tk * 4 + s * 2.1; api.emoji('⭐', f.x + Math.cos(a) * 20, GY - 130 + Math.sin(a) * 6, 13); }
+          return;
+        }
+      }
       const limb = (a, b, c) => { line(a, b, 13, '#140a28'); line(b, c, 13, '#140a28'); line(a, b, 9, dark); line(b, c, 9, dark); };
       // back limbs (darker), body, front limbs
       limb(p.hip, p.bk, p.bft); limb(p.neck, p.be, p.bf);
@@ -14465,6 +14730,7 @@ registerGame({
       const col = s.side === 'you' ? C.you : C.bot, dk = s.side === 'you' ? C.youDark : C.botDark;
       g.globalAlpha = alpha == null ? 1 : alpha;
       api.circle(s.x + 2, s.y + 3, SR, 'rgba(10,30,70,.28)');
+      if (api.spr(s.side === 'you' ? 'cyan_stone' : 'pink_stone', s.x, s.y, SR * 2 * 1.12)) { g.globalAlpha = 1; return; }
       const gr = g.createRadialGradient(s.x - 4, s.y - 4, 2, s.x, s.y, SR); gr.addColorStop(0, '#d9dde6'); gr.addColorStop(.7, '#8d93a3'); gr.addColorStop(1, '#5c6272');
       api.circle(s.x, s.y, SR, gr);
       api.circle(s.x, s.y, SR - 3.5, col, dk, 1.5);
@@ -14521,7 +14787,7 @@ registerGame({
         g.beginPath(); g.moveTo(CX, T); g.lineTo(CX, B); g.moveTo(L, CY); g.lineTo(R, CY); g.stroke();
         // house
         const rings = [[HR, '#2f6fe0'], [HR * .72, '#ffffff'], [HR * .44, '#ff3d5a'], [HR * .17, '#ffffff']];
-        for (const [r, c] of rings) api.circle(CX, CY, r, c);
+        if (!api.spr('house', CX, CY, HR * 2 * 1.03)) for (const [r, c] of rings) api.circle(CX, CY, r, c);
         api.circle(CX, CY, HR, null, 'rgba(29,19,64,.25)', 2);
         // delivery hacks
         for (const sd of ['you', 'bot']) { const p = START[sd]; api.circle(p.x, p.y, SR + 4, null, sd === 'you' ? C.you : C.bot, 2); }
@@ -14539,7 +14805,7 @@ registerGame({
         if (S.ph === 'move' && S.sweep > 0 && S.thrown && !S.thrown.out) {
           const s = S.thrown, sp = Math.hypot(s.vx, s.vy) || 1, ux = s.vx / sp, uy = s.vy / sp, w = Math.sin(tk * 40) * 8;
           g.save(); g.translate(s.x + ux * 24 - uy * w, s.y + uy * 24 + ux * w); g.rotate(Math.atan2(uy, ux) + Math.PI / 2);
-          g.fillStyle = '#ffd60a'; api.rr(-12, -3, 24, 6, 3); g.fill(); g.restore();
+          if (api.hd) { api.spr('ice_sparkle', 0, 2, 30, null, 0, .5 + .4 * Math.abs(Math.sin(tk * 20))); api.spr('broom', 0, -10, 34, null, -.6); } else { g.fillStyle = '#ffd60a'; api.rr(-12, -3, 24, 6, 3); g.fill(); } g.restore();
         }
         // stone waiting to be thrown
         if (S.ph === 'aim') {
@@ -14808,6 +15074,13 @@ registerGame({
     function drawPlayer(g, p, i) {
       const col = i ? C.bot : C.you, dk = i ? C.botDark : C.youDark, d = dirOf(i);
       api.circle(p.x + 3, p.y + 4, PR + 2, 'rgba(0,40,20,.3)');
+      if (api.hd) { // sprite faces screen-down with the racket on screen-left: rotate to face the net, mirror to the swing side
+        const swn = p.sw > 0 ? (1 - p.sw / .25) : 0, rot = (d < 0 ? Math.PI : 0) + Math.sin(swn * Math.PI) * .55 * p.swDir * (d < 0 ? 1 : -1);
+        const mir = d < 0 ? p.swDir < 0 : p.swDir > 0, nm2 = i ? 'pink_player' : 'cyan_player';
+        g.save(); g.translate(p.x, p.y); if (mir) g.scale(-1, 1);
+        const ok = api.spr(nm2, 0, 0, PR * 3.2, null, mir ? -rot : rot); g.restore();
+        if (ok) return;
+      }
       // racket: on the swing side, rotates through the swing
       const sw = p.sw > 0 ? (1 - p.sw / .25) : 0, side = p.swDir;
       const base = d < 0 ? -Math.PI / 2 : Math.PI / 2, ang = base + side * (Math.PI / 2 - sw * 2.2) * (d < 0 ? 1 : -1);
@@ -14851,11 +15124,12 @@ registerGame({
         // bounce mark
         if (S.mark && S.mark.t > 0) { g.globalAlpha = Math.min(1, S.mark.t); api.circle(S.mark.x, S.mark.y, 6, null, S.mark.out ? C.red : '#fff', 2); if (S.mark.out) api.text('✕', S.mark.x, S.mark.y, 12, C.red); g.globalAlpha = 1; }
         // net (shadow, band, posts)
+        if (!api.spr('net', W / 2, CY - 4, CR - CL + 40, 22)) {
         g.fillStyle = 'rgba(0,0,0,.18)'; g.fillRect(CL - 12, CY + 2, CR - CL + 24, 7);
         g.strokeStyle = 'rgba(255,255,255,.5)'; g.lineWidth = 1;
         for (let x = CL - 10; x < CR + 10; x += 6) { g.beginPath(); g.moveTo(x, CY - 3); g.lineTo(x, CY + 3); g.stroke(); }
         g.fillStyle = '#fff'; g.fillRect(CL - 12, CY - 2.5, CR - CL + 24, 3);
-        api.circle(CL - 12, CY, 4.5, '#ddd', '#555', 1.5); api.circle(CR + 12, CY, 4.5, '#ddd', '#555', 1.5);
+        api.circle(CL - 12, CY, 4.5, '#ddd', '#555', 1.5); api.circle(CR + 12, CY, 4.5, '#ddd', '#555', 1.5); }
         J.draw(g); // under the players and the ball, so it never hides the play
         // ball shadow + trail
         const bs = 1 + ball.z / 160;
@@ -14867,7 +15141,7 @@ registerGame({
         g.globalAlpha = 1;
         const bx = ball.x, by = ball.y + up * ball.z * .55;
         const bg = g.createRadialGradient(bx - 2, by - 2, 1, bx, by, 6.5 * bs); bg.addColorStop(0, '#fbffb0'); bg.addColorStop(1, '#c6e81a');
-        api.circle(bx, by, 6.5 * bs, bg, 'rgba(60,80,0,.5)', 1);
+        if (!api.spr('ball', bx, by, 13 * bs * 1.05, null, tk * 6)) api.circle(bx, by, 6.5 * bs, bg, 'rgba(60,80,0,.5)', 1);
         // serve banner
         if (S.msg && S.msg.t > 0) {
           const mine = api.mine(S.msg.s), t = mine ? TR('Твоя подача', 'Your serve') : api.isBot ? TR('Подаёт бот', 'Bot serves') : TR(`Подаёт ${api.name(S.msg.s)}`, `${api.name(S.msg.s)} serves`);
@@ -15068,6 +15342,9 @@ registerGame({
       api.circle(p.x + 3, p.y + 4, r, 'rgba(0,0,0,.25)');
       if (p.boost > 0) { g.globalAlpha = .5; for (let k = 1; k <= 3; k++) api.circle(p.x - Math.cos(p.a) * k * 9, p.y - Math.sin(p.a) * k * 9, r - k * 3, col); g.globalAlpha = 1; }
       if (p.brush > 0) api.circle(p.x, p.y, BR + 22, null, 'rgba(255,255,255,.5)', 2);
+      if (api.hd) api.circle(p.x, p.y, r + 4, 'rgba(255,255,255,.3)', 'rgba(255,255,255,.8)', 2);
+      if (api.hd) api.spr(i ? 'pink_splat' : 'cyan_splat', p.x, p.y, r * 3, null, i * 2 + tk * .6, .45);
+      if (api.spr(i ? 'pink_blob' : 'cyan_blob', p.x, p.y + w * .3, (r * 2 + 6) * (1 + Math.sin(tk * 9 + i) * .04), null, Math.cos(p.a) * .18)) return;
       const gr = g.createRadialGradient(p.x - 5, p.y - 6, 2, p.x, p.y, r + 2); gr.addColorStop(0, '#ffffff'); gr.addColorStop(.25, col); gr.addColorStop(1, dk);
       g.beginPath(); for (let k = 0; k <= 16; k++) { const an = k / 16 * Math.PI * 2, rr = r + Math.sin(an * 3 + tk * 8) * 1.6 + w * .3; const x = p.x + Math.cos(an) * rr, y = p.y + Math.sin(an) * rr; k ? g.lineTo(x, y) : g.moveTo(x, y); } g.closePath();
       g.fillStyle = gr; g.fill(); g.strokeStyle = '#fff'; g.lineWidth = 2.5; g.stroke();
@@ -15112,7 +15389,7 @@ registerGame({
           g.fillStyle = 'rgba(255,255,255,.22)'; g.beginPath(); g.arc(x + 10, y + 10, 4, 0, 7); g.fill();
         }
         J.draw(g); // above the paint, under pick-ups and blobs
-        for (const it of S.items) { const s = 1 + Math.sin(tk * 5 + it.id) * .08; api.circle(it.x, it.y, 15 * s, 'rgba(255,255,255,.85)', C.yellow, 3); api.emoji(it.k === 'bomb' ? '💣' : it.k === 'speed' ? '⚡' : '🖌️', it.x, it.y, 18 * s); }
+        for (const it of S.items) { const s = 1 + Math.sin(tk * 5 + it.id) * .08; if (api.spr(it.k === 'bomb' ? 'bomb' : it.k === 'speed' ? 'lightning' : 'brush', it.x, it.y, 30 * s, null, Math.sin(tk * 3 + it.id) * .15)) continue; api.circle(it.x, it.y, 15 * s, 'rgba(255,255,255,.85)', C.yellow, 3); api.emoji(it.k === 'bomb' ? '💣' : it.k === 'speed' ? '⚡' : '🖌️', it.x, it.y, 18 * s); }
         drawBlob(g, P[0], 0); drawBlob(g, P[1], 1);
         drawBar(g, OY / 2); drawBar(g, H - OY / 2);
         // timer
@@ -15306,6 +15583,8 @@ registerGame({
       const s = o.born < 1 ? o.born : 1;
       if (s < 1) { g.save(); g.translate(o.x, o.y); g.scale(s, s); g.translate(-o.x, -o.y); }
       g.fillStyle = 'rgba(0,0,0,.28)'; g.beginPath(); g.ellipse(o.x + 2, o.y + o.r * .7, o.r, o.r * .35, 0, 0, 7); g.fill();
+      const sk = { g1: 'gold', g2: 'gold2', g3: 'gold', s1: 'rock', s2: 'rock', dm: 'diamond', bag: 'bag', mold: 'mole_gem' }[o.k], sw = { dm: 2.6, bag: 2.5, mold: 3 }[o.k] || 2.3;
+      if (sk && api.spr(sk, o.x, o.y, o.r * sw, null, api.isGuest ? Math.PI : 0)) { if (s < 1) g.restore(); return; }
       switch (o.k) {
         case 'g1': case 'g2': case 'g3': nugget(g, o, '#fff6b0', '#e8a400', '#8a5a00'); api.circle(o.x - o.r * .3, o.y - o.r * .35, o.r * .18, 'rgba(255,255,255,.8)'); break;
         case 's1': case 's2': nugget(g, o, '#c9c2b8', '#6e665c', '#3e3830'); api.circle(o.x + o.r * .2, o.y + o.r * .1, o.r * .12, 'rgba(0,0,0,.2)'); break;
@@ -15333,6 +15612,7 @@ registerGame({
       }
       // claw head
       const ang = Math.atan2(dy, dx), open = c.item ? .25 : c.st === 'out' ? .9 : .7;
+      if (c.item ? api.spr('claw_closed', tx + dx * 10, ty + dy * 10, 16.5, 26, ang - Math.PI / 2) : api.spr('claw', tx + dx * 10, ty + dy * 10, 27.5, 26, ang - Math.PI / 2)) return; // sprite: rope up, jaws down
       g.save(); g.translate(tx, ty); g.rotate(ang);
       g.lineCap = 'round';
       for (const s of [-1, 1]) {
@@ -15349,7 +15629,8 @@ registerGame({
       api.circle(b.x, b.y, 15, dark, '#1d1340', 3); api.circle(b.x, b.y, 9, col);
       const spin = claws[i].st === 'swing' ? 0 : tk * (claws[i].st === 'out' ? -12 : 8);
       g.strokeStyle = '#1d1340'; g.lineWidth = 2.5; g.beginPath(); g.moveTo(b.x - Math.cos(spin) * 9, b.y - Math.sin(spin) * 9); g.lineTo(b.x + Math.cos(spin) * 9, b.y + Math.sin(spin) * 9); g.stroke();
-      emo('👷', b.x + 52, b.y + 2 * sy, 34, rot);
+      // bottom miner (own side on every screen) = back view 'cyan_miner', top = front view 'pink_miner'; upright on the viewer's screen
+      if (!api.spr(i ? 'pink_miner' : 'cyan_miner', b.x + 52, b.y - 2 * sy, 31, 52, api.isGuest ? Math.PI : 0)) emo('👷', b.x + 52, b.y + 2 * sy, 34, rot);
       emo('⛏️', b.x - 52, b.y + 2 * sy, 22, rot + (claws[i].st === 'back' && claws[i].item ? Math.sin(tk * 14) * .3 : 0));
       api.rr(b.x - 150, b.y - 15, 74, 30, 15); g.fillStyle = 'rgba(29,19,64,.85)'; g.fill(); api.text('$' + S.money[i], b.x - 113, b.y, 17, C.yellow);
       api.rr(b.x + 78, b.y - 13, 74, 26, 13); g.fillStyle = 'rgba(29,19,64,.85)'; g.fill(); api.text(api.name(sideOf(i)), b.x + 115, b.y, 13, col);
@@ -15627,7 +15908,11 @@ registerGame({
       const m = opt.mouth || 0; g.fillStyle = '#4a0d1e'; g.beginPath(); g.ellipse(r * 1.05, r * .2, r * .12 + m * r * .2, r * .06 + m * r * .25, 0, 0, 7); g.fill();
       g.restore();
     }
+    const NPCSPR = ['fish_yellow', 'fish_yellow', 'fish_green', 'fish_purple', 'fish_purple', 'fish_green'];
+    // extended graphics: top-down sprites face up -> rotate by heading + 90deg, with a small tail wag
+    const fishSpr = (name, x, y, r, ang) => api.spr(name, x, y, r * 2.3, r * 2.9, ang + Math.PI / 2 + Math.sin(tk * 12 + x * .05) * .07);
     function drawShark(g, s) {
+      if (api.hd) { const a = s.vx > 0 ? Math.PI / 2 : -Math.PI / 2; g.fillStyle = 'rgba(0,0,0,.18)'; g.beginPath(); g.ellipse(s.x + 6, s.y + 14, 95, 40, 0, 0, 7); g.fill(); if (api.spr('shark', s.x, s.y, 140, 187, a + Math.sin(tk * 4) * .05)) return; }
       const dir = s.vx > 0 ? 1 : -1, r = 54;
       g.save(); g.translate(s.x, s.y); g.scale(dir, api.isGuest ? -1 : 1);
       g.fillStyle = 'rgba(0,0,0,.18)'; g.beginPath(); g.ellipse(6, 14, r * 1.6, r * .5, 0, 0, 7); g.fill();
@@ -15651,7 +15936,7 @@ registerGame({
         g.strokeStyle = '#1fb35a'; g.lineWidth = 6; g.lineCap = 'round'; g.beginPath(); g.moveTo(w.x, w.y);
         g.quadraticCurveTo(w.x + sway, w.y + (w.top ? 1 : -1) * w.h * .5, w.x + sway * 1.6, w.y + (w.top ? 1 : -1) * w.h); g.stroke(); g.lineCap = 'butt';
       }
-      for (const b of bubbles) api.circle(b.x + Math.sin(tk * 2 + b.ph) * 4, b.y, b.r, null, 'rgba(255,255,255,.35)', 1.2);
+      for (const b of bubbles) if (!api.spr('bubble', b.x + Math.sin(tk * 2 + b.ph) * 4, b.y, b.r * 2.3, null, 0, .7)) api.circle(b.x + Math.sin(tk * 2 + b.ph) * 4, b.y, b.r, null, 'rgba(255,255,255,.35)', 1.2);
     }
 
     return {
@@ -15665,7 +15950,7 @@ registerGame({
         drawScene(g);
         J.draw(g); // under all fish, so it never hides a threat
         const meI = idx(api.me), mine = F[meI];
-        for (const n of npc) { const p = PAL[n.pal], danger = !api.hotseat && n.r > mine.r * EAT; drawFish(g, n.x, n.y, n.r, n.vx > 0 ? 0 : Math.PI, p[0], p[1], { angry: danger }); }
+        for (const n of npc) { const p = PAL[n.pal], danger = !api.hotseat && n.r > mine.r * EAT; if (api.hd && danger) api.circle(n.x, n.y, n.r * 1.35, 'rgba(255,61,90,.22)', 'rgba(255,61,90,.85)', 2); if (!fishSpr(NPCSPR[n.pal], n.x, n.y, n.r, n.vx > 0 ? 0 : Math.PI)) drawFish(g, n.x, n.y, n.r, n.vx > 0 ? 0 : Math.PI, p[0], p[1], { angry: danger }); }
         // players: the smaller first so the bigger one is on top
         const order = F[0].r <= F[1].r ? [0, 1] : [1, 0];
         for (const i of order) {
@@ -15673,7 +15958,7 @@ registerGame({
           const col = i ? C.bot : C.you, dark = i ? C.botDark : C.youDark;
           if (f.inv > 0 && Math.sin(tk * 30) > 0 && S.intro <= 0) g.globalAlpha = .5;
           api.circle(f.x, f.y, f.r * 1.45, null, 'rgba(255,255,255,.18)', 2);
-          drawFish(g, f.x, f.y, f.r, f.ang, col, dark, { ring: '#fff', mouth: f.mouth });
+          if (!fishSpr(i ? 'pink_fish' : 'cyan_fish', f.x, f.y, f.r * (1 + f.mouth * .12), f.ang)) drawFish(g, f.x, f.y, f.r, f.ang, col, dark, { ring: '#fff', mouth: f.mouth });
           g.globalAlpha = 1;
           const up = api.hotseat ? (f.y < H / 2 ? 1 : -1) : api.isGuest ? 1 : -1; api.text(`${api.name(sideOf(i))} · ${cm(f)}`, api.clamp(f.x, 40, W - 40), api.clamp(f.y + up * (f.r + 14), 10, H - 10), 12, '#fff');
         }
@@ -15739,7 +16024,7 @@ registerGame({
     const P = [0, 1].map(i => ({ x: i ? W * .75 : W * .25, y: GY, vx: 0, vy: 0, tx: i ? W * .75 : W * .25, drag: null, minX: i ? NX + NW + R : R + 4, maxX: i ? W - R - 4 : NX - NW - R, squash: 0 }));
     const S = { sc: [0, 0], wait: 1.2, serve: Math.random() < .5 ? 0 : 1, ph: 'play', touches: 0, last: -1 };
     const ball = { x: 0, y: 0, vx: 0, vy: 0, spin: 0 };
-    let tk = 0, tgt = null, flash = 0, flashSide = 0, trail = [];
+    let tk = 0, tgt = null, flash = 0, flashSide = 0, trail = [], puffX = null;
     function place() { const i = S.serve; ball.x = i ? W * .75 : W * .25; ball.y = 190; ball.vx = 0; ball.vy = 0; trail = []; }
     place(); api.setScore(0, 0);
     api.setInfo(TR('Тяни ← → · тап — прыжок · до 7', 'Drag ← → · tap — jump · first to 7'));
@@ -15780,7 +16065,7 @@ registerGame({
       S.sc[winner]++; api.setScore(S.sc[0], S.sc[1]);
       const ws = sideOf(winner);
       api.sfx('score'); api.shake(6); api.vibrate(30); api.burst(ball.x, GY - 4, '#ffe8a8', 22, 200);
-      flash = .6; flashSide = 1 - winner;
+      flash = .6; flashSide = 1 - winner; puffX = ball.x;
       api.float(v => v === ws ? TR('Очко!', 'Point!') : TR(`Очко: ${nm(ws, v)}`, `Point: ${nm(ws, v)}`), W / 2, 150, winner ? C.bot : C.you, 28);
       if (S.sc[winner] >= GOAL) {
         S.ph = 'end'; api.photo(TR('Победный мяч! 🏐', 'Match point! 🏐'));
@@ -15855,15 +16140,20 @@ registerGame({
       for (let k = 0; k < 40; k++) api.circle((k * 53) % W, GY + 10 + (k * 37) % (H - GY - 20), 1.6, 'rgba(160,100,30,.35)');
       if (flash > 0) { g.globalAlpha = flash * .5; g.fillStyle = flashSide ? C.bot : C.you; g.fillRect(flashSide ? NX : 0, GY, W / 2, H - GY); g.globalAlpha = 1; }
       // net
-      g.fillStyle = '#5a3a1a'; g.fillRect(NX - 3, NT - 8, 6, GY - NT + 8);
-      g.strokeStyle = 'rgba(255,255,255,.75)'; g.lineWidth = 1;
-      for (let y = NT; y < GY - 30; y += 8) { g.beginPath(); g.moveTo(NX - NW, y); g.lineTo(NX + NW, y); g.stroke(); }
-      g.fillStyle = '#fff'; g.fillRect(NX - NW - 1, NT - 2, NW * 2 + 2, 6);
+      if (!api.spr('pole', NX, (NT - 10 + GY + 4) / 2, 20, GY - NT + 14)) {
+        g.fillStyle = '#5a3a1a'; g.fillRect(NX - 3, NT - 8, 6, GY - NT + 8);
+        g.strokeStyle = 'rgba(255,255,255,.75)'; g.lineWidth = 1;
+        for (let y = NT; y < GY - 30; y += 8) { g.beginPath(); g.moveTo(NX - NW, y); g.lineTo(NX + NW, y); g.stroke(); }
+        g.fillStyle = '#fff'; g.fillRect(NX - NW - 1, NT - 2, NW * 2 + 2, 6);
+      }
+      // sand puff where the ball landed (visual only)
+      if (flash > 0 && puffX != null && api.hd) { const k = 1 - flash / .6; api.spr('puff', puffX, GY - 8 - k * 10, 50 + k * 40, null, 0, Math.min(1, flash * 2.5)); }
     }
     function drawBlob(g, i) {
       const p = P[i], col = i ? C.bot : C.you, dark = i ? C.botDark : C.youDark, sq = p.squash;
       const air = GY - p.y; g.fillStyle = `rgba(80,40,0,${.25 - Math.min(.15, air / 600)})`; g.beginPath(); g.ellipse(p.x, GY + 3, R * (1 - air / 400), 6, 0, 0, 7); g.fill();
       g.save(); g.translate(p.x, p.y); g.scale(1 + sq, 1 - sq);
+      const sw = R * 2.3; if (api.spr(i ? 'pink_slime' : 'cyan_slime', 0, -sw * .67 / 2 + 3, sw)) { g.restore(); return; }
       const gr = g.createRadialGradient(-8, -R * .6, 4, 0, -R * .3, R * 1.1); gr.addColorStop(0, '#fff'); gr.addColorStop(.25, col); gr.addColorStop(1, dark);
       g.fillStyle = gr; g.beginPath(); g.arc(0, 0, R, Math.PI, 0); g.closePath(); g.fill();
       g.strokeStyle = '#1d1340'; g.lineWidth = 3; g.stroke();
@@ -15877,9 +16167,11 @@ registerGame({
       trail.forEach((t, k) => { g.globalAlpha = k / trail.length * .25; api.circle(t[0], t[1], BR * k / trail.length, '#fff'); }); g.globalAlpha = 1;
       const y = Math.max(ball.y, BR + 2);
       g.save(); g.translate(ball.x, y); g.rotate(ball.rot || 0);
-      api.circle(0, 0, BR, '#fff', '#1d1340', 2.2);
-      g.strokeStyle = C.yellow; g.lineWidth = 3; g.beginPath(); g.arc(-BR * .9, 0, BR * .9, -.9, .9); g.stroke();
-      g.strokeStyle = '#2f80ed'; g.beginPath(); g.arc(BR * .9, 0, BR * .9, Math.PI - .9, Math.PI + .9); g.stroke();
+      if (!api.spr('ball', 0, 0, BR * 2.15)) {
+        api.circle(0, 0, BR, '#fff', '#1d1340', 2.2);
+        g.strokeStyle = C.yellow; g.lineWidth = 3; g.beginPath(); g.arc(-BR * .9, 0, BR * .9, -.9, .9); g.stroke();
+        g.strokeStyle = '#2f80ed'; g.beginPath(); g.arc(BR * .9, 0, BR * .9, Math.PI - .9, Math.PI + .9); g.stroke();
+      }
       g.restore();
       if (ball.y < BR) { api.text('▲', ball.x, 12, 14, '#fff'); }
     }
@@ -15901,8 +16193,8 @@ registerGame({
         // scoreboard in the sky
         api.rr(W / 2 - 62, 14, 124, 40, 14); g.fillStyle = 'rgba(29,19,64,.7)'; g.fill();
         api.text(String(S.sc[0]), W / 2 - 30, 35, 24, C.you); api.text(':', W / 2, 33, 22, '#fff'); api.text(String(S.sc[1]), W / 2 + 30, 35, 24, C.bot);
-        const mi = idx(api.me), mp = P[mi];
-        api.text(TR('▼ ТЫ', '▼ YOU'), mp.x + 1, mp.y - R - 17 + Math.sin(tk * 5) * 3, 13, '#1d1340'); api.text(TR('▼ ТЫ', '▼ YOU'), mp.x, mp.y - R - 18 + Math.sin(tk * 5) * 3, 13, '#fff');
+        const mi = idx(api.me), mp = P[mi], ly = api.hd ? 10 : 0;
+        api.text(TR('▼ ТЫ', '▼ YOU'), mp.x + 1, mp.y - R - ly - 17 + Math.sin(tk * 5) * 3, 13, '#1d1340'); api.text(TR('▼ ТЫ', '▼ YOU'), mp.x, mp.y - R - ly - 18 + Math.sin(tk * 5) * 3, 13, '#fff');
         if (S.wait > 0 && S.wait < 50 && S.ph === 'play') api.text(S.serve === mi ? TR('Твоя подача', 'Your serve') : TR('Подача соперника', "Opponent's serve"), W / 2, 110, 18, '#fff');
         // controls hint on the sand
         api.text(TR('← тяни пальцем →', '← drag your finger →'), W / 2, GY + 52, 15, 'rgba(90,50,10,.75)');
@@ -15919,7 +16211,7 @@ registerGame({
         if (!tgt) { s.p.forEach((q, i) => { P[i].x = q[0]; P[i].y = q[1]; }); ball.x = s.b[0]; ball.y = s.b[1]; }
         if (Math.hypot(ball.x - s.b[0], ball.y - s.b[1]) > 150) { ball.x = s.b[0]; ball.y = s.b[1]; trail = []; }
         tgt = s; s.p.forEach((q, i) => { P[i].squash = q[2]; }); ball.rot = s.b[2]; S.sc = s.sc; S.wait = s.w ? 1 : 0; S.serve = s.s;
-        if (s.f > flash) { flash = s.f; flashSide = s.fs; }
+        if (s.f > flash) { flash = s.f; flashSide = s.fs; puffX = s.b[0]; }
       },
       guestUpdate(dt) {
         tk += dt; flash = Math.max(0, flash - dt); if (!tgt) return; const k = Math.min(1, dt * 18);
@@ -15947,7 +16239,7 @@ registerGame({
   make(api) {
     const { W, H, C } = api;
     const GRAV = 260, V = 430, PULL = 120, TURN_T = 15, HS = 1 / 120;
-    const TREE = { x: W / 2, y: 330, r: 36 };
+    const TREE = { x: W / 2, y: 330, r: 36 }, TREE_W = 104, TREE_DY = 16, TREE_CLIP = 38;
     const hill = (x, cx) => 70 * Math.exp(-Math.pow((x - cx) / 70, 2));
     const ground = x => 495 - hill(x, 40) - hill(x, W - 40) - 3.6 * Math.sin(x * .05); // two hills, a valley between
     const A = [{ x: 46 }, { x: W - 46 }].map(a => ({ x: a.x, y: ground(a.x), hp: 100, hurt: 0 }));
@@ -16060,11 +16352,17 @@ registerGame({
       g.strokeStyle = '#8be36b'; g.lineWidth = 3; g.beginPath(); for (let x = 0; x <= W; x += 6) x ? g.lineTo(x, ground(x)) : g.moveTo(x, ground(x)); g.stroke();
       // tree
       const gy = ground(TREE.x);
+      if (api.has('tree') && api.hd) { // sprite crown + a long trunk down to the valley
+        g.fillStyle = '#7a4524'; g.fillRect(TREE.x - 11, TREE.y + 20, 22, gy - TREE.y - 20);
+        g.save(); g.beginPath(); g.rect(0, 0, W, TREE.y + TREE_CLIP); g.clip(); api.spr('tree', TREE.x, TREE.y + TREE_DY, TREE_W); g.restore();
+      } else {
       g.fillStyle = '#6b3f1d'; g.fillRect(TREE.x - 7, TREE.y, 14, gy - TREE.y);
       for (const [dx, dy, r, c] of [[-20, 12, 22, '#2f8a39'], [20, 10, 22, '#2f8a39'], [0, -6, 30, '#3fae49'], [-8, -16, 14, '#5cc34a']]) api.circle(TREE.x + dx, TREE.y + dy, r, c);
+      }
     }
     function drawArrow(g, x, y, ang, side, len = 30) {
       g.save(); g.translate(x, y); g.rotate(ang);
+      if (api.spr(side ? 'pink_arrow' : 'cyan_arrow', -(len + 2) / 2, 0, len + 12)) { g.restore(); return; }
       g.strokeStyle = '#5a3a1a'; g.lineWidth = 2.5; g.beginPath(); g.moveTo(-len, 0); g.lineTo(0, 0); g.stroke();
       g.fillStyle = '#cfd6e0'; g.beginPath(); g.moveTo(4, 0); g.lineTo(-4, -4); g.lineTo(-4, 4); g.closePath(); g.fill();
       g.fillStyle = side ? C.bot : C.you; g.beginPath(); g.moveTo(-len, 0); g.lineTo(-len - 6, -5); g.lineTo(-len + 4, 0); g.lineTo(-len - 6, 5); g.closePath(); g.fill();
@@ -16075,6 +16373,9 @@ registerGame({
       const shake = a.hurt > 0 ? Math.sin(tk * 60) * 3 * a.hurt : 0, dead = a.hp <= 0;
       g.save(); g.translate(x + shake, y); if (dead) { g.rotate(-face * 1.2); }
       g.fillStyle = 'rgba(0,0,0,.25)'; g.beginPath(); g.ellipse(0, 1, 16, 4, 0, 0, 7); g.fill();
+      const pre = i ? 'pink_' : 'cyan_';
+      g.save(); g.scale(face, 1); const hdBody = api.spr(pre + 'body', -5, -27, 49) && api.spr(pre + 'head', -3, -64, 31); g.restore();
+      if (!hdBody) {
       // legs
       g.strokeStyle = '#1d1340'; g.lineWidth = 5; g.lineCap = 'round'; g.beginPath(); g.moveTo(-5, -20); g.lineTo(-8, 0); g.moveTo(5, -20); g.lineTo(8, 0); g.stroke();
       // body (tunic)
@@ -16087,12 +16388,17 @@ registerGame({
       api.circle(0, -60, 10.5, '#f6d3a8', '#1d1340', 2);
       g.fillStyle = dark; g.beginPath(); g.arc(0, -61, 11.5, Math.PI * 1.05, Math.PI * 1.95); g.lineTo(-face * 16, -52); g.closePath(); g.fill();
       api.circle(face * 4, -60, 1.8, '#1d1340');
+      }
       // bow & arm
       const ang = aim ? aim.ang : (i ? Math.PI + .5 : -.5), pw = aim ? aim.pw : 0;
       g.translate(face * 9, -40); g.rotate(ang);
-      g.strokeStyle = '#7a4a1f'; g.lineWidth = 3.5; g.beginPath(); g.arc(0, 0, 18, -1.25, 1.25); g.stroke();
       const sx = Math.cos(1.25) * 18, sy = Math.sin(1.25) * 18, pull = -pw * 16;
+      g.save(); if (face < 0) g.scale(1, -1); const hdArm = api.spr(pre + 'bowarm', 9, 1, 30); g.restore();
+      if (hdArm) { if (pw > 0) { g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = 1.2; g.beginPath(); g.moveTo(17, -19); g.lineTo(pull, 0); g.lineTo(17, 19); g.stroke(); } }
+      else {
+      g.strokeStyle = '#7a4a1f'; g.lineWidth = 3.5; g.beginPath(); g.arc(0, 0, 18, -1.25, 1.25); g.stroke();
       g.strokeStyle = '#fff'; g.lineWidth = 1.2; g.beginPath(); g.moveTo(sx, -sy); g.lineTo(pull, 0); g.lineTo(sx, sy); g.stroke();
+      }
       if (aim) { g.restore(); g.save(); const [bx, by] = bowPos(i); drawArrow(g, bx + Math.cos(ang) * (16 + pull * .2), by + Math.sin(ang) * (16 + pull * .2), ang, i, 30); }
       g.restore();
       if (dead) api.text('💀', x, y - 80, 20);
@@ -16109,12 +16415,16 @@ registerGame({
     function drawWind(g) {
       const x = W / 2, y = 92, w = S.wind, fl = Math.min(1, Math.abs(w) / 70);
       api.rr(x - 62, y - 30, 124, 64, 16); g.fillStyle = 'rgba(29,19,64,.6)'; g.fill();
-      g.strokeStyle = '#ddd'; g.lineWidth = 3; g.beginPath(); g.moveTo(x, y + 26); g.lineTo(x, y - 22); g.stroke();
       const dir = w >= 0 ? 1 : -1, len = 12 + fl * 34;
+      const fw = (16 + fl * 34) / .88; g.save(); g.translate(x, 0); g.scale(dir, 1);
+      const hdFlag = api.spr('flag', fw * .4, y - 6, fw, 46 + Math.sin(tk * 9) * 1.5); g.restore();
+      if (!hdFlag) {
+      g.strokeStyle = '#ddd'; g.lineWidth = 3; g.beginPath(); g.moveTo(x, y + 26); g.lineTo(x, y - 22); g.stroke();
       g.fillStyle = C.orange; g.beginPath(); g.moveTo(x, y - 22);
       for (let k = 0; k <= 6; k++) g.lineTo(x + dir * len * k / 6, y - 22 + Math.sin(tk * 9 + k) * 3 * (.3 + fl) + k * (1 - fl) * 1.2);
       for (let k = 6; k >= 0; k--) g.lineTo(x + dir * len * k / 6, y - 8 + Math.sin(tk * 9 + k) * 3 * (.3 + fl) + k * (1 - fl) * 2);
       g.closePath(); g.fill();
+      }
       api.text(TR('ветер ', 'wind ') + windTxt(), x, y + 20, 12, '#fff');
     }
     function drawHp(g) {
@@ -16298,6 +16608,15 @@ registerGame({
     function drawTurner(g, x, th, flipX) {
       const hx = x + Math.cos(th + Math.PI / 2) * 9 * flipX, hy = AX + Math.sin(th + Math.PI / 2) * 9;
       const bx = x + (flipX > 0 ? -14 : 14);
+      if (api.hd && api.has('turner_l')) { // whole-figure sprite + the rope arm raised to the turning hand
+        const cx = x - flipX * 4;
+        if (api.spr(flipX > 0 ? 'turner_l' : 'turner_r', cx, GY - 50, flipX > 0 ? 52 : 54.5, 100)) {
+          const sx = cx - flipX * 6, sy = GY - 62;
+          g.strokeStyle = '#f6c9a0'; g.lineWidth = 6; g.lineCap = 'round'; g.beginPath(); g.moveTo(sx, sy); g.lineTo(hx, hy); g.stroke(); g.lineCap = 'butt';
+          if (!api.spr('handle', hx, hy, 18, null, Math.atan2(hy - sy, hx - sx))) api.circle(hx, hy, 4.5, '#f6c9a0');
+          return;
+        }
+      }
       // legs
       g.strokeStyle = '#3a2470'; g.lineWidth = 7; g.lineCap = 'round';
       g.beginPath(); g.moveTo(bx, GY - 34); g.lineTo(bx - 7, GY); g.moveTo(bx, GY - 34); g.lineTo(bx + 7, GY); g.stroke();
@@ -16314,6 +16633,25 @@ registerGame({
       const sh = Math.max(.3, 1 - h / 80); g.fillStyle = `rgba(0,0,0,${.25 * sh})`; g.beginPath(); g.ellipse(x, GY + 3, 18 * sh, 5 * sh, 0, 0, 7); g.fill();
       g.save(); g.translate(x, y);
       if (trip > 0) g.rotate((side === 'you' ? -1 : 1) * Math.min(1, trip) * .5);
+      const pre = side === 'you' ? 'cyan_' : 'pink_';
+      if (api.hd && ['body', 'head', 'arm', 'leg'].every(k => api.has(pre + k))) { drawKidParts(g, pre, side === 'you' ? 1 : -1, air, h); g.restore(); }
+      else { drawKidShapes(g, side, col, dark, air, trip); g.restore(); }
+      if (S.J[side].perf > 0) { g.globalAlpha = S.J[side].perf; api.circle(x, y - 50, 40, null, C.yellow, 3); g.globalAlpha = 1; }
+    }
+    // cut-out rig (side view, drawn facing right; the pink kid is mirrored to face her partner)
+    function drawKidParts(g, pre, face, air, h) {
+      g.scale(face, 1);
+      const u = air ? Math.min(1, h / 30) : 0, sw = Math.sin(tk * 3) * .05;
+      const part = (name, jx, jy, rot, w, hgt, ox, oy) => { g.save(); g.translate(jx, jy); g.rotate(rot); api.spr(name, ox, oy, w, hgt); g.restore(); };
+      const leg = (jx, rot) => part(pre + 'leg', jx, -30, rot, 20, 33, 3, 14);
+      const arm = (jx, rot) => part(pre + 'arm', jx, -61, rot, 14, 27, 1.5, 11.5);
+      arm(-3, -.25 - u * 2.3 + sw);                 // back arm
+      leg(-4, .12 + u * .55); leg(4, -.08 - u * .75); // back leg tucks back, front knee comes up
+      api.spr(pre + 'body', 0, -46, 30, 46);
+      api.spr(pre + 'head', 2, -82, pre === 'pink_' ? 44 : 40);
+      arm(3, -.1 - u * 2.5 - sw);                   // front arm
+    }
+    function drawKidShapes(g, side, col, dark, air, trip) {
       g.lineCap = 'round';
       // legs (tucked in the air)
       g.strokeStyle = dark; g.lineWidth = 8;
@@ -16330,8 +16668,7 @@ registerGame({
       if (side === 'bot') { api.circle(-14, -92, 6, dark); api.circle(14, -92, 6, dark); }
       if (trip > 0) { api.text('×', -5, -82, 10, '#1d1340'); api.text('×', 5, -82, 10, '#1d1340'); }
       else { api.circle(-5, -82, 2, '#1d1340'); api.circle(5, -82, 2, '#1d1340'); g.strokeStyle = '#1d1340'; g.lineWidth = 1.8; g.beginPath(); g.arc(0, -77, 5, .2, Math.PI - .2); g.stroke(); }
-      g.lineCap = 'butt'; g.restore();
-      if (S.J[side].perf > 0) { g.globalAlpha = S.J[side].perf; api.circle(x, y - 50, 40, null, C.yellow, 3); g.globalAlpha = 1; }
+      g.lineCap = 'butt';
     }
     function drawScene(g) {
       const night = Math.min(1, S.jumps / GOAL);
@@ -16351,7 +16688,7 @@ registerGame({
     function drawHud(g) {
       api.rr(W / 2 - 64, 14, 128, 58, 20); g.fillStyle = 'rgba(29,19,64,.6)'; g.fill();
       api.text(String(S.jumps), W / 2, 38, 30, '#fff'); api.text(TR(`из ${GOAL}`, `of ${GOAL}`), W / 2, 62, 12, 'rgba(255,255,255,.8)');
-      for (let i = 0; i < LIVES; i++) api.emoji(i < S.lives ? '❤️' : '🖤', 24 + i * 24, 30, 18);
+      for (let i = 0; i < LIVES; i++) if (!api.spr('heart', 24 + i * 24, 30, 20, null, 0, i < S.lives ? 1 : .25)) api.emoji(i < S.lives ? '❤️' : '🖤', 24 + i * 24, 30, 18);
       // speed meter
       const sp = api.clamp((1.25 - interval()) / (1.25 - .5), 0, 1);
       api.text(TR('скорость', 'speed'), W - 62, 22, 11, 'rgba(29,19,64,.8)');
@@ -16537,7 +16874,7 @@ registerGame({
         const y = sy(side, m);
         g.strokeStyle = 'rgba(0,0,0,.12)'; g.lineWidth = 2; g.beginPath(); g.moveTo(x0 + hash(m) * 180, y); g.lineTo(x0 + hash(m + .5) * 180, y - 18); g.stroke();
         if (m < 0 || m > GOAL) continue;
-        for (let k = 0; k < 2; k++) { const hx = x0 + 30 + hash(m * 3 + k) * 120, hy = y + hash(m * 7 + k) * 10 - 5; g.fillStyle = holdCols[(m + k) % 6]; g.beginPath(); g.ellipse(hx, hy, 6 + hash(m + k) * 3, 4.5, hash(m * 5) * 3, 0, 7); g.fill(); }
+        for (let k = 0; k < 2; k++) { const hx = x0 + 30 + hash(m * 3 + k) * 120, hy = y + hash(m * 7 + k) * 10 - 5; if (!api.spr('hold_' + ((m + k) % 6), hx, hy, (6 + hash(m + k) * 3) * 2.3, null, hash(m * 5) * 3)) { g.fillStyle = holdCols[(m + k) % 6]; g.beginPath(); g.ellipse(hx, hy, 6 + hash(m + k) * 3, 4.5, hash(m * 5) * 3, 0, 7); g.fill(); } }
         if (m % 10 === 0 && m > 0 && m < GOAL) { api.text(`${m} ${TR('м', 'm')}`, x0 + 162, y, 10, 'rgba(255,255,255,.6)', 'right'); }
       }
       // ground and summit
@@ -16553,6 +16890,7 @@ registerGame({
       // rocks
       for (const r of S.rocks) if (r.s === side) {
         const y = sy(side, r.h), x = LX[side] + r.x;
+        if (api.spr('rock', x, y, 34, null, r.rot)) continue;
         g.save(); g.translate(x, y); g.rotate(r.rot);
         g.fillStyle = '#5b3a22'; g.beginPath(); g.moveTo(-15, -6); g.lineTo(-6, -15); g.lineTo(10, -13); g.lineTo(16, 2); g.lineTo(7, 14); g.lineTo(-11, 12); g.closePath(); g.fill();
         g.fillStyle = 'rgba(255,255,255,.18)'; g.beginPath(); g.moveTo(-8, -9); g.lineTo(4, -10); g.lineTo(-2, -2); g.fill(); g.restore();
@@ -16568,6 +16906,7 @@ registerGame({
       g.lineCap = 'round';
       // rope down to the ground
       g.strokeStyle = 'rgba(255,214,10,.6)'; g.lineWidth = 2; g.beginPath(); g.moveTo(0, -20); g.quadraticCurveTo(12, 60, 0, 140); g.stroke();
+      if (api.hd && api.has('cyan_body')) rigClimber(g, side, L, x + sway, y, hug ? 1.06 : 1, hug ? .94 : 1); else {
       // legs
       g.strokeStyle = dark; g.lineWidth = 8;
       const lk = L ? 6 : -6;
@@ -16583,10 +16922,48 @@ registerGame({
       api.circle(-20, lh, 4, '#f6c9a0'); api.circle(20, rh, 4, '#f6c9a0');
       // head with helmet
       api.circle(0, -70, 12, '#f6c9a0'); g.fillStyle = C.yellow; g.beginPath(); g.arc(0, -72, 13, Math.PI, 0); g.fill(); g.fillRect(-13, -73, 26, 4);
+      }
       g.restore(); g.lineCap = 'butt';
       if (hug) { api.circle(x, y - 40, 44, null, 'rgba(255,255,255,.5)', 2); }
       if (c.stun > 0 && c.st === 'hit') for (let s = 0; s < 3; s++) { const a = tk * 5 + s * 2.1; api.emoji('⭐', x + Math.cos(a) * 18, y - 92 + Math.sin(a) * 5, 12); }
       api.text(api.mine(side) ? TR('ТЫ', 'YOU') : String(api.name(side)).slice(0, 8), x, y + 34, 12, '#fff');
+    }
+    // sprite rig (back view): limbs drawn between the joints, hands grab the nearest wall hold
+    const AR = { arm: 67 / 160, leg: 74 / 160 };
+    function limb(g, name, ax, ay, bx, by, kind, mirror) { // sprite end 'root' sits on (ax,ay), far end on (bx,by)
+      const dx = bx - ax, dy = by - ay, L = Math.max(kind === 'arm' ? 24 : 14, Math.hypot(dx, dy)) * (kind === 'arm' ? 1.12 : 1.08);
+      g.save(); g.translate(ax, ay);
+      if (kind === 'arm') g.rotate(Math.atan2(dy, dx) + Math.PI / 2); else g.rotate(Math.atan2(dy, dx) - Math.PI / 2);
+      if (mirror) g.scale(-1, 1);
+      api.spr(name, 0, kind === 'arm' ? -L / 2 + 2 : L / 2 - 2, L * AR[kind], L);
+      g.restore();
+    }
+    function grabHold(side, lx, ly, sx, sy0, ox, oy, scx, scy, sgn) { // nominal hand (lx,ly) in local coords -> nearest hold on that side
+      const c = S.c[side], x0 = side === 'you' ? 0 : W / 2, mc = c.h + (-ly) / PX;
+      let best = null, bd = 1e9;
+      for (let m = Math.floor(mc) - 1; m <= Math.ceil(mc) + 1; m++) {
+        if (m < 0 || m > GOAL) continue;
+        for (let k = 0; k < 2; k++) {
+          const hx = (x0 + 30 + hash(m * 3 + k) * 120 - ox) / scx, hy = (sy(side, m) + hash(m * 7 + k) * 10 - 5 - oy) / scy;
+          if ((hx - sx) * sgn < -4) continue;
+          const reach = Math.hypot(hx - sx, hy - sy0), d = Math.hypot(hx - lx, hy - ly);
+          if (reach > 46 || reach < 12 || hy > sy0 + 4) continue;
+          if (d < bd) { bd = d; best = [hx, hy]; }
+        }
+      }
+      return best && bd < 30 ? best : [lx, ly];
+    }
+    function rigClimber(g, side, L, ox, oy, scx, scy) {
+      const p = side === 'you' ? 'cyan_' : 'pink_', lk = L ? 6 : -6;
+      // legs: hips -> feet (push from below)
+      limb(g, p + 'leg', -6, -24, -15, 10 + lk, 'leg', true);
+      limb(g, p + 'leg', 6, -24, 15, 10 - lk, 'leg', false);
+      const lh = L ? -94 : -66, rh = L ? -66 : -94;
+      const hl = grabHold(side, -20, lh, -13, -54, ox, oy, scx, scy, -1), hr = grabHold(side, 20, rh, 13, -54, ox, oy, scx, scy, 1);
+      limb(g, p + 'arm', -13, -53, hl[0], hl[1], 'arm', true);
+      limb(g, p + 'arm', 13, -53, hr[0], hr[1], 'arm', false);
+      api.spr(p + 'body', 0, -40, 38);
+      api.spr(p + 'head', 0, -70, 30);
     }
     function drawHud(g) {
       g.fillStyle = '#1d1340'; g.fillRect(0, 0, W, TOPY);
@@ -16802,6 +17179,7 @@ registerGame({
 
     // ---------- drawing ----------
     function disc(x, y, side, r = CS / 2 - 5, alpha = 1) {
+      if (api.spr(side === 'you' ? 'cyan_disc' : 'pink_disc', x, y, r * 2.12, null, 0, alpha)) return;
       const col = side === 'you' ? C.you : C.bot, dark = side === 'you' ? C.youDark : C.botDark;
       g0.globalAlpha = alpha;
       api.circle(x, y + 2, r, 'rgba(0,0,0,.35)');
@@ -16858,21 +17236,23 @@ registerGame({
         // discs behind the frame
         for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) { const v = at(c, r); if (v) disc(cx(c), cy(r), sideOf(v)); }
         if (S.anim) disc(cx(S.anim.c), S.anim.y, S.anim.s);
-        // the frame with holes
+        // the frame with holes (HD: side posts behind it)
+        const fh = ROWS * CS + 46, fy = Y0 - 12 + fh / 2;
+        if (api.hd) { api.spr('post_l', X0 - 6, fy, 24, fh); api.spr('post_r', X0 + COLS * CS + 6, fy, 24, fh); }
         g.save(); g.beginPath(); api.rr(X0 - 10, Y0 - 8, COLS * CS + 20, ROWS * CS + 16, 18);
         for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) { g.moveTo(cx(c) + CS / 2 - 4, cy(r)); g.arc(cx(c), cy(r), CS / 2 - 4, 0, Math.PI * 2, true); }
         const fr = g.createLinearGradient(0, Y0, 0, Y0 + ROWS * CS); fr.addColorStop(0, '#3b6bff'); fr.addColorStop(1, '#1d3fcf');
         g.fillStyle = fr; g.fill('evenodd'); g.restore();
-        for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) api.circle(cx(c), cy(r), CS / 2 - 4, null, 'rgba(0,0,40,.45)', 2);
+        for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (!api.spr('hole_rim', cx(c), cy(r), CS * 1.02)) api.circle(cx(c), cy(r), CS / 2 - 4, null, 'rgba(0,0,40,.45)', 2);
         api.rr(X0 - 10, Y0 - 8, COLS * CS + 20, ROWS * CS + 16, 18); g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 2; g.stroke();
         // legs
-        g.fillStyle = '#1d3fcf'; g.fillRect(X0 - 4, Y0 + ROWS * CS + 8, 14, 22); g.fillRect(X0 + COLS * CS - 10, Y0 + ROWS * CS + 8, 14, 22);
+        if (!api.hd) { g.fillStyle = '#1d3fcf'; g.fillRect(X0 - 4, Y0 + ROWS * CS + 8, 14, 22); g.fillRect(X0 + COLS * CS - 10, Y0 + ROWS * CS + 8, 14, 22); }
         // last move marker
         if (S.last >= 0 && !S.win) { const c = S.last % COLS, r = Math.floor(S.last / COLS); api.circle(cx(c), cy(r), 4, '#fff'); }
         // winning line
         if (S.win) {
           const p = .5 + .5 * Math.sin(tk * 9);
-          for (const i of S.win) api.circle(cx(i % COLS), cy(Math.floor(i / COLS)), CS / 2 - 3 + p * 2, null, '#fff', 4);
+          for (const i of S.win) if (!api.spr('ring', cx(i % COLS), cy(Math.floor(i / COLS)), CS * 1.25 + p * 6, null, tk * 1.5, .75 + p * .25)) api.circle(cx(i % COLS), cy(Math.floor(i / COLS)), CS / 2 - 3 + p * 2, null, '#fff', 4);
           const a = S.win[0], b = S.win[S.win.length - 1];
           g.strokeStyle = `rgba(255,214,10,${.6 + p * .4})`; g.lineWidth = 7; g.lineCap = 'round'; g.beginPath(); g.moveTo(cx(a % COLS), cy(Math.floor(a / COLS))); g.lineTo(cx(b % COLS), cy(Math.floor(b / COLS))); g.stroke(); g.lineCap = 'butt';
         }
@@ -17072,6 +17452,15 @@ registerGame({
       const a = ship.cells[0], b = ship.cells[ship.cells.length - 1], col = side === 'you' ? C.you : C.bot;
       const x1 = cellX(a), y1 = cellY(side, a), x2 = cellX(b), y2 = cellY(side, b);
       const x = Math.min(x1, x2) - CS / 2 + 3, y = Math.min(y1, y2) - CS / 2 + 3, w = Math.abs(x2 - x1) + CS - 6, h = Math.abs(y2 - y1) + CS - 6;
+      if (api.hd && api.has('ship' + Math.min(4, ship.len))) {
+        // sprite faces up (bow up): stretch its length over the occupied cells, rotate for horizontal ships
+        const L = ship.len * CS - 4, sw = Math.min(CS - 8, L * [.46, .46, .4, .34, .32][Math.min(4, ship.len)] * 1.3), shz = ship.len > 1 && y1 === y2;
+        api.rr(x, y, w, h, 11); g.fillStyle = ship.sunk ? 'rgba(20,15,40,.45)' : col; g.globalAlpha = ship.sunk ? 1 : .28; g.fill(); g.globalAlpha = 1;
+        if (ship.sunk) g.filter = 'grayscale(1) brightness(.55)';
+        api.spr('ship' + Math.min(4, ship.len), (x1 + x2) / 2, (y1 + y2) / 2, sw, L, shz ? Math.PI / 2 : 0, ship.sunk ? .8 : 1);
+        g.filter = 'none';
+        return;
+      }
       api.rr(x, y, w, h, 11); g.fillStyle = ship.sunk ? '#3a3550' : '#c9d3e6'; g.fill();
       g.strokeStyle = ship.sunk ? '#1d1340' : col; g.lineWidth = 3; g.stroke();
       // deck details
@@ -17085,14 +17474,16 @@ registerGame({
         const v = sh[i], x = cellX(i), y = cellY(side, i); if (!v) continue;
         const fresh = S.last && S.last.g === side && S.last.i === i ? S.last.t : 0;
         if (v === 1) {
-          api.circle(x, y, 4.5, 'rgba(191,233,255,.85)');
+          if (!api.spr('splash', x, y + 1, CS * .7)) api.circle(x, y, 4.5, 'rgba(191,233,255,.85)');
           if (fresh > 0) { const r = (1 - fresh) * 16 + 4; api.circle(x, y, r, null, `rgba(191,233,255,${fresh})`, 2); }
         } else if (v === 2) {
           api.rr(x - CS / 2 + 2, y - CS / 2 + 2, CS - 4, CS - 4, 6); g.fillStyle = 'rgba(255,61,90,.55)'; g.fill();
-          api.emoji('🔥', x, y - 2 + Math.sin(tk * 9 + i) * 1.2, 18 + Math.sin(tk * 13 + i) * 1.5);
+          const fs = 1 + Math.sin(tk * 13 + i) * .06;
+          if (!api.spr('fire', x, y + 2 - CS * .1 * fs, CS * .62 * fs)) api.emoji('🔥', x, y - 2 + Math.sin(tk * 9 + i) * 1.2, 18 + Math.sin(tk * 13 + i) * 1.5);
         } else {
-          api.emoji('💥', x, y, 15);
+          if (!api.spr('explosion', x, y, CS * .95)) api.emoji('💥', x, y, 15);
         }
+        if (fresh > 0 && v >= 2) api.spr('explosion', x, y, CS * (1.1 + (1 - fresh) * 1.2), null, 0, fresh);
       }
     }
     function drawGrid(g, side) {
@@ -17102,7 +17493,7 @@ registerGame({
       const shooter = api.other(side);
       // target highlight when it's my shot here
       if (S.ph === 'aim' && S.turn === shooter && (api.hotseat || api.mine(shooter))) { const p = .5 + .5 * Math.sin(tk * 5); api.rr(GX - 6, GY[side] - 6, N * CS + 12, N * CS + 12, 12); g.strokeStyle = `rgba(255,214,10,${.4 + p * .5})`; g.lineWidth = 3; g.stroke(); }
-      if (S.aimBot >= 0 && side === 'you') { const x = cellX(S.aimBot), y = cellY('you', S.aimBot); api.circle(x, y, 12, null, C.red, 2.5); g.strokeStyle = C.red; g.lineWidth = 2; g.beginPath(); g.moveTo(x - 16, y); g.lineTo(x + 16, y); g.moveTo(x, y - 16); g.lineTo(x, y + 16); g.stroke(); }
+      if (S.aimBot >= 0 && side === 'you') { const x = cellX(S.aimBot), y = cellY('you', S.aimBot); if (!api.spr('crosshair', x, y, 34)) { api.circle(x, y, 12, null, C.red, 2.5); g.strokeStyle = C.red; g.lineWidth = 2; g.beginPath(); g.moveTo(x - 16, y); g.lineTo(x + 16, y); g.moveTo(x, y - 16); g.lineTo(x, y + 16); g.stroke(); } }
     }
     function drawFleetList(g, side) {
       // remaining ships next to the grid: right side for both (rotation keeps it beside the grid)
@@ -17179,7 +17570,7 @@ registerGame({
           const x = sx + (tx - sx) * k, y = sy + (ty - sy) * k, r = 5 + Math.sin(k * Math.PI) * 7;
           for (let j = 1; j <= 5; j++) { const kk = Math.max(0, k - j * .04); api.circle(sx + (tx - sx) * kk, sy + (ty - sy) * kk, r * (1 - j * .15), `rgba(255,214,10,${.25 - j * .04})`); }
           api.circle(x, y, r, '#1d1340', C.yellow, 2);
-          api.circle(tx, ty, 13 * (1 - k) + 4, null, 'rgba(255,61,90,.8)', 2);
+          if (!api.spr('crosshair', tx, ty, 2 * (13 * (1 - k) + 4) * 1.25, null, 0, .9)) api.circle(tx, ty, 13 * (1 - k) + 4, null, 'rgba(255,61,90,.8)', 2);
         }
         const bn = S.bn;
         if (bn && bn.t > 0) { const [t, col] = bannerText(bn); g.globalAlpha = Math.min(1, bn.t * 2); api.rr(24, 258, W - 48, 44, 18); g.fillStyle = 'rgba(11,20,50,.94)'; g.fill(); g.strokeStyle = col; g.lineWidth = 3; g.stroke(); api.text(t, W / 2, 280, String(t).length > 26 ? 14 : 17, col); g.globalAlpha = 1; }
@@ -17370,6 +17761,7 @@ registerGame({
           if (!S.b[b]) continue;
           const r = Math.floor(b / N), c = b % N, s = sideOf(S.b[b]), k = boxPop[b], sz = (SP - 10) * (k < 1 ? .4 + .6 * Math.sin(k * Math.PI / 2) * 1.08 : 1);
           const cx = X0 + c * SP + SP / 2, cy = Y0 + r * SP + SP / 2;
+          if (api.spr(s === 'you' ? 'cyan_box' : 'pink_box', cx, cy, sz - 6, sz - 6)) { if (k < 1) api.spr('sparkle', cx + sz * .3, cy - sz * .3, 26 * (.6 + k), null, k * 2, 1 - k); continue; }
           api.rr(cx - sz / 2, cy - sz / 2, sz, sz, 9); g.fillStyle = col(s); g.globalAlpha = .85; g.fill(); g.globalAlpha = 1;
           api.emoji(s === 'you' ? '💎' : '🌸', cx, cy, 24 * Math.min(1, k * 1.3));
         }
@@ -17384,6 +17776,7 @@ registerGame({
           const [x1, y1, x2, y2] = edgeGeo(e), k = grow[e], s = sideOf(S.e[e]), mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
           const ax = mx + (x1 - mx) * k, ay = my + (y1 - my) * k, bx = mx + (x2 - mx) * k, by = my + (y2 - my) * k;
           if (e === S.last) { g.strokeStyle = 'rgba(255,214,10,' + (.45 + .3 * Math.sin(tk * 6)) + ')'; g.lineWidth = 14; g.beginPath(); g.moveTo(ax, ay); g.lineTo(bx, by); g.stroke(); }
+          const L = Math.hypot(bx - ax, by - ay); if (L > 1 && api.spr(s === 'you' ? 'cyan_line' : 'pink_line', mx, my, L + 14, 15, y1 === y2 ? 0 : Math.PI / 2)) continue;
           g.strokeStyle = s === 'you' ? C.youDark : C.botDark; g.lineWidth = 8; g.beginPath(); g.moveTo(ax, ay); g.lineTo(bx, by); g.stroke();
           g.strokeStyle = col(s); g.lineWidth = 5; g.beginPath(); g.moveTo(ax, ay); g.lineTo(bx, by); g.stroke();
         }
@@ -17527,7 +17920,15 @@ registerGame({
       const wx = wob[i] ? Math.sin(wob[i] * 18) * 5 * wob[i] : 0, lift = Math.sin(k * Math.PI) * 6;
       g.save(); g.translate(x + wx, y - lift); g.scale(sx, 1 + Math.sin(k * Math.PI) * .06);
       g.fillStyle = 'rgba(0,0,0,.25)'; api.rr(-CW / 2 + 3, -CH / 2 + 5 + lift, CW, CH, 12); g.fill();
-      if (!up) {
+      if (!up && api.spr('card_back', 0, 0, CW + 4, CH + 4)) { /* sprite back */ }
+      else if (up && api.hd && api.spr('card_front', 0, 0, CW + 4, CH + 4)) {
+        const f = face(i), taken = st >= 2, s = st === 2 ? 'you' : 'bot';
+        if (f >= 0) { g.globalAlpha = .6; api.rr(-CW / 2 + 6, -CH / 2 + 6, CW - 12, CH - 12, 8); g.fillStyle = TINT[f]; g.fill(); g.globalAlpha = 1; }
+        if (taken) { api.spr(s === 'you' ? 'cyan_glow' : 'pink_glow', 0, 0, CW + 20, CH + 20); api.spr('sparkle', CW / 2 - 9, -CH / 2 + 9, 20 + 3 * Math.sin(tk * 5 + i), null, 0, .9); }
+        else if (st === 1) { api.rr(-CW / 2 + 1, -CH / 2 + 1, CW - 2, CH - 2, 11); g.strokeStyle = C.yellow; g.lineWidth = 4; g.stroke(); }
+        if (f >= 0) api.emoji(S.pr[f], 0, 0, taken ? 38 : 44);
+      }
+      else if (!up) {
         const gr = g.createLinearGradient(-CW / 2, -CH / 2, CW / 2, CH / 2); gr.addColorStop(0, '#7b2ff7'); gr.addColorStop(1, '#f107a3');
         api.rr(-CW / 2, -CH / 2, CW, CH, 12); g.fillStyle = gr; g.fill(); g.strokeStyle = 'rgba(255,255,255,.7)'; g.lineWidth = 3; g.stroke();
         g.save(); api.rr(-CW / 2 + 5, -CH / 2 + 5, CW - 10, CH - 10, 8); g.clip(); g.strokeStyle = 'rgba(255,255,255,.18)'; g.lineWidth = 2; for (let d = -CW; d < CW; d += 12) { g.beginPath(); g.moveTo(d, -CH / 2); g.lineTo(d + 30, CH / 2); g.stroke(); } g.restore();
@@ -17753,6 +18154,7 @@ registerGame({
       if (scale < .12 || alpha <= .02) return;
       g.globalAlpha = alpha;
       api.circle(x + 1.5, y + 3, R, 'rgba(0,0,0,.35)');
+      if (api.spr((s === 'you' ? 'cyan_' : 'pink_') + (Math.abs(v) === 2 ? 'king' : 'man'), x, y - 1, R * 2.25)) { g.globalAlpha = 1; return; }
       api.circle(x, y, R, dark(s)); api.circle(x, y - 2, R - 1, col(s));
       api.circle(x, y - 2, R * .62, null, 'rgba(255,255,255,.45)', 2.5);
       api.circle(x - R * .35, y - R * .45, R * .18, 'rgba(255,255,255,.55)');
@@ -17775,7 +18177,7 @@ registerGame({
         g0 = g;
         const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#2a1608'); bg.addColorStop(.5, '#4a2a12'); bg.addColorStop(1, '#2a1608'); g.fillStyle = bg; g.fillRect(0, 0, W, H);
         api.rr(X0 - 9, Y0 - 9, N * CS + 18, N * CS + 18, 10); g.fillStyle = '#8a5a2b'; g.fill(); g.strokeStyle = '#e0b77a'; g.lineWidth = 2; g.stroke();
-        for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) { g.fillStyle = (r + c) % 2 ? '#7b4a26' : '#f3dcb3'; g.fillRect(X0 + c * CS, Y0 + r * CS, CS, CS); }
+        for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) { if (api.spr((r + c) % 2 ? 'sq_dark' : 'sq_light', X0 + c * CS + CS / 2, Y0 + r * CS + CS / 2, CS + .5, CS + .5)) continue; g.fillStyle = (r + c) % 2 ? '#7b4a26' : '#f3dcb3'; g.fillRect(X0 + c * CS, Y0 + r * CS, CS, CS); }
         const mine = !S.over && (api.hotseat || api.mine(S.turn)) && !busy;
         const LM = S.lm, anim = LM && animT < hopT(LM);
         // last move trail
@@ -17795,7 +18197,7 @@ registerGame({
         for (let i = 0; i < 64; i++) { if (!S.B[i] || (anim && i === movedTo)) continue; piece(cx(i), cy(i), S.B[i], i === S.sel ? 1.08 : 1); }
         if (anim) {
           const seg = .2, k = animT / seg, idx = Math.min(LM.path.length - 1, Math.floor(k)), f = Math.min(1, k - idx), e = f * f * (3 - 2 * f);
-          LM.caps.forEach(([q, v], j) => { if (j >= idx + (f > .7 ? 1 : 0)) piece(cx(q), cy(q), v, 1, .9); else if (j === idx) piece(cx(q), cy(q), v, 1 - f, 1 - f); });
+          LM.caps.forEach(([q, v], j) => { if (j >= idx + (f > .7 ? 1 : 0)) piece(cx(q), cy(q), v, 1, .9); else if (j === idx) { piece(cx(q), cy(q), v, 1 - f, 1 - f); if (f > .4) api.spr('burst', cx(q), cy(q), CS * (.7 + f * .8), null, f, 1.6 - f * 1.6); } });
           const a = idx === 0 ? LM.from : LM.path[idx - 1], b = LM.path[idx];
           const x = lerpN(cx(a), cx(b), e), y = lerpN(cy(a), cy(b), e) - Math.sin(f * Math.PI) * (LM.caps.length ? 18 : 8);
           piece(x, y, LM.prom && idx === LM.path.length - 1 && f > .9 ? Math.sign(LM.v) * 2 : LM.v, 1 + Math.sin(f * Math.PI) * .15);
@@ -18415,18 +18817,18 @@ function win(isWin) { addPoints(isWin ? 10 : 0, isWin ? 'win' : 'lose'); setTime
 
 /* --- 1. Rock paper scissors --- */
 function RPS(root) {
-  const OPTS = { r: '✊', p: '✋', s: '✌️' }, NAMES = T.rpsNames;
+  const OPTS = { r: '✊', p: '✋', s: '✌️' }, NAMES = T.rpsNames, SPN = { r: 'rock', p: 'paper', s: 'scissors' };
   const beats = { r: 's', p: 'r', s: 'p' };
   let my = null, th = null, sc = [0, 0], round = 1, done = false;
   const score = scoreBar(), msg = h('div', { className: 'msg' }), rev = h('div', { className: 'reveal' }), ch = h('div', { className: 'choices' }), again = h('button', { className: 'btn y w hidden', style: 'margin-top:14px', on: { click: () => { gsend({ k: 'again', r: round + 1 }); reset(round + 1); } } }, T.againRound);
-  const btns = {}; for (const k in OPTS) { btns[k] = h('button', { className: 'choice', on: { click: () => pick(k) } }, OPTS[k]); ch.append(btns[k]); }
+  const btns = {}; for (const k in OPTS) { btns[k] = h('button', { className: 'choice', on: { click: () => pick(k) } }, hdx('rps', SPN[k], 66, OPTS[k])); ch.append(btns[k]); }
   root.append(score, msg, rev, ch, again);
   function status() { if (done) return; msg.className = 'msg'; msg.textContent = T.round(round) + ' ' + (!my && !th ? T.choose : my && !th ? T.waitingFor(ptName()) : T.alreadyPicked(ptName())); for (const k in btns) { btns[k].classList.toggle('sel', my === k); btns[k].disabled = !!my && my !== k; } }
   function pick(k) { if (my) return; my = k; beep(700); gsend({ k: 'pick', v: k }); status(); check(); }
   function check() {
     if (!my || !th || done) return; done = true;
     const res = my === th ? 0 : beats[my] === th ? 1 : -1; if (res > 0) sc[0]++; if (res < 0) sc[1]++;
-    rev.innerHTML = ''; rev.append(h('div', { className: 'pop' }, OPTS[my], h('small', {}, T.you)), h('div', { style: 'font-size:26px' }, 'vs'), h('div', { className: 'pop' }, OPTS[th], h('small', {}, ptName())));
+    rev.innerHTML = ''; rev.append(h('div', { className: 'pop' }, hdx('rps', SPN[my], 92, OPTS[my]), h('small', {}, T.you)), h('div', { style: 'font-size:26px' }, hdx('rps', 'vs', 64, 'vs')), h('div', { className: 'pop' }, hdx('rps', SPN[th], 92, OPTS[th], 'transform:scaleX(-1);filter:hue-rotate(125deg)'), h('small', {}, ptName())));
     ch.classList.add('hidden'); again.classList.remove('hidden'); score.set(sc[0], sc[1]);
     msg.className = 'msg big'; msg.textContent = res > 0 ? T.rpsWin(NAMES[my], NAMES[th]) : res < 0 ? T.theyWon(ptName()) : T.draw;
     win(res > 0);
@@ -18440,17 +18842,18 @@ function RPS(root) {
 function Reaction(root) {
   let state = 'idle', t0 = 0, timer, my = null, th = null, sc = [0, 0];
   const score = scoreBar(), msg = h('div', { className: 'msg' }, T.reactHelp);
-  const pad = h('div', { className: 'rpad', style: 'background:#7b2ff7' }, h('div', {}, T.start, h('small', {}, T.tapToStart)));
+  const rIc = n => n ? h('div', { style: 'line-height:0' }, hdx('react', n, 84, '')) : null;
+  const pad = h('div', { className: 'rpad', style: 'background:#7b2ff7' }, h('div', {}, rIc('bolt'), T.start, h('small', {}, T.tapToStart)));
   pad.addEventListener('pointerdown', tap);
   root.append(score, msg, pad);
-  function setPad(bg, t, s) { pad.style.background = bg; pad.innerHTML = ''; pad.append(h('div', {}, t, h('small', {}, s || ''))); }
+  function setPad(bg, t, s, ic) { pad.style.background = bg; pad.innerHTML = ''; pad.append(h('div', {}, rIc(ic), t, h('small', {}, s || ''))); }
   function start() { if (!isA()) { gsend({ k: 'req' }); return; } const d = 1500 + rnd(3000); gsend({ k: 'arm', d }); arm(d); }
-  function arm(d) { clearTimeout(timer); state = 'wait'; my = th = null; msg.className = 'msg'; msg.textContent = T.getReady; setPad('#ff3d6e', T.wait, T.dontTap); timer = setTimeout(() => { state = 'go'; t0 = performance.now(); setPad('#22d36b', T.tapNow, ''); vibrate(30); }, d); }
+  function arm(d) { clearTimeout(timer); state = 'wait'; my = th = null; msg.className = 'msg'; msg.textContent = T.getReady; setPad('#ff3d6e', T.wait, T.dontTap, 'btn_red'); timer = setTimeout(() => { state = 'go'; t0 = performance.now(); setPad('#22d36b', T.tapNow, '', 'btn_green'); vibrate(30); }, d); }
   function tap(e) {
     e.preventDefault();
     if (state === 'idle' || state === 'result') { start(); return; }
-    if (state === 'wait') { clearTimeout(timer); my = { fs: true }; state = 'sent'; setPad('#ff8a00', T.falseStart, T.waitingFor(ptName())); beep(200, .25, 'square', .08); }
-    else if (state === 'go') { my = { ms: Math.round(performance.now() - t0) }; state = 'sent'; setPad('#00b4e0', my.ms + T.ms, T.waitingFor(ptName())); beep(900); }
+    if (state === 'wait') { clearTimeout(timer); my = { fs: true }; state = 'sent'; setPad('#ff8a00', T.falseStart, T.waitingFor(ptName()), 'btn_red'); beep(200, .25, 'square', .08); }
+    else if (state === 'go') { my = { ms: Math.round(performance.now() - t0) }; state = 'sent'; setPad('#00b4e0', my.ms + T.ms, T.waitingFor(ptName()), 'stopwatch'); beep(900); }
     else return;
     gsend({ k: 'res', v: my }); check();
   }
@@ -18461,7 +18864,7 @@ function Reaction(root) {
     if (r > 0) sc[0]++; if (r < 0) sc[1]++; score.set(sc[0], sc[1]);
     const f = x => x.fs ? T.falseStartShort : x.ms + T.ms;
     msg.className = 'msg big'; msg.textContent = (r > 0 ? T.youFaster : r < 0 ? T.theyFaster(ptName()) : T.draw);
-    setPad(r > 0 ? '#22d36b' : r < 0 ? '#ff3d6e' : '#7b2ff7', T.you + ': ' + f(my), ptName() + ': ' + f(th) + T.tapNewRound);
+    setPad(r > 0 ? '#22d36b' : r < 0 ? '#ff3d6e' : '#7b2ff7', T.you + ': ' + f(my), ptName() + ': ' + f(th) + T.tapNewRound, r > 0 ? 'bolt' : 'stopwatch');
     win(r > 0);
   }
   return { onMsg(m) { if (m.k === 'req' && isA() && (state === 'idle' || state === 'result')) start(); if (m.k === 'arm') arm(+m.d || 2000); if (m.k === 'res' && !th) { th = m.v && m.v.fs ? { fs: true } : { ms: +(m.v && m.v.ms) || 9999 }; if (state === 'wait' || state === 'go') msg.textContent = T.theyTapped(ptName()); check(); } }, destroy() { clearTimeout(timer); } };
@@ -18472,8 +18875,8 @@ function Tug(root) {
   const GOAL = 40, DUR = 15000;
   let endT = 0, phase = 'idle', mine = 0, theirs = 0, a = 0, b = 0, timers = [], lastSent = -1, endAt = 0, sc = [0, 0];
   const score = scoreBar(), msg = h('div', { className: 'msg' }, T.tugHelp);
-  const mk = h('div', { className: 'mk' });
-  const rope = h('div', { className: 'rope' }, h('div', { className: 'ln' }), h('span', { className: 's1' }, ptEmoji()), h('span', { className: 's2' }, S.me.emoji), mk);
+  const mk = h('div', { className: 'mk' }, hdx('tug', 'flag', [46, 60], ''));
+  const rope = h('div', { className: 'rope' }, h('div', { className: 'ln' }, hdx('tug', 'rope', 0, '', 'display:block;width:100%;height:22px;margin-top:-7px')), h('span', { className: 's1' }, hdx('tug', 'pink_hands', 92, ptEmoji())), h('span', { className: 's2' }, hdx('tug', 'cyan_hands', 92, S.me.emoji)), mk);
   const btn = h('button', { className: 'btn y w', style: 'height:120px;font-size:30px' }, '▶ ' + T.start);
   btn.addEventListener('pointerdown', e => { e.preventDefault(); if (phase === 'play') { mine++; vibrate(8); draw(); if (isA()) a = mine; } else if (phase === 'idle' || (phase === 'end' && Date.now() - endT > 1500)) { if (isA()) begin(); else gsend({ k: 'req' }); } });
   root.append(score, msg, rope, btn);
@@ -18526,7 +18929,8 @@ function TTT(root) {
   function reset(r) { round = r; b = Array(9).fill(''); turn = 'X'; over = false; again.classList.add('hidden'); draw(); }
   function winner() { for (const l of L) if (b[l[0]] && b[l[0]] === b[l[1]] && b[l[1]] === b[l[2]]) return l; return null; }
   function draw(line) {
-    cells.forEach((c, i) => { c.textContent = b[i] === 'X' ? '✖' : b[i] === 'O' ? '●' : ''; c.className = 'cell ' + (b[i] === 'X' ? 'x' : b[i] === 'O' ? 'o' : '') + (line && line.includes(i) ? ' win' : ''); });
+    cells.forEach((c, i) => { const ic = b[i] ? hdIcon('ttt', b[i] === 'X' ? 'cyan_x' : 'pink_o', 0) : null; c.textContent = ic ? '' : b[i] === 'X' ? '✖' : b[i] === 'O' ? '●' : ''; if (ic) { ic.style.width = '64%'; c.append(ic); } c.className = 'cell ' + (b[i] === 'X' ? 'x' : b[i] === 'O' ? 'o' : '') + (line && line.includes(i) ? ' win' : ''); });
+    board.querySelectorAll('.hdslash').forEach(e => e.remove()); if (line) tttSlash(board, cells, line);
     if (!over) msg.textContent = turn === mySym() ? T.yourTurn(mySym() === 'X' ? '✖' : '●') : T.theirTurn(ptName());
   }
   function apply(i, sym) {
@@ -18545,19 +18949,19 @@ function TTT(root) {
 const QS = T.qs;
 function Match(root) {
   let qi = -1, my = null, th = null, used = [], hits = 0, total = 0;
-  const top = h('div', { className: 'score' }), q = h('div', { className: 'q' }, T.whichOne), opts = h('div', { className: 'opts' }), msg = h('div', { className: 'msg' }, T.matchHelp);
+  const top = h('div', { className: 'score' }), q = h('div', { className: 'q' }, hdx('match', 'question', 40, ''), ' ', T.whichOne), opts = h('div', { className: 'opts' }), msg = h('div', { className: 'msg' }, T.matchHelp);
   const next = h('button', { className: 'btn y w hidden', style: 'margin-top:14px', on: { click: () => isA() ? newQ() : gsend({ k: 'nq' }) } }, T.nextQ);
   root.append(top, q, opts, msg, next);
   function newQ() { const free = QS.map((_, i) => i).filter(i => !used.includes(i)); if (!free.length) used = []; const i = (free.length ? free : QS.map((_, i) => i))[rnd(free.length || QS.length)]; gsend({ k: 'q', i }); setQ(i); }
   function setQ(i) { if (!QS[i]) return; qi = i; used.push(i); my = th = null; next.classList.add('hidden'); msg.className = 'msg'; msg.textContent = T.choose; draw(); }
   function draw() {
-    top.innerHTML = ''; top.append(h('span', {}, T.matches), h('b', {}, hits), h('span', {}, T.of + ' ' + total));
+    top.innerHTML = ''; top.append(hdx('match', 'hearts', 30, ''), h('span', {}, T.matches), h('b', {}, hits), h('span', {}, T.of + ' ' + total));
     opts.innerHTML = ''; if (qi < 0) { opts.append(h('div', { className: 'msg' }, T.loadingQ)); return; }
     const done = my != null && th != null;
     QS[qi].forEach((t, j) => { const who = done ? [my === j ? T.you : null, th === j ? ptName() : null].filter(Boolean).join(T.and) : ''; opts.append(h('button', { className: 'opt' + (my === j ? ' sel' : ''), on: { click: () => pick(j) } }, t, who ? h('span', { className: 'who' }, '← ' + who) : null)); });
   }
   function pick(j) { if (my != null || qi < 0) return; my = j; beep(700); gsend({ k: 'a', j, q: qi }); if (th == null) msg.textContent = T.waitingFor(ptName()); check(); draw(); }
-  function check() { if (my == null || th == null) return; total++; const ok = my === th; if (ok) hits++; msg.className = 'msg big'; msg.textContent = ok ? T.matched : T.notMatched; next.classList.remove('hidden'); win(ok); draw(); }
+  function check() { if (my == null || th == null) return; total++; const ok = my === th; if (ok) hits++; msg.className = 'msg big'; msg.textContent = ok ? T.matched : T.notMatched; msg.prepend(...(ok ? [hdx('match', 'hearts', 44, ''), hdx('match', 'sparkle', 30, '')] : [hdx('match', 'broken', 44, '')]), ' '); next.classList.remove('hidden'); win(ok); draw(); }
   if (isA()) setTimeout(newQ, 300); else draw();
   return { onMsg(m) { if (m.k === 'nq' && isA()) newQ(); if (m.k === 'q') setQ(+m.i); if (m.k === 'a' && +m.q === qi && th == null) { th = +m.j; if (my == null) msg.textContent = T.theyAnswered(ptName()); check(); draw(); } } };
 }
@@ -18569,9 +18973,9 @@ function Canvas(root) {
   const cv = h('canvas', { id: 'cvDraw' }), ctx = cv.getContext('2d');
   const pal = h('div', { className: 'pal' });
   COLORS.forEach(c => pal.append(h('button', { className: c === color ? 'on' : '', style: `background:${c}`, on: { click: e => { color = c; [...pal.querySelectorAll('button')].forEach(b => b.classList.remove('on')); e.target.classList.add('on'); } } })));
-  pal.append(h('button', { style: 'width:auto;border-radius:12px;padding:0 10px;background:#f3eeff;font:inherit', on: { click: () => { size = size === 6 ? 14 : size === 14 ? 3 : 6; toast(T.thickness + size); } } }, '✏️'));
-  pal.append(h('button', { style: 'width:auto;border-radius:12px;padding:0 10px;background:#ffd3e1;font:inherit;margin-left:auto', on: { click: () => { strokes = []; redraw(); gsend({ k: 'clr' }); } } }, T.clear));
-  root.append(h('div', { className: 'msg', style: 'margin-top:0' }, T.drawHelp), cv, pal);
+  pal.append(h('button', { style: 'width:auto;border-radius:12px;padding:0 10px;background:#f3eeff;font:inherit', on: { click: () => { size = size === 6 ? 14 : size === 14 ? 3 : 6; toast(T.thickness + size); } } }, hdx('draw', isA() ? 'pink_brush' : 'cyan_brush', 26, '✏️')));
+  pal.append(h('button', { style: 'width:auto;border-radius:12px;padding:0 10px;background:#ffd3e1;font:inherit;margin-left:auto', on: { click: () => { strokes = []; redraw(); gsend({ k: 'clr' }); } } }, hdx('draw', isA() ? 'pink_eraser' : 'cyan_eraser', 26, ''), ' ', T.clear));
+  root.append(h('div', { className: 'msg', style: 'margin-top:0' }, hdx('draw', 'easel', 34, ''), ' ', T.drawHelp), cv, pal);
   function fit() { const r = cv.getBoundingClientRect(), d = devicePixelRatio || 1; cv.width = r.width * d; cv.height = r.height * d; redraw(); }
   function seg(s) { ctx.strokeStyle = s.c; ctx.lineWidth = s.w * cv.width / 400; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(s.p[0] * cv.width, s.p[1] * cv.height); ctx.lineTo(s.p[2] * cv.width, s.p[3] * cv.height); ctx.stroke(); }
   function redraw() { ctx.clearRect(0, 0, cv.width, cv.height); strokes.forEach(seg); }
@@ -19645,7 +20049,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202610182209';
+const APP_VERSION = '202610200414';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
@@ -21326,7 +21730,7 @@ function plusLang() {
   set('setClipsL', '🎬 Видео-клипы: иногда записывать смешные моменты по 5 сек', '🎬 Video clips: sometimes record funny 5-second moments');
   chatLaunchers().forEach(b => { b.title = tr('Чат', 'Chat'); });
   $('bInstall2').textContent = '📲 ' + tr('Установить ярлык на рабочий стол', 'Install a desktop shortcut');
-  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 48 · 18.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
+  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 49 · 20.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
 }
 plusLang();
 try { document.documentElement.lang = LANG; } catch (e) {}
@@ -21615,6 +22019,148 @@ function trlPlace() {
 }
 setupScreen = wrapFn('setupScreen', () => trlPlace());
 applyStatic = wrapFn('applyStatic', () => { if (!started && $('scrSetup') && !$('scrSetup').classList.contains('hidden')) trlPlace(); });
+
+/* ================= extended graphics + intro clips + game music (settings under the arcade mode switch) =================
+   • «Графика: Обычная / Расширенная» — Arcade.hd (sprite atlases sprites/a<n>.png|json drawn by api.spr in games).
+   • «Заставки: Вкл / Выкл» — a 3-second funny clip intros/<id>.mp4 before a game (id = a<n> or a classic id).
+   • «Музыка: Вкл / Выкл» — a looped track music/<id>.mp3 quietly under the game.
+   Which clips / tracks exist is baked in at build time (MEDIA_LIST), so nothing 404s. */
+const MEDIA_LIST = {"intros": [], "music": ["m_arcade", "m_battle", "m_chill", "m_space", "m_sport", "m_winter"], "sfx": ["a11_hit", "a11_shoot", "a12_bounce", "a13_hit", "a14_shoot", "a16_shoot", "a17_tap", "a19_hit", "a22_score", "a23_hit", "a27_splash", "a29_tap", "a36_hit", "a3_shoot", "a43_hit", "a44_bounce", "a45_hit", "a52_bounce", "a53_shoot", "a57_tap", "a61_tap", "a6_hit", "a9_score", "boom", "bounce", "hit", "lose", "pop", "score", "shoot", "splash", "tap", "win"], "musmap": {"a1": "m_arcade", "a2": "m_arcade", "a3": "m_battle", "a4": "m_arcade", "a5": "m_sport", "a6": "m_chill", "a7": "m_arcade", "a8": "m_battle", "a9": "m_arcade", "a11": "m_winter", "a12": "m_sport", "a13": "m_battle", "a14": "m_space", "a15": "m_arcade", "a16": "m_battle", "a17": "m_arcade", "a18": "m_arcade", "a19": "m_arcade", "a20": "m_arcade", "a21": "m_chill", "a22": "m_sport", "a23": "m_chill", "a24": "m_sport", "a25": "m_arcade", "a26": "m_arcade", "a27": "m_chill", "a28": "m_arcade", "a29": "m_chill", "a30": "m_chill", "a31": "m_arcade", "a32": "m_arcade", "a33": "m_arcade", "a34": "m_space", "a35": "m_arcade", "a36": "m_battle", "a37": "m_chill", "a38": "m_winter", "a39": "m_chill", "a40": "m_arcade", "a41": "m_arcade", "a43": "m_battle", "a44": "m_winter", "a45": "m_sport", "a46": "m_arcade", "a49": "m_arcade", "a51": "m_chill", "a52": "m_sport", "a53": "m_battle", "a55": "m_arcade", "a56": "m_battle", "a57": "m_chill", "a58": "m_chill", "a59": "m_chill", "a60": "m_chill", "a61": "m_chill", "rps": "m_arcade", "react": "m_sport", "tug": "m_battle", "ttt": "m_chill", "match": "m_chill", "draw": "m_chill"}};
+const HDP = { intro: (() => { try { return localStorage.getItem('duet-intro') !== '0'; } catch (e) { return true; } })(), music: (() => { try { return localStorage.getItem('duet-music') !== '0'; } catch (e) { return true; } })() };
+(function () {
+  document.head.append(h('style', {}, `
+.hdrow{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:2px 0 10px}
+.hdrow .seg button{padding:7px 10px;font-size:13px}
+.hdrow .lb{font-weight:800;font-size:13px;opacity:.85}
+.intro{position:fixed;inset:0;z-index:90;background:#000;display:flex;align-items:center;justify-content:center}
+.intro video{width:100%;height:100%;object-fit:contain}
+.intro .sk{position:absolute;right:14px;bottom:calc(env(safe-area-inset-bottom) + 18px);border:0;border-radius:14px;padding:9px 14px;background:rgba(255,255,255,.22);color:#fff;font:800 14px Nunito,system-ui,sans-serif}
+`));
+})();
+function hdSeg(key, label, opts, get, set) {
+  const seg = h('div', { className: 'seg' });
+  const draw = () => seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', String(get()) === b.dataset.v));
+  opts.forEach(([v, ru, en]) => seg.append(h('button', { type: 'button', on: { click: () => { set(v); draw(); } } }, tr(ru, en))));
+  seg.querySelectorAll('button').forEach((b, i) => { b.dataset.v = String(opts[i][0]); });
+  draw();
+  return h('span', { style: 'display:inline-flex;gap:6px;align-items:center' }, h('span', { className: 'lb' }, tr(...label)), seg);
+}
+function hdRow() {
+  const old = $('hdRow'); if (old) old.remove();
+  const row = h('div', { className: 'lvlrow hdrow', id: 'hdRow' },
+    hdSeg('hd', ['🎨 Графика:', '🎨 Graphics:'], [[false, 'обычная', 'classic'], [true, 'расширенная', 'extended']], () => Arcade.hd, v => { Arcade.hd = v; }),
+    hdSeg('intro', ['🎬 Заставки:', '🎬 Intros:'], [[true, 'вкл', 'on'], [false, 'выкл', 'off']], () => HDP.intro, v => { HDP.intro = v; try { localStorage.setItem('duet-intro', v ? '1' : '0'); } catch (e) {} }),
+    hdSeg('music', ['🎵 Музыка:', '🎵 Music:'], [[true, 'вкл', 'on'], [false, 'выкл', 'off']], () => HDP.music, v => { HDP.music = v; try { localStorage.setItem('duet-music', v ? '1' : '0'); } catch (e) {} if (!v) musStop(); }));
+  const lr = $('lvlRow'); if (lr) lr.after(row);
+}
+/* ---- intro clip ---- */
+let introEl = null;
+function playIntro(id, done) {
+  const vars = MEDIA_LIST.intros.filter(x => x === id || x.startsWith(id + '_'));
+  if (!HDP.intro || !vars.length) return false;
+  const clip = vars[Math.floor(Math.random() * vars.length)];
+  if (introEl) introEl.remove();
+  const v = h('video', { src: 'intros/' + clip + '.mp4', autoplay: true, playsInline: true, preload: 'auto' });
+  v.setAttribute('playsinline', ''); v.muted = false;
+  let fin = false;
+  const end = () => { if (fin) return; fin = true; try { v.pause(); } catch (e) {} ov.remove(); if (introEl === ov) introEl = null; done && done(); };
+  const ov = h('div', { className: 'intro', on: { click: end } }, v, h('button', { className: 'sk', type: 'button' }, tr('Пропустить ›', 'Skip ›')));
+  v.addEventListener('ended', end); v.addEventListener('error', end);
+  setTimeout(end, 4500); // never hold the game longer than the clip
+  document.body.append(ov); introEl = ov;
+  v.play().catch(() => { v.muted = true; v.play().catch(end); });
+  return true;
+}
+/* ---- music ---- */
+let musEl = null;
+function musPlay(id) {
+  musStop(); const tr0 = MEDIA_LIST.musmap[id] || (MEDIA_LIST.music.includes(id) ? id : null); if (!HDP.music || !tr0) return;
+  musEl = new Audio('music/' + tr0 + '.mp3'); musEl.loop = true; musEl.volume = .28; musEl.play().catch(() => {});
+}
+function musStop() { if (musEl) { try { musEl.pause(); } catch (e) {} musEl = null; } }
+// the clip plays over the game's «Play» card on both phones, then the music starts
+openArc = wrapFn('openArc', () => { const c = Arcade.current(); if (!c) return; const id = 'a' + c.n; if (!playIntro(id, () => musPlay(id))) musPlay(id); });
+openGame = wrapFn('openGame', a => { const id = a[0]; if (!playIntro(id, () => musPlay(id))) musPlay(id); });
+arcClose = wrapFn('arcClose', () => musStop());
+closeGame = wrapFn('closeGame', () => musStop());
+{ const oc = Arcade.onClose; Arcade.onClose = (...a) => { musStop(); return oc && oc(...a); }; }
+renderGrid = wrapFn('renderGrid', () => { if (!$('hdRow')) hdRow(); });
+applyStatic = wrapFn('applyStatic', () => hdRow());
+hdRow();
+
+/* ---- sound effects (Seed Audio samples): sfx/a<n>_<name>.mp3 overrides sfx/<name>.mp3; synth fallback ---- */
+const SMP = { ctx: null, buf: {}, busy: {} };
+function smpCtx() { if (!SMP.ctx) { try { SMP.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } if (SMP.ctx && SMP.ctx.state === 'suspended') SMP.ctx.resume(); return SMP.ctx; }
+function smpLoad(id) {
+  if (SMP.buf[id] || SMP.busy[id] || !MEDIA_LIST.sfx.includes(id)) return; const c = smpCtx(); if (!c) return; SMP.busy[id] = 1;
+  fetch('sfx/' + id + '.mp3').then(r => r.arrayBuffer()).then(a => new Promise((ok, no) => c.decodeAudioData(a, ok, no))).then(b => { SMP.buf[id] = b; }).catch(() => {});
+}
+function smpPreload(n) { ['tap', 'hit', 'bounce', 'score', 'lose', 'pop', 'boom', 'win', 'shoot', 'splash'].forEach(k => { smpLoad('a' + n + '_' + k); smpLoad(k); }); }
+Arcade.sample = (name, n) => {
+  if (!Arcade.hd) return false; // classic mode keeps the classic beeps
+  const id = SMP.buf['a' + n + '_' + name] ? 'a' + n + '_' + name : name, b = SMP.buf[id];
+  if (!b) { smpLoad(id); return false; }
+  const c = smpCtx(); const s = c.createBufferSource(), g = c.createGain(); g.gain.value = .7; s.buffer = b; s.connect(g).connect(c.destination); s.start(); return true;
+};
+openArc = wrapFn('openArc', () => { const c = Arcade.current(); if (c) smpPreload(c.n); });
+
+/* ================= extended graphics for the 6 classic (DOM) games =================
+   Atlases sprites/<id>.webp + <id>.json {name:[x,y,w,h]} (ids: rps, react, tug, ttt, match, draw), loaded lazily.
+   hdIcon(id, name, size) -> <span class="hdc"> showing the sprite as a CSS background crop, or null when
+   Arcade.hd is off / the atlas is not loaded yet / the sprite is missing (the caller keeps its emoji/text).
+   size: number = longest side in px, [w, h] = exact box (stretched), or 0 = sized by CSS (percent crop).
+   hdx(id, name, size, fallback) -> the sprite if ready, else a span holding `fallback` that swaps itself to the
+   sprite once the atlas arrives (only while extended graphics are on). */
+const HDC = { atl: {}, games: ['rps', 'react', 'tug', 'ttt', 'match', 'draw'] };
+(function () { document.head.append(h('style', {}, `.hdc{display:inline-block;vertical-align:middle;background-repeat:no-repeat;pointer-events:none;flex:none}
+.hdc-wrap{display:inline-flex;align-items:center;justify-content:center;vertical-align:middle}
+.rope .mk:has(.hdc){background:transparent;border:0;border-radius:0;box-shadow:none;width:46px;height:60px;margin:-12px 0 0 -23px}
+.rope .ln:has(.hdc){background:none}
+.rope .s1:has(.hdc),.rope .s2:has(.hdc){top:50%;transform:translateY(-50%);line-height:0}
+.board{position:relative}.board .hdslash{position:absolute;pointer-events:none;z-index:2;transform-origin:50% 50%}`)); })();
+function hdcLoad(id) {
+  if (HDC.atl[id]) return HDC.atl[id].p;
+  const base = Arcade.sprBase || 'sprites/', A = HDC.atl[id] = { ok: false, map: null, url: base + id + '.webp', W: 0, H: 0, wait: [] };
+  A.p = fetch(base + id + '.json').then(r => r.ok ? r.json() : null).then(m => new Promise(ok => {
+    if (!m) return ok(false); A.map = m; const im = new Image();
+    im.onload = () => { A.W = im.naturalWidth; A.H = im.naturalHeight; A.ok = true; ok(true); A.wait.splice(0).forEach(f => { try { f(); } catch (e) {} }); };
+    im.onerror = () => ok(false); im.src = A.url;
+  })).catch(() => false);
+  return A.p;
+}
+function hdIcon(id, name, size) {
+  if (!Arcade.hd) return null;
+  const A = HDC.atl[id]; if (!A || !A.ok) { if (!A) hdcLoad(id); return null; }
+  const r = A.map[name]; if (!r) return null;
+  const [x, y, w, hh] = r; let bw, bh;
+  if (Array.isArray(size)) [bw, bh] = size; else if (size) { const f = size / Math.max(w, hh); bw = Math.round(w * f); bh = Math.round(hh * f); }
+  const pc = (o, s, S) => S === s ? 0 : o / (S - s) * 100;
+  const st = `background-image:url(${A.url});background-size:${A.W / w * 100}% ${A.H / hh * 100}%;background-position:${pc(x, w, A.W)}% ${pc(y, hh, A.H)}%;` + (bw ? `width:${bw}px;height:${bh}px` : `aspect-ratio:${w}/${hh}`);
+  const s = h('span', { className: 'hdc', style: st }); s.dataset.spr = id + ':' + name; s.setAttribute('aria-hidden', 'true'); return s;
+}
+function hdx(id, name, size, fallback, style) {
+  const ic = hdIcon(id, name, size);
+  if (ic) { if (style) ic.style.cssText += ';' + style; return ic; }
+  const w = h('span', { className: 'hdc-wrap' }, fallback == null ? '' : fallback);
+  const A = HDC.atl[id];
+  if (Arcade.hd && A && !A.ok) A.wait.push(() => { const n = hdIcon(id, name, size); if (n && w.parentNode) { if (style) n.style.cssText += ';' + style; w.replaceWith(n); } });
+  return w;
+}
+function hdcPreload(id) { if (Arcade.hd && HDC.games.includes(id)) hdcLoad(id); }
+// atlas starts loading before G.create() builds the game; hdx() placeholders swap in when it lands
+openGame = wrapFn('openGame', a => {
+  const id = a[0], ICON = { rps: 'rock', react: 'bolt', tug: 'cyan_hands', ttt: 'cyan_x', match: 'hearts', draw: 'cyan_brush' };
+  if (gameId !== id) return;
+  const sp = document.querySelector('#panel .ghead > span'); if (sp && ICON[id]) { sp.textContent = ''; sp.append(hdx(id, ICON[id], 38, GAMES[id].icon)); }
+}, id => { hdcPreload(id); });
+// winning line in tic-tac-toe: the diagonal 'slash' sprite stretched/rotated over the three cells
+function tttSlash(board, cells, line) {
+  const a = cells[line[0]], b = cells[line[2]]; const sp = hdIcon('ttt', 'slash', 0); if (!sp || !a.offsetWidth) return;
+  const ax = a.offsetLeft + a.offsetWidth / 2, ay = a.offsetTop + a.offsetHeight / 2, bx = b.offsetLeft + b.offsetWidth / 2, by = b.offsetTop + b.offsetHeight / 2;
+  const len = Math.hypot(bx - ax, by - ay) + a.offsetWidth * .8, side = len / Math.SQRT2, ang = Math.atan2(by - ay, bx - ax) * 180 / Math.PI + 45;
+  sp.classList.add('hdslash'); sp.style.cssText += `;width:${side}px;height:${side}px;left:${(ax + bx) / 2 - side / 2}px;top:${(ay + by) / 2 - side / 2}px;transform:rotate(${ang}deg)`;
+  board.append(sp);
+}
 
 /* Soundboard samples (mp3). Rendered with the FluidR3 GM soundfont (MIT, Frank Wen) and taken from OpenRCT2 OpenSoundEffects (CC BY 4.0). */
 window.DUET_SFX = {
