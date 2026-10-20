@@ -20177,7 +20177,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202610201749';
+const APP_VERSION = '202610202039';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
@@ -21858,7 +21858,7 @@ function plusLang() {
   set('setClipsL', '🎬 Видео-клипы: иногда записывать смешные моменты по 5 сек', '🎬 Video clips: sometimes record funny 5-second moments');
   chatLaunchers().forEach(b => { b.title = tr('Чат', 'Chat'); });
   $('bInstall2').textContent = '📲 ' + tr('Установить ярлык на рабочий стол', 'Install a desktop shortcut');
-  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 53 · 20.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
+  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 54 · 20.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
 }
 plusLang();
 try { document.documentElement.lang = LANG; } catch (e) {}
@@ -22194,8 +22194,8 @@ function playIntro(id, done) {
   let fin = false;
   const end = () => { if (fin) return; fin = true; try { v.pause(); } catch (e) {} ov.remove(); if (introEl === ov) introEl = null; done && done(); };
   const ov = h('div', { className: 'intro', on: { click: end } }, v, h('button', { className: 'sk', type: 'button' }, tr('Пропустить ›', 'Skip ›')));
-  v.addEventListener('ended', end); v.addEventListener('error', end);
-  setTimeout(end, 4500); // never hold the game longer than the clip
+  v.addEventListener('ended', end); let alt = 0; v.addEventListener('error', () => { if (!alt) { alt = 1; v.src = clip + '.mp4'; v.play().catch(() => { v.muted = true; v.play().catch(end); }); } else end(); });
+  setTimeout(end, 9000); v.addEventListener('playing', () => setTimeout(end, 4500), { once: true }); // never hold the game longer than the clip
   document.body.append(ov); introEl = ov;
   v.play().catch(() => { v.muted = true; v.play().catch(end); });
   return true;
