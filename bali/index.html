@@ -56,7 +56,7 @@ em.op{color:#16A34A;font-style:normal;font-weight:900}em.cl{color:#DC2626;font-s
 li em.badge,.li em.badge{position:static;display:inline-flex}
 #sheet{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:min(560px,100%);max-height:72vh;background:#fff;border-radius:28px 28px 0 0;z-index:7;box-shadow:0 -10px 40px rgba(20,10,60,.25);display:flex;flex-direction:column;animation:up .28s ease}
 @keyframes up{from{transform:translate(-50%,40px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
-.sheet-top{display:flex;justify-content:space-between;align-items:center;padding:10px 14px 0}
+.sheet-top{touch-action:none;padding-bottom:6px!important;display:flex;justify-content:space-between;align-items:center;padding:10px 14px 0}
 .grab{width:44px;height:5px;border-radius:3px;background:#DDD6EA;margin:0 auto}
 #sheetBack{border:0;background:var(--cream);height:34px;min-width:34px;padding:0 12px;border-radius:999px;font-weight:900;cursor:pointer}
 #sheetBody{overflow:auto;padding:4px 18px 110px}
@@ -145,22 +145,22 @@ h4{margin:16px 0 6px;font-size:15px;font-weight:900}
 .toast.out{opacity:0;transform:translateY(10px)}
 @media (min-width:900px){#sheet{left:auto;right:16px;transform:none;bottom:96px;border-radius:28px;max-height:calc(100vh - 200px);width:420px;animation:none}.side{bottom:110px}}
 @media (max-width:700px), (pointer:coarse){
- .search{height:50px}.search input{font-size:16px}
- #btnMe{width:50px;height:50px}
- .pillx{height:33px;font-size:13.5px;padding:0 13px}
- .chip{height:38px;font-size:14px;padding:0 14px}.chip i{width:11px;height:11px}
- .side button{width:50px;height:50px;font-size:24px}
- .nav{height:68px}.nav button{font-size:11.5px;min-width:58px}.nav button svg{width:24px;height:24px}.nav .fab{width:64px;height:64px;margin-top:-32px}
- .sh-h h3{font-size:23px}.desc{font-size:16px}.mut{font-size:13.5px}.sm{font-size:12px}
- .btn{min-height:46px;font-size:15px;padding:0 16px}.btn.sm{min-height:40px;font-size:13.5px}
- .li b{font-size:15px}.li span{font-size:13px}.li>i{width:40px;height:40px}.li{grid-template-columns:44px 1fr}
- .tip{font-size:14.5px}.facts b{font-size:15px}.facts span{font-size:12px}
- .svc span{font-size:13px}.tabs button{min-height:40px;font-size:14px}
- .tile b{font-size:15.5px}.tile span{font-size:12.5px}.fl{font-size:14px}.fl b{font-size:16px}
- .res b{font-size:15px}.res span{font-size:13px}
- .msg{font-size:15px}.inp{font-size:16px}.toast{font-size:14.5px}
- .catb{font-size:14px;padding:11px}.pill{font-size:14px;min-height:40px}.sw{width:38px;height:38px}
- .lbl{font-size:12px}.chk{font-size:14.5px}
+ .search{height:45px}.search input{font-size:14.4px}
+ #btnMe{width:45px;height:45px}
+ .pillx{height:29.7px;font-size:12.2px;padding:0 11.7px}
+ .chip{height:34.2px;font-size:12.6px;padding:0 12.6px}.chip i{width:9.9px;height:9.9px}
+ .side button{width:45px;height:45px;font-size:21.6px}
+ .nav{height:61.2px}.nav button{font-size:10.3px;min-width:52.2px}.nav button svg{width:21.6px;height:21.6px}.nav .fab{width:57.6px;height:57.6px;margin-top:-28.8px}
+ .sh-h h3{font-size:20.7px}.desc{font-size:14.4px}.mut{font-size:12.2px}.sm{font-size:10.8px}
+ .btn{min-height:41.4px;font-size:13.5px;padding:0 14.4px}.btn.sm{min-height:36px;font-size:12.2px}
+ .li b{font-size:13.5px}.li span{font-size:11.7px}.li>i{width:36px;height:36px}.li{grid-template-columns:39.6px 1fr}
+ .tip{font-size:13.1px}.facts b{font-size:13.5px}.facts span{font-size:10.8px}
+ .svc span{font-size:11.7px}.tabs button{min-height:36px;font-size:12.6px}
+ .tile b{font-size:14px}.tile span{font-size:11.2px}.fl{font-size:12.6px}.fl b{font-size:14.4px}
+ .res b{font-size:13.5px}.res span{font-size:11.7px}
+ .msg{font-size:13.5px}.inp{font-size:14.4px}.toast{font-size:13.1px}
+ .catb{font-size:12.6px;padding:9.9px}.pill{font-size:12.6px;min-height:36px}.sw{width:34.2px;height:34.2px}
+ .lbl{font-size:10.8px}.chk{font-size:13.1px}
 }
 .side button.on{background:var(--vio)}.side button.on svg{stroke:#fff}
 #emotes{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(92px + env(safe-area-inset-bottom,0px));z-index:5;display:flex;gap:6px;overflow-x:auto;max-width:calc(100% - 24px);padding:6px;background:rgba(255,255,255,.95);border-radius:999px;box-shadow:0 6px 18px rgba(20,10,60,.2);scrollbar-width:none}
@@ -665,6 +665,10 @@ const Art = {
     await Promise.all(jobs); Art.loaded = true;
     if (typeof Tiles !== 'undefined') { Tiles.clear(); Layout.clear(); }
   },
+  async fetchAll(url = 'art.json') {
+    try { const r = await fetch(url, { cache: 'force-cache' }); if (!r.ok) return; const list = await r.json();
+      await Art.load(list.map(it => ({ ...it, src: 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(it.svg) }))); } catch (e) {}
+  },
   pickFrom(g, v) { const a = Art.set[g]; if (!a || !a.length) return null; return a[Math.abs(v | 0) % a.length]; },
   drawSprite(c, s, x, y, w, h) { if (s) c.drawImage(s, x, y, w, h); },
   // уникальные иллюстрации известных мест
@@ -836,7 +840,7 @@ window.addEventListener('keydown', e => { const t = e.target; if (t && (t.tagNam
 window.addEventListener('keyup', e => { const k = e.key.length === 1 ? e.key.toLowerCase() : e.key; delete Me.keys[k]; if (k === 'Shift') Me.run = false; });
 
 // ===== Движок карты =====
-const UIK = (matchMedia('(pointer:coarse)').matches || innerWidth < 700) ? 1.12 : 1;
+const UIK = (matchMedia('(pointer:coarse)').matches || innerWidth < 700) ? 1.0 : 1;
 const Map2D = {
   cv: null, ctx: null, W: 0, H: 0, dpr: 1,
   cx: 0, cy: 8, s: 3, rot: 0,  // центр (км, мир), масштаб (пикс/км), поворот 0 — горизонтально, 1 — вертикально
@@ -1626,7 +1630,8 @@ function boot() {
   loadWeather(); setInterval(loadWeather, 15 * 60e3);
   App.chats = LS.get('chats', {}); App.publicChat = LS.get('pub', []);
   const me = LS.get('me', null);
-  if (me && me.id) { startAs(me); } else showOnboarding();
+  const artP = Art.fetchAll();
+  if (me && me.id) { startAs(me); } else Promise.race([artP, new Promise(r => setTimeout(r, 6000))]).then(showOnboarding);
   // ссылка с точкой ?lat=&lng=&z=
   const q = new URLSearchParams(location.search); if (q.get('lat')) setTimeout(() => flyTo(+q.get('lat'), +q.get('lng'), +q.get('z') || 120), 600);
   if (q.get('place')) setTimeout(() => { const p = Map2D.poiById.get(q.get('place')); if (p) openPlace(p); }, 700);
@@ -1797,6 +1802,13 @@ function bindUI() {
   $('#wx').onclick = openWeather; $('#online').onclick = openPeople; $('#holiday').onclick = () => { if (App.holidayEv) openEvent(App.holidayEv); };
   $('#sheet').addEventListener('click', sheetClick);
   $('#sheetBack').onclick = closeSheet;
+  // свайп вниз закрывает шторку
+  (() => { const sh = $('#sheet'), body = $('#sheetBody'); let st = null;
+    const pt = e => Screen.loc(e.touches ? e.touches[0] : e)[1];
+    sh.addEventListener('touchstart', e => { const onTop = e.target.closest('.sheet-top'); if (!onTop && body.scrollTop > 0) return; st = { y: pt(e), t: performance.now(), d: 0 }; }, { passive: true });
+    sh.addEventListener('touchmove', e => { if (!st) return; st.d = Math.max(0, pt(e) - st.y); if (st.d > 0 && !e.target.closest('.sheet-top') && body.scrollTop > 0) { st = null; return; } sh.style.transition = 'none'; sh.style.translate = '0 ' + st.d + 'px'; }, { passive: true });
+    sh.addEventListener('touchend', () => { if (!st) return; const v = st.d / Math.max(1, performance.now() - st.t); sh.style.transition = 'translate .2s'; if (st.d > 90 || v > .6) { sh.style.translate = '0 100%'; setTimeout(() => { sh.style.translate = ''; sh.style.transition = ''; App.sheetStack = []; closeSheet(); }, 200); } else sh.style.translate = ''; st = null; });
+  })();
   document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (!$('#results').hidden) $('#results').hidden = true; else closeSheet(); } });
 }
 
