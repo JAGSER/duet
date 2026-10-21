@@ -182,6 +182,7 @@ h4{margin:16px 0 6px;font-size:15px;font-weight:900}
 #btnShow{display:none;position:absolute;right:14px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:30;width:46px;height:46px;border-radius:50%;border:0;background:rgba(255,255,255,.92);box-shadow:0 4px 14px rgba(34,22,58,.25);align-items:center;justify-content:center;cursor:pointer;opacity:.75}
 #app.noui .hud,#app.noui .side,#app.noui .nav,#app.noui #emotes,#app.noui #results,#app.noui #toasts{display:none!important}
 #app.noui #btnShow{display:flex}
+.rp{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:6px 0;padding:6px;border-radius:14px;background:#f3eefc}.rp span{font-weight:800;font-size:14px}.rpb{width:44px;height:40px;border-radius:12px;border:0;background:#7B2FF7;color:#fff;font-size:24px;font-weight:900;cursor:pointer}
 </style>
 <div id="app">
 <canvas id="map" aria-label="Иллюстрированная карта Бали"></canvas>
@@ -806,8 +807,8 @@ const Chars = {
     c.restore();
   },
   // SVG/картинка для анкеты и карточки человека
-  rigOf(av) { if (!av || !av.c) return null; const ids = Rig.ids(); if (!ids.length) return null; if (av.c.startsWith('rig_')) { const r = Rig.get(av.c.slice(4)); if (r) return r; } let h = 0; for (const ch of av.c) h = (h * 31 + ch.charCodeAt(0)) | 0; return Rig.get(ids[Math.abs(h) % ids.length]); },
-  thumb(av) { const rg = Chars.rigOf(av); if (rg) { const id = Object.keys(Rig.map).find(k => Rig.map[k] === rg); return Rig.thumb(id); } const s = Chars.sprite(av); if (s && s._src) return s._src.src; return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(avatarSVG(av || avRandom(), { pose: 'wave' })); },
+  rigOf(av) { if (!av || !av.c) return null; const ids = Rig.ids(); if (!ids.length) return null; if (av.parts) { const r = Rig.compose(av.parts); if (r) return r; } if (av.c.startsWith('rig_')) { const r = Rig.get(av.c.slice(4)); if (r) return r; } let h = 0; for (const ch of av.c) h = (h * 31 + ch.charCodeAt(0)) | 0; return Rig.get(ids[Math.abs(h) % ids.length]); },
+  thumb(av) { const rg = Chars.rigOf(av); if (rg) { const id = Object.keys(Rig.map).find(k => Rig.map[k] === rg); return id ? Rig.thumb(id) : Rig.thumbP(rg); } const s = Chars.sprite(av); if (s && s._src) return s._src.src; return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(avatarSVG(av || avRandom(), { pose: 'wave' })); },
 };
 
 
@@ -855,6 +856,10 @@ const Rig = {
     c.save(); c.translate(0, g.headBottom); c.rotate(o.hd); c.drawImage(P.head, -P.head._w / 2, -P.head._h, P.head._w, P.head._h); c.restore();
     c.restore();
   },
+  compose(pt) { const k = [pt.head, pt.torso, pt.arms, pt.legs].join('|'); Rig._cmp = Rig._cmp || {}; if (Rig._cmp[k]) return Rig._cmp[k];
+    const H = Rig.get(pt.head), T = Rig.get(pt.torso), A = Rig.get(pt.arms), L = Rig.get(pt.legs); if (!H || !T || !A || !L) return null;
+    return (Rig._cmp[k] = { head: H.head, torso: T.torso, larm: A.larm, rarm: A.rarm, lleg: L.lleg, rleg: L.rleg }); },
+  thumbP(P, anim = 'idle', t = 0) { const g = Rig.geo(P); const H = 300, k = H / g.total; const cv = document.createElement('canvas'); cv.width = Math.ceil(Math.max(g.tW + P.larm._w * 1.6, P.head._w) * k) + 20; cv.height = H + 16; Rig.draw(cv.getContext('2d'), P, cv.width / 2, H + 8, H, anim, t, 1); return cv.toDataURL(); },
   thumb(id) { const P = Rig.get(id); if (!P) return null; Rig._th = Rig._th || {}; if (Rig._th[id]) return Rig._th[id];
     const g = Rig.geo(P); const H = 300, k = H / g.total; const cv = document.createElement('canvas'); cv.width = Math.ceil(Math.max(g.tW + P.larm._w * 1.6, P.head._w) * k) + 20; cv.height = H + 16;
     Rig.draw(cv.getContext('2d'), P, cv.width / 2, H + 8, H, 'idle', 0, 1); return (Rig._th[id] = cv.toDataURL()); },
@@ -1642,6 +1647,9 @@ function sanitizePeer(u) {
   const av = (u.av && typeof u.av === 'object') ? u.av : avRandom(1);
   const clean = {}; for (const k of ['g', 'skin', 'hair', 'hairC', 'top', 'topC', 'bottom', 'bottomC', 'acc']) clean[k] = str(av[k], 12);
   for (const k of ['skin', 'hairC', 'topC', 'bottomC']) if (!/^#[0-9A-Fa-f]{6}$/.test(clean[k])) clean[k] = '#888888';
+  if (typeof av.c === 'string' && /^(rig|chr)_[A-Za-z0-9_]{1,40}$/.test(av.c)) clean.c = av.c;
+  if (typeof av.hue === 'number' && isFinite(av.hue)) clean.hue = Math.max(-180, Math.min(180, av.hue));
+  if (av.parts && typeof av.parts === 'object') { const pp = {}; let ok = true; for (const k of ['head', 'torso', 'arms', 'legs']) { const v = av.parts[k]; if (typeof v === 'string' && /^[A-Za-z0-9]{1,20}$/.test(v)) pp[k] = v; else ok = false; } if (ok) clean.parts = pp; }
   const say = u.say && typeof u.say.t === 'string' ? { t: u.say.t.slice(0, 140), ts: Math.min(Date.now(), +u.say.ts || 0) } : null;
   return { id: str(u.id, 40), n: str(u.n, 30) || 'Гость', c: str(u.c, 40), ab: str(u.ab, 160), av: clean, pos, st: str(u.st, 60), an: str(u.an, 10), say };
 }
@@ -1712,6 +1720,8 @@ function showOnboarding(edit) {
   let tab = cur.av.c || (hasSpr && !edit) ? 'ready' : 'build';
   if (!hasSpr) tab = 'build';
   const pav = cur.av.c ? avRandom() : cur.av; // параметры «собрать»
+  const RIDS = Rig.ids(); const rid0 = cur.av.c && cur.av.c.startsWith('rig_') ? cur.av.c.slice(4) : RIDS[0];
+  const parts = cur.av.parts ? { ...cur.av.parts } : { head: rid0, torso: rid0, arms: rid0, legs: rid0 };
   const sw = (key, arr, isColor, names) => `<div class="sw-row" data-key="${key}">${arr.map(v => isColor ? `<button class="sw ${pav[key] === v ? 'on' : ''}" data-v="${v}" style="background:${v}" aria-label="${v}"></button>` : `<button class="pill ${pav[key] === v ? 'on' : ''}" data-v="${v}">${esc(names[v])}</button>`).join('')}</div>`;
   ov.innerHTML = `
   <div class="onb-card">
@@ -1725,12 +1735,13 @@ function showOnboarding(edit) {
         <label class="lbl">Цвет одежды</label><input type="range" id="fHue" min="-180" max="180" step="5" value="${cur.av.hue || 0}" class="rng">
       </div>
       <div id="tBuild" ${tab === 'build' ? '' : 'hidden'}>
-        <label class="lbl">Кожа</label>${sw('skin', AV.skins, true)}
+        ${Rig.ids().length ? ['head', 'torso', 'arms', 'legs'].map(k => `<div class="rp" data-k="${k}"><button class="rpb" data-d="-1" aria-label="Назад">‹</button><span>${{ head: 'Голова и причёска', torso: 'Одежда', arms: 'Руки', legs: 'Ноги и обувь' }[k]}</span><button class="rpb" data-d="1" aria-label="Вперёд">›</button></div>`).join('') : `        <label class="lbl">Кожа</label>${sw('skin', AV.skins, true)}
         <label class="lbl">Причёска</label>${sw('hair', AV.hairStyles, false, AV.hairNames)}
         <label class="lbl">Цвет волос</label>${sw('hairC', AV.hairColors, true)}
         <label class="lbl">Верх</label>${sw('top', AV.tops, false, AV.topNames)}${sw('topC', AV.topColors, true)}
         <label class="lbl">Низ</label>${sw('bottom', AV.bottoms, false, AV.bottomNames)}${sw('bottomC', AV.bottomColors, true)}
         <label class="lbl">Аксессуар</label>${sw('acc', AV.accs, false, AV.accNames)}
+`}
       </div>
       <label class="lbl" for="fName">Как тебя зовут</label>
       <input id="fName" class="inp" maxlength="24" placeholder="Имя или ник" value="${esc(cur.name)}">
@@ -1749,12 +1760,13 @@ function showOnboarding(edit) {
   const prev = () => { const im = $('#avPrev'); im.src = Chars.thumb(cur.av); im.style.filter = cur.av.c && cur.av.hue ? `hue-rotate(${cur.av.hue}deg)` : ''; renderSel(); };
   const renderSel = () => { ov.querySelectorAll('.gi').forEach(b => b.classList.toggle('on', b.dataset.c === cur.av.c)); ov.querySelectorAll('#tBuild .sw-row[data-key]').forEach(row => row.querySelectorAll('button').forEach(x => x.classList.toggle('on', pav[row.dataset.key] === x.dataset.v))); };
   prev();
-  ov.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { tab = b.dataset.t; ov.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b)); $('#tReady').hidden = tab !== 'ready'; $('#tBuild').hidden = tab !== 'build'; cur.av = tab === 'build' ? { ...pav } : (cur.av.c ? cur.av : Chars.random()); prev(); });
-  const gal = $('#gal'); if (gal) gal.addEventListener('click', e => { const b = e.target.closest('.gi'); if (!b) return; cur.av = { c: b.dataset.c, hue: +$('#fHue').value || 0 }; prev(); });
+  ov.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { tab = b.dataset.t; ov.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b)); $('#tReady').hidden = tab !== 'ready'; $('#tBuild').hidden = tab !== 'build'; cur.av = tab === 'build' ? (RIDS.length ? { c: 'rig_' + parts.head, parts: { ...parts } } : { ...pav }) : (cur.av.c ? cur.av : Chars.random()); prev(); });
+  const gal = $('#gal'); if (gal) gal.addEventListener('click', e => { const b = e.target.closest('.gi'); if (!b) return; cur.av = { c: b.dataset.c, hue: +$('#fHue').value || 0 }; if (b.dataset.c.startsWith('rig_')) { const id = b.dataset.c.slice(4); for (const k in parts) parts[k] = id; } prev(); });
   const hue = $('#fHue'); if (hue) hue.addEventListener('input', () => { if (cur.av.c) { cur.av.hue = +hue.value; prev(); } });
+  ov.querySelectorAll('#tBuild .rp').forEach(row => row.addEventListener('click', e => { const b = e.target.closest('.rpb'); if (!b) return; const k = row.dataset.k; const i = RIDS.indexOf(parts[k]); parts[k] = RIDS[(i + +b.dataset.d + RIDS.length) % RIDS.length]; cur.av = { c: 'rig_' + parts.head, parts: { ...parts } }; prev(); }));
   ov.querySelectorAll('#tBuild .sw-row[data-key]').forEach(row => row.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; pav[row.dataset.key] = b.dataset.v; cur.av = { ...pav }; prev(); }));
   $('#fG').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; cur.g = b.dataset.v; $('#fG').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); });
-  $('#fRand').onclick = () => { if (tab === 'ready' && hasSpr) { cur.av = Chars.random(); if (hue) { hue.value = 0; } } else { Object.assign(pav, avRandom()); cur.av = { ...pav }; } prev(); const g = ov.querySelector('.gi.on'); if (g) g.scrollIntoView({ block: 'nearest', inline: 'center' }); };
+  $('#fRand').onclick = () => { if (tab === 'build' && RIDS.length) { for (const k in parts) parts[k] = RIDS[Math.floor(Math.random() * RIDS.length)]; cur.av = { c: 'rig_' + parts.head, parts: { ...parts } }; } else if (tab === 'ready' && hasSpr) { cur.av = Chars.random(); if (hue) { hue.value = 0; } } else { Object.assign(pav, avRandom()); cur.av = { ...pav }; } prev(); const g = ov.querySelector('.gi.on'); if (g) g.scrollIntoView({ block: 'nearest', inline: 'center' }); };
   if (edit) $('#fCancel').onclick = () => { ov.hidden = true; };
   $('#fGo').onclick = () => {
     cur.name = $('#fName').value.trim().slice(0, 24) || 'Гость'; cur.country = $('#fCountry').value; cur.about = $('#fAbout').value.trim().slice(0, 140);
