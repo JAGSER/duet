@@ -775,7 +775,7 @@ const ANIMS = { idle: 'Стоять', walk: 'Идти', run: 'Бежать', jum
 const Chars = {
   list() { return Art.set.chr || []; },
   random(fallback) { const L = Chars.list(); if (!L.length) return fallback || avRandom(); const s = L[Math.floor(Math.random() * L.length)]; return { c: s._name, hue: 0 }; },
-  sprite(av) { return av && av.c ? Art.byName[av.c] : null; },
+  sprite(av) { if (!av || !av.c) return null; const s = Art.byName[av.c]; if (s) return s; const L = Chars.list(); if (!L.length) return null; let h = 0; for (const ch of av.c) h = (h * 31 + ch.charCodeAt(0)) | 0; return L[Math.abs(h) % L.length]; },
   frame(av, anim, t) { // кадры поз (если сгенерированы для этого героя)
     if (!av || !av.c) return null; const base = av.c.replace(/^chr_/, 'pose_');
     if (anim === 'walk' || anim === 'run') { const f = Math.floor(t * (anim === 'run' ? 8 : 5)) % 2 ? Art.byName[base + '_walkl'] : Art.byName[base + '_walkr']; if (f) return anim === 'run' ? (Art.byName[base + '_run'] && Math.floor(t * 8) % 3 === 0 ? Art.byName[base + '_run'] : f) : f; }
