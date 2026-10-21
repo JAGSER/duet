@@ -1405,7 +1405,7 @@ function renderTile(L, i, j) {
       }
     }
     // вулканы
-    for (const p of M.peaks) { const big = p.e > 2500 ? 1 : p.e > 2000 ? .7 : .5; const w = Math.max(44 * big + 10, Math.min(520, s * 12 * big)); const Xp = X(p.x, p.y), Yp = Y(p.x, p.y); if (Xp < -w || Xp > TILE + w || Yp < -w || Yp > TILE + w) continue; drawVolcano(g, Xp, Yp, w, p, s); }
+    for (const p of M.peaks) { const big = p.e > 2500 ? 1 : p.e > 2000 ? .7 : .5; const w = Math.max(44 * big + 10, Math.min(200, s * 5 * big)); const Xp = X(p.x, p.y), Yp = Y(p.x, p.y); if (Xp < -w || Xp > TILE + w || Yp < -w || Yp > TILE + w) continue; drawVolcano(g, Xp, Yp, w, p, s); }
   }
   return c;
 }
@@ -1452,7 +1452,7 @@ function layoutFor(L) {
     const U = vu(p.X, p.Y) * sL, V = vv(p.X, p.Y) * sL;
     const uniq = sL > 1.8 ? Art.landmark(p) : null; const pc = !uniq && sL > 3.5 ? picCard(p.id) : null; const lm = uniq || pc || (sL > 3.5 ? landmarkSprite(p) : null); const art = !lm && sL > 60 && p.r <= 4 ? Art.building(p) : null;
     const dot = p.r >= 5 && sL < 1500; const size = UIK * (p.r === 1 ? (sL < 5 ? 24 : 30) : p.r === 2 ? 26 : p.r === 3 ? 22 : dot ? 9 : 19);
-    const lmw = pc ? Math.max(40, Math.min(96, sL * 2)) * UIK : lm === SPR.umbrella ? Math.max(16, personPx(sL) * 1.3) : lm ? (uniq ? Math.max(p.r <= 1 ? 30 : 24, Math.min(96, 10 + sL * 5.5)) : Math.max(30, Math.min(70, sL * 3))) * (Art.ok(lm) ? 1.25 : 1) * (uniq ? 1 : 1) : art ? Math.max(34, Math.min(64, sL * .22)) : 0; const lmh = lmw ? lmw * (lm || art)._h / (lm || art)._w : 0;
+    const lmw = pc ? Math.max(30, Math.min(56, 22 + sL * .9)) * UIK : lm === SPR.umbrella ? Math.max(16, personPx(sL) * 1.3) : lm ? (uniq ? Math.max(p.r <= 1 ? 24 : 20, Math.min(p.r <= 1 ? 60 : 52, 16 + sL * 1.4)) : Math.max(22, Math.min(46, sL * 1.8))) : art ? Math.max(30, Math.min(50, sL * .2)) : 0; const lmh = lmw ? lmw * (lm || art)._h / (lm || art)._w : 0;
     const r = first ? [U - lmw * .3, V - lmh * .55, U + lmw * .3, V + 2] : [U - Math.max(size, lmw) / 2 - gap, V - lmh - size - gap, U + Math.max(size, lmw) / 2 + gap, V + gap];
     if (!free(r)) continue; add(r);
     let label = null; const wantLabel = (p.r === 1 && sL > 4.5) || (p.r === 2 && sL > 9) || (p.r === 3 && sL > 30) || sL > 110;
@@ -1475,7 +1475,7 @@ function layoutFor(L) {
   }
   placePass(false);
   // подписи вулканов
-  for (const p of M.peaks) { if (!(sL > 6 && (p.e > 2000 || /Batur/i.test(p.n) || sL > 14))) continue; const big = p.e > 2500 ? 1 : p.e > 2000 ? .7 : .5; const w = Math.max(44 * big + 10, Math.min(520, sL * 12 * big)); const h = w * .62;
+  for (const p of M.peaks) { if (!(sL > 6 && (p.e > 2000 || /Batur/i.test(p.n) || sL > 14))) continue; const big = p.e > 2500 ? 1 : p.e > 2000 ? .7 : .5; const w = Math.max(44 * big + 10, Math.min(200, sL * 5 * big)); const h = w * .62;
     const n = p.n.replace('Gunung', 'Гунунг').replace(/ \/.*/, '').replace(/ south peak| north peak/, '') + (p.e ? ' · ' + p.e + ' м' : ''); mctx.font = '800 ' + Math.max(10, Math.min(14, w * .07)) * UIK + 'px Nunito, sans-serif'; const tw = mctx.measureText(n).width;
     const U = vu(p.x, p.y) * sL, V = vv(p.x, p.y) * sL + h * .35 + 14; const r = [U - tw / 2, V - 12, U + tw / 2, V + 4]; if (free(r)) { add(r); out.volcanoLabels.push({ p, n, f: mctx.font, dy: h * .35 + 14 }); } }
   Layout.m.set(key, out); if (Layout.m.size > 24) Layout.m.delete(Layout.m.keys().next().value);
@@ -1523,7 +1523,7 @@ function drawOverlay(c, now) {
   // события
   if (M.s > 7) for (const o of M.overlays) { const X = sx2(o.X, o.Y), Y = sy2(o.X, o.Y); if (X < -20 || X > W + 20 || Y < -20 || Y > H + 20) continue; const ic = eventIcon(o.type); c.drawImage(ic, X - ic._s / 2, Y - ic._s / 2 - 12, ic._s, ic._s); M.hitList.push({ type: 'event', e: o.e, x: X, y: Y - 12, r: 16 }); }
   // дым вулканов
-  for (const p of M.peaks) { if (!/^Gunung (Batur|Agung)\b/i.test(p.n)) continue; const big = p.e > 2500 ? 1 : .7; const w = Math.max(44 * big + 10, Math.min(520, M.s * 12 * big)), h = w * .62; const X = sx2(p.x, p.y), Y = sy2(p.x, p.y); if (X < -w || X > W + w || Y < -w || Y > H + w) continue;
+  for (const p of M.peaks) { if (!/^Gunung (Batur|Agung)\b/i.test(p.n)) continue; const big = p.e > 2500 ? 1 : .7; const w = Math.max(44 * big + 10, Math.min(200, M.s * 5 * big)), h = w * .62; const X = sx2(p.x, p.y), Y = sy2(p.x, p.y); if (X < -w || X > W + w || Y < -w || Y > H + w) continue;
     const t = (now - M.t0) / 1000; c.fillStyle = 'rgba(255,255,255,.85)'; for (let i = 0; i < 3; i++) { const q = ((t * .15 + i / 3) % 1); c.globalAlpha = (1 - q) * .8; c.beginPath(); c.arc(X + w * .04 + q * w * .12, Y - h * .7 - q * h * .5, w * (.05 + q * .08), 0, 7); c.fill(); } c.globalAlpha = 1; }
   if (M.s < 4.5 && !M.rot) { c.font = '900 ' + Math.round(Math.max(18, M.s * 9)) + 'px Nunito, sans-serif'; c.textAlign = 'center'; c.lineWidth = 6; c.strokeStyle = 'rgba(21,118,209,.6)'; c.fillStyle = '#fff'; const X = sx2(toX(114.75), toY(-8.82)), Y = sy2(toX(114.75), toY(-8.82)); c.strokeText('БАЛИ', X, Y); c.fillText('БАЛИ', X, Y); }
 }
