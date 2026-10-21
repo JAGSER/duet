@@ -2649,7 +2649,8 @@ function layoutFor(L) {
 
 // ===== Динамический слой: значки, районы, события =====
 // большая картинка места не должна стоять на дороге или в воде: ищем ближайшее свободное место (в пикселях уровня L), значок остаётся на месте точкой
-function lmShift(it) { if (window.PSH && Object.keys(window.PSH).length) return window.PSH[it.p.id] || null; // сдвиги рассчитаны заранее по всем дорогам
+const PSH_ON = !!(window.PSH && Object.keys(window.PSH).length);
+function lmShift(it) { if (PSH_ON) return window.PSH[it.p.id] || null; // сдвиги рассчитаны заранее по всем дорогам
   // сдвиг считается один раз в километрах (по размеру картинки на местности) — не зависит от приближения и не скачет
   const p = it.p, km = it.km || .1; if (p._shKm === km && p._shOk) return p._sh;
   const now = performance.now(); if (p._shKm === km && now - (p._shT || 0) < 600) return 'wait'; p._shT = now;
@@ -2669,9 +2670,9 @@ function txtSpr(t, font, fill, stroke, lw) { const k = t + '|' + font + fill + s
 function drawTxt(c, t, font, fill, stroke, lw, X, Y) { const o = txtSpr(t, font, fill, stroke, lw); c.drawImage(o.c, X - o.w / 2, Y - o.by, o.w, o.h); }
 // картинки мест стоят в общей очереди глубины: ближние деревья, люди и машины их перекрывают, а они — дальние
 // картинка места и её размер на местности (км) — постоянные, не зависят от приближения и раскладки меток
-function picOf(p) { if (p._pic && p._pic.img) return p._pic; const uniq = Art.landmark(p); const pc = !uniq ? picCard(p.id) : null; const lm = uniq || pc || landmarkSprite(p); const art = !lm && p.r <= 4 ? Art.building(p) : null;
+function picOf(p) { const c = p._pic; if (c && (c.img || performance.now() - c.t < 3000)) return c; const uniq = Art.landmark(p); const pc = !uniq ? picCard(p.id) : null; const lm = uniq || pc || landmarkSprite(p); const art = !lm && p.r <= 4 ? Art.building(p) : null;
   const img = lm || art; const km = uniq ? (p.r <= 1 ? .3 : .22) : pc ? .14 : lm === SPR.umbrella ? .02 : lm ? .11 : art ? .08 : 0;
-  return p._pic = { img, km, pc: !!pc }; }
+  return p._pic = { img, km, pc: !!pc, t: performance.now() }; }
 // картинки мест стоят в общей очереди глубины: ближние деревья, люди и машины их перекрывают, а они — дальние
 function queuePics(c) {
   const M = Map2D; const W = M.W, H = M.H; const bb = viewBBox(80);
@@ -2814,12 +2815,12 @@ function drawDecorDyn(c) {
       seen.add(d); DQ.add(Y, () => { if (k === 1) Decor.draw(c, d, X, Y, sL); else { c.save(); c.translate(X, Y); c.scale(k, k); Decor.draw(c, d, 0, 0, sL); c.restore(); } }); return; } };
   // ищем только в клетках рядом с движущимися объектами
   const fine = sL >= FINE_S, C = fine ? FINE.cell : .5, fr = Math.max(.2, Math.min(1, (sL - FINE_S) / 900 + .2)), dens = sL < 6 ? .12 : sL < 10 ? .25 : sL < 20 ? .5 : 1; const cells = new Set();
-  for (const e of dyn) { const [x, y] = w2(e[2], e[0]); const r = Math.max(.03, 120 / M.s); for (let gx = Math.floor((x - r) / C); gx <= Math.floor((x + r) / C); gx++) for (let gy = Math.floor((y - r * .3) / C); gy <= Math.floor((y + r * 1.2) / C); gy++) cells.add(gx + ',' + gy); }
+  for (const e of dyn) { const [x, y] = w2(e[2], e[0]); const r = Math.min(.4, Math.max(.03, 60 / M.s)); for (let gx = Math.floor((x - r) / C); gx <= Math.floor((x + r) / C); gx++) for (let gy = Math.floor((y - r * .3) / C); gy <= Math.floor((y + r * 1.2) / C); gy++) cells.add(gx + ',' + gy); }
   for (const key of cells) { const [gx, gy] = key.split(',').map(Number);
     if (fine) { for (const d of fineCell(gx, gy)) { if (GLB.ready && d.k.startsWith('bld_')) continue; if ((d.v % 1000) / 1000 > fr) continue; put(d, sx2(d.x, d.y), sy2(d.x, d.y)); } }
     else { const a = M.dgrid.get(key); if (a) for (const d of a) { if (GLB.ready && (d.k || (d.k = Decor.kind(d))).startsWith('bld_')) continue; if (d.r > dens) continue; if (!coarseOk(d, sL)) continue; put(d, sx2(d.x, d.y), sy2(d.x, d.y)); } } }
   // постоянные здания рядом с движущимися
-  if (GLB.ready) for (const e of dyn) { const [x, y] = w2(e[2], e[0]); const r = Math.max(.03, 120 / M.s); GLB.near(x - r, y - r * .3, x + r, y + r * 1.2, i => { const d = GLB._o || (GLB._o = new Map()); let o = d.get(i); if (!o) { o = GLB.obj(i); d.set(i, o); if (d.size > 5000) d.clear(); } put(o, sx2(o.x, o.y), sy2(o.x, o.y)); }); }
+  if (GLB.ready && M.s >= 120) for (const e of dyn) { const [x, y] = w2(e[2], e[0]); const r = Math.min(.25, Math.max(.03, 60 / M.s)); GLB.near(x - r, y - r * .3, x + r, y + r * 1.2, i => { const d = GLB._o || (GLB._o = new Map()); let o = d.get(i); if (!o) { o = GLB.obj(i); d.set(i, o); if (d.size > 5000) d.clear(); } put(o, sx2(o.x, o.y), sy2(o.x, o.y)); }); }
 }
 // ===== Ночь и сумерки: цветокоррекция (умножение на сине-фиолетовый / тёплый закатный), а не чёрная плёнка; свет окон, фар, заведений и городов =====
 // огни городов издалека — чёткие точки (как огни с высоты), плотность по числу мест в квадрате 1 км
@@ -3072,18 +3073,22 @@ GL.prewarm = function () { if (!GL.on || GL._warmT) return; GL._warmT = 1;
   glIdle(step); };
 
 // ===== Постоянные здания всего острова: одно и то же место и настоящий размер на любом приближении =====
-const GLB = { minS: 100, ready: false, n: 0, x: null, y: null, k: null, v: null, ch: new Map(), C: 2, kinds: window.BLDK || [], pc: new Map(), frames: null, step: -1 };
+const GLB = { minS: 20, ready: false, n: 0, x: null, y: null, k: null, v: null, ch: new Map(), C: 2, kinds: window.BLDK || [], pc: new Map(), frames: null, step: -1 };
 GLB.load = function () { if (GLB._ld) return; GLB._ld = 1;
   const B = /duetplay\.app$/.test(location.hostname) && location.hostname !== 'bali.duetplay.app' ? 'https://bali.duetplay.app/' : '';
   fetch(B + 'bld.bin?v=' + (window.BLDV || '')).then(r => r.arrayBuffer()).then(buf => { const dv = new DataView(buf); const n = dv.getUint32(0, true); const X = new Float32Array(n), Y = new Float32Array(n), K = new Uint8Array(n), V = new Uint16Array(n);
     for (let i = 0, o = 4; i < n; i++, o += 7) { X[i] = -95 + dv.getUint16(o, true) * .003; Y[i] = -50 + dv.getUint16(o + 2, true) * .003; K[i] = dv.getUint8(o + 4); V[i] = dv.getUint16(o + 5, true); }
     const tmp = new Map(); for (let i = 0; i < n; i++) { const key = Math.floor(X[i] / GLB.C) + ',' + Math.floor(Y[i] / GLB.C); let a = tmp.get(key); if (!a) tmp.set(key, a = []); a.push(i); }
     for (const [key, a] of tmp) { a.sort((p, q) => Y[p] - Y[q]); GLB.ch.set(key, Int32Array.from(a)); }
+    // мелкая сетка 100 м — для быстрых проверок «есть ли рядом дом»
+    const g = new Map(); for (let i = 0; i < n; i++) { const key = Math.floor(X[i] * 10) * 100000 + Math.floor(Y[i] * 10); let a = g.get(key); if (!a) g.set(key, a = []); a.push(i); } GLB.g = g;
     Object.assign(GLB, { n, x: X, y: Y, k: K, v: V, ready: true }); GL.lastCam = ''; Map2D.dirty = true; GLB.prebuild(); }).catch(e => console.warn('здания не загрузились', e)); };
 GLB.kind = i => GLB.kinds[GLB.k[i]] || 'bld_house';
 GLB.km = i => bldKm(GLB.kind(i));
 // здания в прямоугольнике (индексы, по возрастанию y внутри куска)
-GLB.near = function (x0, y0, x1, y1, fn) { if (!GLB.ready) return; const C = GLB.C;
+GLB.near = function (x0, y0, x1, y1, fn) { if (!GLB.ready) return;
+  if (x1 - x0 < 1.5 && y1 - y0 < 1.5) { for (let cx = Math.floor(x0 * 10); cx <= Math.floor(x1 * 10); cx++) for (let cy = Math.floor(y0 * 10); cy <= Math.floor(y1 * 10); cy++) { const a = GLB.g.get(cx * 100000 + cy); if (!a) continue; for (const i of a) { const x = GLB.x[i], y = GLB.y[i]; if (x >= x0 && x <= x1 && y >= y0 && y <= y1) fn(i, x, y); } } return; }
+  const C = GLB.C;
   for (let cx = Math.floor(x0 / C); cx <= Math.floor(x1 / C); cx++) for (let cy = Math.floor(y0 / C); cy <= Math.floor(y1 / C); cy++) { const a = GLB.ch.get(cx + ',' + cy); if (!a) continue; for (const i of a) { const x = GLB.x[i], y = GLB.y[i]; if (x >= x0 && x <= x1 && y >= y0 && y <= y1) fn(i, x, y); } } };
 GLB.obj = i => ({ x: GLB.x[i], y: GLB.y[i], k: GLB.kind(i), v: GLB.v[i], fine: 1, gb: 1, hw: GLB.km(i) / 2 });
 // атлас картинок зданий (одна текстура — все здания рисуются одним проходом)
@@ -3103,13 +3108,15 @@ GLB.chunk = function (key) { let pc = GLB.pc.get(key); if (pc) return pc; const 
   for (const i of a) pc.addChild(GLB.sprite(i)); GLB.pc.set(key, pc); GL.L.decor.addChild(pc); return pc; };
 // все кусочки зданий готовим заранее в фоне — при приближении они уже на месте
 GLB.prebuild = function () { if (!Art.loaded) return setTimeout(GLB.prebuild, 500); const keys = [...GLB.ch.keys()];
-  const step = () => { const t0 = performance.now(); while (keys.length && performance.now() - t0 < 8) { const pc = GLB.chunk(keys.pop()); if (pc && !pc.visible) pc.visible = false; } if (keys.length) glIdle(step); else { GLB.all = 1; GL.lastCam = ''; } };
+  const R = GL.app.renderer; GLB.rt = GLB.rt || PIXI.RenderTexture.create({ width: 4, height: 4 });
+  // кусок сразу загружаем в видеокарту (невидимым рендером в крошечную текстуру), чтобы при первом показе не было рывка
+  const step = () => { const t0 = performance.now(); while (keys.length && performance.now() - t0 < 6) { const pc = GLB.chunk(keys.pop()); if (!pc) continue; const v = pc.visible; pc.visible = true; try { R.render(pc, { renderTexture: GLB.rt, clear: false, skipUpdateTransform: false }); } catch (e) {} pc.visible = v; } if (keys.length) glIdle(step); else { GLB.all = 1; GL.lastCam = ''; } };
   glIdle(step); };
 GLB.update = function (bb) { if (!GLB.ready) { GLB.load(); return; } const s = Map2D.s, on = s >= GLB.minS && s < FINE_S;
   if (GLB.step !== Night.step && GLB.frames) { for (const pc of GLB.pc.values()) { GL.L.decor.removeChild(pc); pc.destroy({ children: true }); } GLB.pc.clear(); GLB.frames = null; GLB.prebuild(); }
-  for (const pc of GLB.pc.values()) pc.visible = false; if (!on) return; const C = GLB.C; let made = 0;
+  for (const pc of GLB.pc.values()) pc.visible = false; if (!on) return; const C = GLB.C; let made = 0; const fa = Math.min(1, (s - GLB.minS) / 15 + .15); // дома меньше пикселя плавно проявляются, а не выскакивают
   for (let cx = Math.floor((bb[0] - .2) / C); cx <= Math.floor((bb[2] + .2) / C); cx++) for (let cy = Math.floor((bb[1] - .2) / C); cy <= Math.floor((bb[3] + .4) / C); cy++) { const key = cx + ',' + cy; if (!GLB.ch.has(key)) continue;
-    let pc = GLB.pc.get(key); if (!pc) { if (made++ > 40) { GL.pend = true; continue; } pc = GLB.chunk(key); } pc.visible = true; } };
+    let pc = GLB.pc.get(key); if (!pc) { if (made++ > 40) { GL.pend = true; continue; } pc = GLB.chunk(key); } pc.visible = true; pc.alpha = fa; } };
 
 // ===== Живой остров =====
 const World = { clouds: [], birds: [], bikes: [], npcs: [], animals: [], boats: [], sea: [], surfers: [], flights: [], weather: null, night: 0, lastT: 0, lastSpawnKey: '' };
