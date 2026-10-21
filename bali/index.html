@@ -192,6 +192,9 @@ h4{margin:16px 0 6px;font-size:15px;font-weight:900}
 #app.compact .pills,#app.compact #chips,#app.compact #btnHome,#app.compact #btnRot,#app.compact #btnWalk{display:none!important}
 #app.compact .nav button:not(.fab){font-size:0;gap:0}#app.compact .nav{height:52px;width:min(330px,calc(100% - 24px))}#app.compact .nav .fab{width:52px;height:52px;min-width:52px;margin-top:-22px}
 #q::-webkit-search-cancel-button,#q::-webkit-search-decoration{-webkit-appearance:none;display:none}
+.tm{background:#F7F3EC;border-radius:16px;padding:12px 14px;margin-bottom:10px}.tmrow{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}.tmrow b{font-size:15px}
+#tmRange{width:100%;accent-color:#7B2FF7;margin:4px 0}.tmscale{display:flex;justify-content:space-between;font-size:10px;color:#8a809c;margin-bottom:6px}
+.cd{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}.cdt{background:#F7F3EC;border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}.cdt span{font-size:11px;color:#8a809c;text-transform:uppercase;letter-spacing:.03em;font-weight:800}.cdt b{font-size:18px}.cdt em{font-style:normal;font-size:11.5px;color:#5B4F73}.cdt.red{background:#FDE8EF}.cdt.red b{color:#EC2D9A}
 </style>
 <div id="app">
 <canvas id="map" aria-label="Иллюстрированная карта Бали"></canvas>
@@ -266,7 +269,8 @@ function bboxOf(a) { let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (let i = 
 function pip(a, x, y) { let ins = false; for (let i = 0, j = a.length - 2; i < a.length; j = i, i += 2) { const xi = a[i], yi = a[i + 1], xj = a[j], yj = a[j + 1]; if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) ins = !ins; } return ins; }
 
 // Балийское время (WITA, UTC+8) вне зависимости от часового пояса зрителя
-function baliNow() { const d = new Date(Date.now() + 8 * 3600e3); return { d, h: d.getUTCHours(), m: d.getUTCMinutes(), dow: d.getUTCDay(), min: d.getUTCHours() * 60 + d.getUTCMinutes() + d.getUTCSeconds() / 60, ymd: d.toISOString().slice(0, 10) }; }
+window.TIME_OFF = 0; // «машина времени»: сдвиг в минутах
+function baliNow() { const d = new Date(Date.now() + 8 * 3600e3 + (window.TIME_OFF || 0) * 60e3); return { d, h: d.getUTCHours(), m: d.getUTCMinutes(), dow: d.getUTCDay(), min: d.getUTCHours() * 60 + d.getUTCMinutes() + d.getUTCSeconds() / 60, ymd: d.toISOString().slice(0, 10) }; }
 
 // Восход/закат (NOAA, упрощённо) — минуты от полуночи по WITA
 function sunTimes(dateUTC, lat = -8.65, lng = 115.2) {
@@ -651,7 +655,7 @@ function buildSprites() {
   SPR.sun = mkCanvas(60, 60, x => { x.fillStyle = 'rgba(255,214,51,.35)'; x.beginPath(); x.arc(30, 30, 28, 0, 7); x.fill(); x.fillStyle = '#FFD233'; x.beginPath(); x.arc(30, 30, 18, 0, 7); x.fill(); });
   SPR.moon = mkCanvas(50, 50, x => { x.fillStyle = 'rgba(255,248,200,.25)'; x.beginPath(); x.arc(25, 25, 24, 0, 7); x.fill(); x.fillStyle = '#FFF6C8'; x.beginPath(); x.arc(25, 25, 14, 0, 7); x.fill(); x.fillStyle = '#E8DDA0'; x.beginPath(); x.arc(20, 21, 3, 0, 7); x.arc(29, 29, 2, 0, 7); x.fill(); });
   SPR.terrace = mkCanvas(80, 50, x => {
-    for (let i = 0; i < 7; i++) { x.fillStyle = i % 2 ? '#8BD45A' : '#A6E36E'; x.beginPath(); x.moveTo(0, 6 + i * 6.5); x.quadraticCurveTo(40, i * 6.5 - 2, 80, 6 + i * 6.5); x.lineTo(80, 13 + i * 6.5); x.quadraticCurveTo(40, 5 + i * 6.5, 0, 13 + i * 6.5); x.fill(); x.strokeStyle = '#6DB84A'; x.lineWidth = .8; x.stroke(); }
+    for (let i = 0; i < 7; i++) { x.fillStyle = i % 2 ? '#74C94F' : '#82D45A'; x.beginPath(); x.moveTo(0, 6 + i * 6.5); x.quadraticCurveTo(40, i * 6.5 - 2, 80, 6 + i * 6.5); x.lineTo(80, 13 + i * 6.5); x.quadraticCurveTo(40, 5 + i * 6.5, 0, 13 + i * 6.5); x.fill(); x.strokeStyle = '#66B846'; x.lineWidth = .8; x.stroke(); }
   });
   SPR.ogoh = mkCanvas(34, 44, x => { // огох-огох
     x.fillStyle = '#C0392B'; x.beginPath(); x.arc(17, 14, 10, 0, 7); x.fill(); x.fillStyle = '#FFD21F'; x.beginPath(); x.moveTo(7, 8); x.lineTo(10, 0); x.lineTo(14, 6); x.lineTo(17, -1); x.lineTo(20, 6); x.lineTo(24, 0); x.lineTo(27, 8); x.fill();
@@ -757,7 +761,7 @@ const Night = { step: 0, N: 4, cache: new Map(), cc: new Map(), tex: {},
     nr += (r - gr) * ch; ng += (g - gr) * ch; nb += (b - gr) * ch; if (kind === 'person') { nr = nr * .55 + r * .45; ng = ng * .55 + g * .45; nb = nb * .55 + b * .45; }
     return [r + (nr - r) * t, g + (ng - g) * t, b + (nb - b) * t]; },
   // цвет-строка для земли/дорог в плитках
-  c(css, kind = 'ground') { if (!this.step || typeof css !== 'string') return css; const key = css + this.step + kind; let o = this.cc.get(key); if (o) return o;
+  c(css, kind = 'ground') { if (!this.step || typeof css !== 'string' || css === '#FFB13B' || css === '#F05A5A') return css; const key = css + this.step + kind; let o = this.cc.get(key); if (o) return o;
     let r, g, b, a = 1, m; if ((m = css.match(/^#([0-9a-f]{3,8})$/i))) { let h = m[1]; if (h.length === 3) h = h.split('').map(x => x + x).join(''); r = parseInt(h.slice(0, 2), 16); g = parseInt(h.slice(2, 4), 16); b = parseInt(h.slice(4, 6), 16); if (h.length === 8) a = parseInt(h.slice(6, 8), 16) / 255; }
     else if ((m = css.match(/^rgba?\(([^)]+)\)$/))) { const p = m[1].split(',').map(Number); [r, g, b] = p; if (p.length > 3) a = p[3]; } else return css;
     const q = this.rgb(r, g, b, kind, this.t()); o = `rgba(${q.map(Math.round).join(',')},${a})`; this.cc.set(key, o); if (this.cc.size > 4000) this.cc.clear(); return o; },
@@ -1038,7 +1042,9 @@ function roadIdxAdd(r) { const G = RoadIdx.g, C = RoadIdx.C; const a = r.a; for 
   for (let i = 0; i <= n; i++) { const t = i / n, k = Math.floor((x1 + (x2 - x1) * t) / C) + ',' + Math.floor((y1 + (y2 - y1) * t) / C); if (k === last) continue; last = k; let c = G.get(k); if (!c) G.set(k, c = []); c.push(x1, y1, x2, y2, r.k); } } }
 // ширина дорог: на дальнем плане — в пикселях, вблизи — географическая (м), чтобы дома и люди стояли рядом, а не на дороге
 const RW_KM = [0, .02, .016, .012, .01, .007, .005, .003], RW_MIN = [0, 3, 3, 2.5, 2, 1.6, 1.3, 1];
-const ROAD_MIN_S = [0, 0, 0, 0, 0, 150, 320, 600];
+const ROAD_MIN_S = [0, 0, 6, 14, 70, 150, 320, 600];
+// плавное появление дорог: от 0.7×порога до 1.6×порога прозрачность и ширина растут
+function roadFade(k, s) { const T = ROAD_MIN_S[k]; if (!T) return 1; return Math.max(0, Math.min(1, (s - T * .7) / (T * .9))); }
 function roadWOld(k, s) { if (k >= 5) return Math.max(1, Math.min(6, (k === 5 ? .012 : k === 6 ? .009 : .006) * s)) + (k === 7 ? 0 : .8); return Math.max(1.6, Math.min(s > 1000 ? 34 : 16, (k === 1 ? .1 : k === 2 ? .075 : k === 3 ? .05 : .035) * s * (s > 60 ? .55 : 1)) + 2); }
 function roadWpx(k, s) { const old = roadWOld(k, s); if (s < FINE_S * .6) return old; const geo = Math.max(RW_MIN[k], RW_KM[k] * s); const t = Math.max(0, Math.min(1, (FINE_S - s) / (FINE_S * .4))); return Math.max(geo, old * t); }
 const roadGeoHalf = k => Math.max(RW_KM[k], RW_MIN[k] / FINE_S) / 2;
@@ -1053,7 +1059,7 @@ function roadDistK(x, y, maxd) {
 function roadClear(x, y, s, pad) {
   const C = RoadIdx.C, R = Math.ceil((20 / s + pad) / C) || 1, Rm = Math.min(R, 6); const cx = Math.floor(x / C), cy = Math.floor(y / C);
   for (let i = -Rm; i <= Rm; i++) for (let j = -Rm; j <= Rm; j++) { const a = RoadIdx.g.get((cx + i) + ',' + (cy + j)); if (!a) continue;
-    for (let q = 0; q < a.length; q += 5) { const k = a[q + 4]; if (s < ROAD_MIN_S[k] || s <= 2.4) continue; const x1 = a[q], y1 = a[q + 1], dx = a[q + 2] - x1, dy = a[q + 3] - y1; const L2 = dx * dx + dy * dy || 1e-12; let t = ((x - x1) * dx + (y - y1) * dy) / L2; t = t < 0 ? 0 : t > 1 ? 1 : t;
+    for (let q = 0; q < a.length; q += 5) { const k = a[q + 4]; if (roadFade(k, s) < .2 || s <= 2.4) continue; const x1 = a[q], y1 = a[q + 1], dx = a[q + 2] - x1, dy = a[q + 3] - y1; const L2 = dx * dx + dy * dy || 1e-12; let t = ((x - x1) * dx + (y - y1) * dy) / L2; t = t < 0 ? 0 : t > 1 ? 1 : t;
       if (Math.hypot(x - x1 - dx * t, y - y1 - dy * t) < roadWpx(k, s) / 2 / s + pad) return false; } }
   return true;
 }
@@ -1309,7 +1315,7 @@ function onLongPress(cx, cy) { const [x, y] = w2(cx, cy); App.onLongPress(toLat(
 const TILE = 256;
 const Tiles = { m: new Map(), max: 90, budgetMs: 9,
   clear() { this.m.clear(); },
-  key(L, i, j) { return L + ':' + i + ':' + j + ':' + Night.step; },
+  key(L, i, j) { return L + ':' + i + ':' + j + ':' + Night.step + ':' + Math.floor(baliNow().min / 10); },
   get(L, i, j) { const k = this.key(L, i, j); const t = this.m.get(k); if (t) { this.m.delete(k); this.m.set(k, t); } return t; },
   put(L, i, j, c) { this.m.set(this.key(L, i, j), c); while (this.m.size > this.max) this.m.delete(this.m.keys().next().value); },
 };
@@ -1359,17 +1365,19 @@ function renderTile(L, i, j) {
     for (const l of M.lakes) { if (!inB(l.bb, 1)) continue; g.fillStyle = '#3BA7EE'; g.strokeStyle = '#BDEBFF'; g.lineWidth = Math.max(1.5, s * .05); g.beginPath(); poly(l.a); g.fill(); g.stroke(); }
     // дороги
     if (s > 2.4) {
-      let lv = s < 6 ? 1 : s < 14 ? 2 : s < 70 ? 3 : 4; for (let k = 5; k <= 7; k++) if (s >= ROAD_MIN_S[k]) lv = k; let rs;
+      let lv = 1; for (let k = 2; k <= 7; k++) if (roadFade(k, s) > 0) lv = k; let rs;
       const pad = .3; if (s >= HiR.S && HiR.list.size && HiR.ready(wb[0] - pad, wb[1] - pad, wb[2] + pad, wb[3] + pad)) rs = HiR.roads(wb[0] - pad, wb[1] - pad, wb[2] + pad, wb[3] + pad).filter(r => r.k <= lv && inB(r.bb, .05));
       else { const idx = new Set(); lv = Math.min(lv, 4);
         for (let gx = Math.floor((wb[0] - 1) / 4); gx <= Math.floor((wb[2] + 1) / 4); gx++) for (let gy = Math.floor((wb[1] - 1) / 4); gy <= Math.floor((wb[3] + 1) / 4); gy++) for (const k of (M.rgrid.get(gx + ',' + gy) || [])) idx.add(k);
         rs = [...idx].map(k => M.roads[k]).filter(r => r.k <= lv && inB(r.bb, .5)); }
-      const wOut = k => roadWpx(k, s);
+      const wOut = k => roadWpx(k, s) * (.45 + .55 * roadFade(k, s));
       for (const pass of [0, 1]) for (let k = lv; k >= 1; k--) {
-        if (k === 7 && !pass) continue;
+        if (k === 7 && !pass) continue; const fa = roadFade(k, s); if (fa <= 0) continue; g.globalAlpha = fa;
         g.strokeStyle = pass ? (k === 1 ? '#FFE9A8' : k === 7 ? 'rgba(236,224,196,.95)' : k === 6 ? '#EEE7D7' : '#F4F1EA') : (k <= 2 ? '#fff' : k >= 5 ? 'rgba(255,255,255,.75)' : 'rgba(255,255,255,.85)'); g.lineWidth = pass ? (k === 7 ? wOut(k) : Math.max(.8, wOut(k) - (k >= 5 ? 1.4 : 2.2))) : wOut(k);
-        g.beginPath(); for (const r of rs) { if (r.k !== k) continue; const a = r.a; g.moveTo(X(a[0], a[1]), Y(a[0], a[1])); for (let q = 2; q < a.length; q += 2) g.lineTo(X(a[q], a[q + 1]), Y(a[q], a[q + 1])); } g.stroke();
+        g.beginPath(); for (const r of rs) { if (r.k !== k) continue; const a = r.a; g.moveTo(X(a[0], a[1]), Y(a[0], a[1])); for (let q = 2; q < a.length; q += 2) g.lineTo(X(a[q], a[q + 1]), Y(a[q], a[q + 1])); } g.stroke(); g.globalAlpha = 1;
       }
+      // пробки: подкраска загруженных дорог (ближе к центру — краснее), только на главных дорогах
+      if (s > 6 && s < 500 && App.showTraffic !== false) { g.lineCap = 'round'; for (const r of rs) { if (r.k > 4) continue; const a = r.a; for (let q = 2; q < a.length; q += 2) { const t = trafficLevel((a[q - 2] + a[q]) / 2, (a[q - 1] + a[q + 1]) / 2, r.k); const col = trafficColor(t); if (!col) continue; g.strokeStyle = col; g.lineWidth = Math.max(1.2, wOut(r.k) - 2.6); g.beginPath(); g.moveTo(X(a[q - 2], a[q - 1]), Y(a[q - 2], a[q - 1])); g.lineTo(X(a[q], a[q + 1]), Y(a[q], a[q + 1])); g.stroke(); } } }
     }
     // декор: деревья, дома, кусты — по биому (вблизи рисуется в общей очереди глубины вместе с людьми — см. drawDecorDyn)
     if (s > 3.2 && s < DECOR_DYN_S) {
@@ -1432,7 +1440,7 @@ function layoutFor(L) {
     const U = vu(p.X, p.Y) * sL, V = vv(p.X, p.Y) * sL;
     const uniq = sL > 1.8 ? Art.landmark(p) : null; const pc = !uniq && sL > 3.5 ? picCard(p.id) : null; const lm = uniq || pc || (sL > 3.5 ? landmarkSprite(p) : null); const art = !lm && sL > 60 && p.r <= 4 ? Art.building(p) : null;
     const size = UIK * (p.r === 1 ? (sL < 5 ? 24 : 30) : p.r === 2 ? 26 : p.r === 3 ? 22 : 19);
-    const lmw = pc ? Math.max(40, Math.min(96, sL * 2)) * UIK : lm === SPR.umbrella ? Math.max(16, personPx(sL) * 1.3) : lm ? (uniq ? Math.max(p.r <= 1 ? 58 : 46, Math.min(96, 40 + sL * 2.2)) : Math.max(30, Math.min(70, sL * 3))) * (Art.ok(lm) ? 1.25 : 1) * (uniq ? 1 : 1) : art ? Math.max(34, Math.min(64, sL * .22)) : 0; const lmh = lmw ? lmw * (lm || art)._h / (lm || art)._w : 0;
+    const lmw = pc ? Math.max(40, Math.min(96, sL * 2)) * UIK : lm === SPR.umbrella ? Math.max(16, personPx(sL) * 1.3) : lm ? (uniq ? Math.max(p.r <= 1 ? 30 : 24, Math.min(96, 10 + sL * 5.5)) : Math.max(30, Math.min(70, sL * 3))) * (Art.ok(lm) ? 1.25 : 1) * (uniq ? 1 : 1) : art ? Math.max(34, Math.min(64, sL * .22)) : 0; const lmh = lmw ? lmw * (lm || art)._h / (lm || art)._w : 0;
     const r = first ? [U - lmw * .3, V - lmh * .55, U + lmw * .3, V + 2] : [U - Math.max(size, lmw) / 2 - gap, V - lmh - size - gap, U + Math.max(size, lmw) / 2 + gap, V + gap];
     if (!free(r)) continue; add(r);
     let label = null; const wantLabel = (p.r === 1 && sL > 4.5) || (p.r === 2 && sL > 9) || (p.r === 3 && sL > 30) || sL > 110;
@@ -1691,6 +1699,14 @@ function applyWeather(w) {
   for (const p of w.points) { const n = Math.round((p.cloud || 0) / 100 * 2.5) + (p.precip > .05 ? 1 : 0); for (let i = 0; i < n; i++) C.push({ X: toX(p.lng) + rand(-9, 9), Y: toY(p.lat) + rand(-6, 6), w: rand(5, 10), sp: rand(.05, .12), rain: p.precip > .05 && i < 1 + Math.round(p.precip * 2), z: rand(.8, 1.2) }); }
   for (let i = 0; i < 5; i++) C.push(newCloud(true)); World.clouds = C;
 }
+// ===== Пробки: по времени суток и известным узким местам (Чангу–Семиньяк, Денпасар, Санур, Убуд, байпас, аэропорт) =====
+const JAMS = [[-8.65, 115.14, 4.5, 1.0], [-8.69, 115.17, 3.5, 1.0], [-8.66, 115.22, 5, .8], [-8.72, 115.19, 3.5, .9], [-8.51, 115.26, 3, .7], [-8.74, 115.17, 2.5, .8], [-8.80, 115.17, 3, .5]].map(([la, ln, r, w]) => [toX(ln), toY(la), r, w]);
+function trafficLevel(x, y, k) { // 0 свободно .. 1 стоим
+  const n = baliNow(); const m = n.min; const rush = Math.max(0, 1 - Math.abs(m - 8.5 * 60) / 100) * .9 + Math.max(0, 1 - Math.abs(m - 17.5 * 60) / 120) + (m > 11 * 60 && m < 15 * 60 ? .35 : 0); if (m < 5.5 * 60 || m > 22 * 60) return 0;
+  let z = 0; for (const [jx, jy, r, w] of JAMS) { const d = Math.hypot(x - jx, y - jy); if (d < r) z = Math.max(z, w * (1 - d / r)); }
+  const kk = k <= 2 ? 1 : k === 3 ? .8 : .55; return Math.max(0, Math.min(1, z * Math.min(1, rush) * kk * (n.dow === 0 ? .6 : 1)));
+}
+function trafficColor(t) { return t < .3 ? null : t < .6 ? '#FFB13B' : '#F05A5A'; }
 function nightFactor() {
   const n = baliNow(); const st = sunTimes(new Date()); const m = n.min;
   if (m > st.rise + 35 && m < st.set - 35) return 0; if (m < st.rise - 25 || m > st.set + 40) return 1;
@@ -1764,14 +1780,13 @@ World.draw = function (c, now) {
     const spr = Art.animal(a.k, 0); if (!spr) continue; const w = (a.k === 'whale' ? 70 * Math.max(1, Math.min(3, s / 30)) : a.k === 'manta' ? 34 : 22) * u; const h = w * spr._h / spr._w;
     c.save(); c.translate(X, Y); if (a.k === 'manta' || a.k === 'turtle') { if (a.tx != null) c.rotate(Math.atan2(sy2(a.tx, a.ty) - Y, sx2(a.tx, a.ty) - X) + Math.PI / 2); } else c.scale(spr._face === 'l' ? -a.face : a.face, 1);
     c.globalAlpha = a.k === 'manta' ? .85 : 1; c.drawImage(spr, -w / 2, -h / 2, w, h); c.globalAlpha = 1; c.restore();
-    if (a.k === 'whale' && Math.sin(t * .5 + a.ph) > .85) { c.fillStyle = 'rgba(255,255,255,.9)'; c.beginPath(); c.ellipse(X - w * .3 * a.face, Y - h * .8, 4, 10, 0, 0, 7); c.fill(); }
     M.dynHits.push({ type: 'sea', k: a.k, x: X, y: Y, r: Math.max(14, w / 2) });
   }
   // лодки
   for (const b of W.boats) {
     let x, y, dir = 1;
     if (b.k === 'jukung') { wanderer(b, dt, false, b.sp, b.r); x = b.x; y = b.y; dir = b.face; }
-    else { b.t += Math.min(b.sp * .05, 60 / s) * dt * b.dir; if (b.t > b.len) { b.t = b.len; b.dir = -1; } if (b.t < 0) { b.t = 0; b.dir = 1; }
+    else { b.t += Math.min(Math.min(b.sp * .05, 60 / s) * dt, 10 / s) * b.dir; if (b.t > b.len) { b.t = b.len; b.dir = -1; } if (b.t < 0) { b.t = 0; b.dir = 1; }
       let acc = 0, k = 1; for (; k < b.path.length; k++) { const sl = Math.hypot(b.path[k][0] - b.path[k - 1][0], b.path[k][1] - b.path[k - 1][1]); if (acc + sl >= b.t) break; acc += sl; } k = Math.min(k, b.path.length - 1);
       const A = b.path[k - 1], B = b.path[k]; const sl = Math.hypot(B[0] - A[0], B[1] - A[1]) || 1; const f = (b.t - acc) / sl; x = A[0] + (B[0] - A[0]) * f; y = A[1] + (B[1] - A[1]) * f;
       dir = (sx2(B[0], B[1]) - sx2(A[0], A[1])) * b.dir >= 0 ? 1 : -1; }
@@ -1782,7 +1797,7 @@ World.draw = function (c, now) {
   }
   // транспорт на дорогах (плавно, без скачков)
   if (s >= 10) for (const b of W.bikes) {
-    let a = b.road.a; const nseg = a.length / 2 - 1; let rem = Math.min(b.sp * .75, 70 / s) * dt; // реальная скорость 20–45 км/ч, вблизи не быстрее ~70 px/с
+    let a = b.road.a; const nseg = a.length / 2 - 1; const a0 = b.road.a, tl = trafficLevel(a0[b.si * 2], a0[b.si * 2 + 1], b.road.k || 3); let rem = Math.min(Math.min(b.sp * .75, 70 / s) * dt * (1 - tl * .8), 10 / s); // реальная скорость 20–45 км/ч, вблизи не быстрее ~70 px/с
     while (rem > 0) { const x1 = a[b.si * 2], y1 = a[b.si * 2 + 1], x2 = a[b.si * 2 + 2], y2 = a[b.si * 2 + 3]; const L = Math.hypot(x2 - x1, y2 - y1) || 1e-4;
       if (b.dir > 0) { const left = (1 - b.f) * L; if (rem < left) { b.f += rem / L; rem = 0; } else { rem -= left; if (b.si < nseg - 1) { b.si++; b.f = 0; } else if (!nextRoad(b, a[a.length - 2], a[a.length - 1])) { b.dir = -1; b.f = 1; } } }
       else { const left = b.f * L; if (rem < left) { b.f -= rem / L; rem = 0; } else { rem -= left; if (b.si > 0) { b.si--; b.f = 1; } else if (!nextRoad(b, a[0], a[1])) { b.dir = 1; b.f = 0; } } }
@@ -1979,7 +1994,7 @@ function boot() {
   App.pois.forEach(p => { p.X = toX(p.x); p.Y = toY(p.y); });
   const saved = LS.get('cats', null); Map2D.enabled = new Set(saved || DEFAULT_CATS);
   Map2D.favs = new Set(LS.get('favs', []));
-  App.showJokes = LS.get('jokes', true);
+  App.showJokes = LS.get('jokes', true); App.showTraffic = LS.get('traffic', true);
   initMap(D, App.pois); App.pois = Map2D.pois;
   worldInit();
   buildChips(); bindUI(); updateEventsOverlay(); tickClock(); setInterval(tickClock, 20000);
@@ -2094,7 +2109,7 @@ function setMyPos(lat, lng, acc) { Map2D.me = { lat, lng, acc: acc || 0 }; Me.se
 // ===== Часы, погода, онлайн =====
 function tickClock() {
   const n = baliNow(); const st = sunTimes(new Date());
-  $('#clock').textContent = fmtMin(n.min);
+  $('#clock').textContent = (window.TIME_OFF ? '⏱ ' : '') + fmtMin(n.min);
   const nf = nightFactor(); $('#sunInfo').textContent = nf > .5 ? 'рассвет ' + fmtMin(st.rise) : 'закат ' + fmtMin(st.set);
   updateHolidayBanner();
 }
@@ -2170,7 +2185,7 @@ function bindUI() {
   let drag = null; ch.addEventListener('pointerdown', e => { if (e.pointerType !== 'mouse') return; drag = { x: Screen.loc(e)[0], l: ch.scrollLeft, moved: 0 }; });
   window.addEventListener('pointermove', e => { if (!drag) return; const d = Screen.loc(e)[0] - drag.x; drag.moved = Math.max(drag.moved, Math.abs(d)); ch.scrollLeft = drag.l - d; });
   window.addEventListener('pointerup', () => { if (drag && drag.moved > 5) { const stop = ev => { ev.stopPropagation(); ev.preventDefault(); ch.removeEventListener('click', stop, true); }; ch.addEventListener('click', stop, true); setTimeout(() => ch.removeEventListener('click', stop, true), 50); } drag = null; });
-  $('#wx').onclick = openWeather; $('#online').onclick = openPeople; $('#holiday').onclick = () => { if (App.holidayEv) openEvent(App.holidayEv); };
+  $('#clockPill').onclick = openTime; $('#wx').onclick = openWeather; $('#online').onclick = openPeople; $('#holiday').onclick = () => { if (App.holidayEv) openEvent(App.holidayEv); };
   $('#sheet').addEventListener('click', sheetClick);
   $('#sheetBack').onclick = closeSheet;
   // свайп вниз закрывает шторку
@@ -2391,12 +2406,12 @@ async function buildRoute(t) {
     if (j.routes && j.routes[0]) { pts = j.routes[0].geometry.coordinates.map(([x, y]) => [y, x]); km = j.routes[0].distance / 1000; min = j.routes[0].duration / 60; }
   } catch (e) { }
   if (!pts) { approx = true; km = kmBetween(a.lat, a.lng, t.lat, t.lng) * 1.35; pts = [[a.lat, a.lng], [t.lat, t.lng]]; min = km / (mode === 'foot' ? 4.5 : 28) * 60; }
-  // поправка на балийские пробки
-  const n = baliNow(); const rush = (n.h >= 7 && n.h <= 9) || (n.h >= 16 && n.h <= 19);
-  if (mode === 'bike') min = min * (rush ? 1.0 : .85) + 3; if (mode === 'car') min = min * (rush ? 1.6 : 1.25) + 4;
+  // поправка на балийские пробки (по модели пробок карты)
+  const n = baliNow(); let tj = 0, tn = 0; for (let i = 0; i < pts.length; i += Math.max(1, Math.floor(pts.length / 40))) { tj += trafficLevel(toX(pts[i][1]), toY(pts[i][0]), 3); tn++; } const jam = tn ? tj / tn : 0; const rush = jam > .25;
+  if (mode === 'bike') min = min * (.85 + jam * .6) + 3; if (mode === 'car') min = min * (1.25 + jam * 1.2) + 4;
   const price = mode === 'car' ? `≈ IDR ${(Math.round((15000 + km * 6500) / 1000) * 1000).toLocaleString('ru-RU')} на Grab/Gojek (машина)` : mode === 'bike' ? `≈ IDR ${(Math.round((10000 + km * 2800) / 1000) * 1000).toLocaleString('ru-RU')} на байк-такси Gojek/Grab` : '';
   Map2D.route = { pts, approx };
-  App.routeInfo = `<div class="route-sum"><b>${min < 60 ? Math.round(min) + ' мин' : Math.floor(min / 60) + ' ч ' + Math.round(min % 60) + ' мин'}</b><span>${fmtKm(km)}${rush && mode !== 'foot' ? ' · час пик' : ''}</span></div>${price ? `<p class="mut">${price}</p>` : ''}${approx ? '<p class="mut sm">Сервис маршрутов недоступен — показано примерно, по прямой с поправкой на дороги. Для точной навигации откройте Google.</p>' : '<p class="mut sm">Маршрут по дорогам OpenStreetMap. Время — с поправкой на балийский трафик.</p>'}`;
+  App.routeInfo = `<div class="route-sum"><b>${min < 60 ? Math.round(min) + ' мин' : Math.floor(min / 60) + ' ч ' + Math.round(min % 60) + ' мин'}</b><span>${fmtKm(km)}${rush && mode !== 'foot' ? (jam > .5 ? ' · пробки' : ' · плотно') : ''}</span></div>${price ? `<p class="mut">${price}</p>` : ''}${approx ? '<p class="mut sm">Сервис маршрутов недоступен — показано примерно, по прямой с поправкой на дороги. Для точной навигации откройте Google.</p>' : '<p class="mut sm">Маршрут по дорогам OpenStreetMap. Время — с поправкой на балийский трафик.</p>'}`;
   openRoutePlanner(t);
   // показываем весь маршрут
   let la0 = 90, la1 = -90, ln0 = 999, ln1 = -999; for (const [la, ln] of pts) { la0 = Math.min(la0, la); la1 = Math.max(la1, la); ln0 = Math.min(ln0, ln); ln1 = Math.max(ln1, ln); }
@@ -2440,6 +2455,8 @@ function sheetClick(e) {
   else if (a === 'phrases') openPhrases();
   else if (a === 'prices') openPrices();
   else if (a === 'sun') openSun();
+  else if (a === 'traffic') { App.showTraffic = App.showTraffic === false; LS.set('traffic', App.showTraffic); Tiles.clear(); Map2D.dirty = true; openLayers(); }
+  else if (a === 'timenow') { window.TIME_OFF = 0; Layout.clear(); Tiles.clear(); Map2D.dirty = true; tickClock(); openTime(); }
   else if (a === 'profile') showOnboarding(true);
   else if (a === 'about') openAbout();
   else if (a === 'nearest') { const c = b.dataset.cat; nearest(c); }
@@ -2463,7 +2480,7 @@ function openLayers() {
   openSheet('layers', `<div class="sh-h"><h3>Что показывать</h3><p class="mut">Включайте только нужные категории. Чем ближе зум, тем больше мелких мест.</p></div>
     <div class="row-btns"><button class="btn sm" data-act="catall" data-v="def">По умолчанию</button><button class="btn sm" data-act="catall" data-v="all">Всё, включая отели и банкоматы</button><button class="btn sm ghost" data-act="catnone">Сбросить</button></div>
     <div class="cats">${CAT_ORDER.map(c => `<button class="catb ${Map2D.enabled.has(c) ? 'on' : ''}" data-act="cat" data-cat="${c}"><i style="background:${CATS[c].col}"></i>${CATS[c].ru}<span>${Map2D.pois.filter(p => p.c === c).length}</span></button>`).join('')}</div>
-    <div class="row-btns"><button class="btn ${Map2D.openOnly ? 'primary' : ''}" data-act="openonly">Открыто сейчас</button><button class="btn ${Map2D.favOnly ? 'primary' : ''}" data-act="favonly">Только избранное (${Map2D.favs.size})</button><button class="btn ghost" data-act="jokes">${App.showJokes ? 'Скрыть шутки районов' : 'Шутки районов'}</button></div>`);
+    <div class="row-btns"><button class="btn ${Map2D.openOnly ? 'primary' : ''}" data-act="openonly">Открыто сейчас</button><button class="btn ${Map2D.favOnly ? 'primary' : ''}" data-act="favonly">Только избранное (${Map2D.favs.size})</button><button class="btn ${App.showTraffic !== false ? 'primary' : ''}" data-act="traffic">Пробки на дорогах</button><button class="btn ghost" data-act="jokes">${App.showJokes ? 'Скрыть шутки районов' : 'Шутки районов'}</button></div>`);
 }
 
 // ===== Люди и сообщения =====
@@ -2592,6 +2609,33 @@ function openSOS() {
     </div>
     <div class="row-btns"><button class="btn primary" data-act="nearest" data-cat="health">Ближайшая больница</button><button class="btn" data-act="nearest" data-cat="pharmacy">Ближайшая аптека</button><button class="btn" data-act="nearest" data-cat="official">Полиция / консульство</button></div>
     <div class="tip warn"><b>Важно</b> Частные международные клиники (BIMC, Siloam, Kasih Ibu) работают круглосуточно и принимают страховку. Возьмите паспорт. Скорая на юге острова часто едет дольше, чем такси.</div>`);
+}
+// ===== Машина времени + обратный отсчёт =====
+function nextEventOf(pred) { const ymd = baliNow().ymd; return App.events.filter(e => e.date >= ymd && pred(e)).sort((a, b) => a.date.localeCompare(b.date))[0]; }
+function daysTo(ymd) { const a = new Date(baliNow().ymd + 'T00:00:00Z'), b = new Date(ymd + 'T00:00:00Z'); return Math.round((b - a) / 864e5); }
+// упрощённый прилив: полусуточный, привязан к фазе луны (для подсказки сёрферам)
+function tideInfo() { const n = baliNow(); const moon = App.events.filter(e => e.type === 'moon' && /полнолун|новолун/i.test(e.title)); const ref = moon.map(e => new Date(e.date + 'T12:00:00+08:00').getTime()).sort((a, b) => Math.abs(a - Date.now()) - Math.abs(b - Date.now()))[0] || Date.parse('2026-10-26T12:00:00+08:00');
+  const per = 12.42 * 60; const t = ((n.d.getTime() - 8 * 3600e3 - ref) / 60e3) % per; const ph = ((t % per) + per) % per; const toHigh = (per - ph) % per, toLow = (per / 2 - ph + per) % per; return { high: n.min + toHigh, low: n.min + toLow, rising: toHigh < toLow }; }
+function openTime() {
+  const n = baliNow(); const st = sunTimes(new Date()); const left = st.set - n.min; const full = nextEventOf(e => e.type === 'moon' && /полнолун/i.test(e.title)); const nyepi = nextEventOf(e => /ньепи/i.test(e.title)); const hol = nextEventOf(e => e.type === 'holiday' && !/ньепи/i.test(e.title)); const td = tideInfo();
+  const openN = Map2D.pois.filter(p => p.h && isOpenNow(p.h) === true).length; const evN = App.events.filter(e => e.date === n.ymd).length;
+  const f = m => fmtMin(((m % 1440) + 1440) % 1440);
+  openSheet('time', `<div class="sh-h"><h3>Время на Бали</h3><p class="mut">Сейчас ${fmtMin(n.min)} · восход ${fmtMin(st.rise)} · закат ${fmtMin(st.set)}</p></div>
+    <div class="tm"><div class="tmrow"><b id="tmLabel">${window.TIME_OFF ? 'Показываю ' + fmtMin(n.min) : 'Сейчас'}</b><span class="mut" id="tmOpen">открыто ${openN} мест · ${evN} событий</span></div>
+      <input type="range" id="tmRange" min="0" max="1440" step="15" value="${Math.round(n.min)}" aria-label="Время суток"><div class="tmscale"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div>
+      <p class="mut sm">Двигайте время — карта покажет освещение, что будет открыто и какие события идут.</p>
+      ${window.TIME_OFF ? `<button class="btn" data-act="timenow">Вернуть текущее время</button>` : ''}</div>
+    <h4>Обратный отсчёт</h4>
+    <div class="cd">
+      <div class="cdt"><span>До заката</span><b>${left > 0 ? Math.floor(left / 60) + ' ч ' + Math.round(left % 60) + ' мин' : 'уже стемнело'}</b><em>${left > 0 ? 'лучшие точки — ниже' : 'рассвет ' + fmtMin(st.rise)}</em></div>
+      <div class="cdt"><span>Прилив</span><b>${td.rising ? 'растёт до ' + f(td.high) : 'отлив до ' + f(td.low)}</b><em>${td.rising ? 'отлив ' + f(td.low) : 'прилив ' + f(td.high)} · серф лучше на среднем приливе</em></div>
+      ${full ? `<div class="cdt"><span>Полнолуние</span><b>${daysTo(full.date) === 0 ? 'сегодня' : daysTo(full.date) + ' дн'}</b><em>Пурнама — церемонии в храмах</em></div>` : ''}
+      ${nyepi ? `<div class="cdt red"><span>До Ньепи</span><b>${daysTo(nyepi.date)} дн</b><em>день тишины: остров выключат на сутки, закрыт даже аэропорт</em></div>` : ''}
+      ${hol ? `<div class="cdt"><span>Ближайший праздник</span><b>${daysTo(hol.date) === 0 ? 'сегодня' : daysTo(hol.date) + ' дн'}</b><em>${esc(hol.title)}</em></div>` : ''}
+    </div>
+    <div class="row-btns"><button class="btn" data-act="sun">Точки заката и рассвета</button><button class="btn ghost" data-act="evtab" data-tab="holidays">Все праздники</button></div>`);
+  const rg = $('#tmRange'); if (rg) rg.oninput = () => { const now = new Date(Date.now() + 8 * 3600e3); const cur = now.getUTCHours() * 60 + now.getUTCMinutes(); window.TIME_OFF = +rg.value - cur; if (Math.abs(window.TIME_OFF) < 8) window.TIME_OFF = 0; Layout.clear(); Tiles.clear(); Map2D.dirty = true; tickClock();
+    const nn = baliNow(); $('#tmLabel').textContent = window.TIME_OFF ? 'Показываю ' + fmtMin(nn.min) : 'Сейчас'; $('#tmOpen').textContent = 'открыто ' + Map2D.pois.filter(p => p.h && isOpenNow(p.h) === true).length + ' мест · ' + App.events.filter(e => e.date === nn.ymd).length + ' событий'; };
 }
 function openSun() {
   const st = sunTimes(new Date()); const n = baliNow();
