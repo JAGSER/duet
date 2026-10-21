@@ -5593,7 +5593,7 @@ const sessions = [];
 
 function Session(sfx) {
   const E = id => $a(id + sfx);
-  const S = { cv: E('cv'), MODE: 'bot', game: null, api: null, running: false, last: 0, series: [0, 0], shake: 0, parts: [], floats: [], flip: false, raw: [0, 0], ginfo: '', evq: [], lastSnap: 0, lastMove: 0, pendingMove: null, lastTilt: 0, lastSens: 0, scale: 1, dpr: 1, send: null, rotated: sfx === '2', quiet: false, primary: sfx === '', downIds: new Set(), partner: 'Друг', myname: 'Друг' };
+  const S = { cv: E('cv'), MODE: 'bot', game: null, api: null, running: false, last: 0, series: [0, 0], shake: 0, parts: [], floats: [], flip: false, raw: [0, 0], ginfo: '', evq: [], lastSnap: 0, lastMove: 0, pendingMove: null, lastTilt: 0, lastSens: 0, scale: 1, dpr: 1, send: null, rotated: sfx === '2', quiet: false, primary: sfx === '', downIds: new Set(), caches: {}, partner: 'Друг', myname: 'Друг' };
   S.ctx = S.cv.getContext('2d');
   const me = () => S.MODE === 'guest' ? 'bot' : 'you';
   const netSend = m => { if (S.send && S.MODE !== 'bot') { try { S.send(m); } catch (e) {} } };
@@ -5670,6 +5670,21 @@ function Session(sfx) {
         g.save(); g.translate(x, y); if (rot) g.rotate(rot); if (alpha !== 1) g.globalAlpha *= alpha;
         g.drawImage(A.img, r[0], r[1], r[2], r[3], -w / 2, -h / 2, w, h); g.restore(); return true;
       },
+      // api.cache(key, fn): draws fn(g) once into an offscreen canvas (per device scale / graphics mode / flip) and blits
+      // it every frame -> static backgrounds (tracks, boards, fields) cost one drawImage instead of hundreds of paths.
+      cache: (key, fn, w = W, h = H, dx = 0, dy = 0) => {
+        if (HOTSEAT) { g.save(); if (dx || dy) g.translate(dx, dy); fn(g); g.restore(); return; } // hotseat text is oriented per half of the screen -> draw live
+        const sc = S.dpr * S.scale, k = key + '|' + sc.toFixed(3) + '|' + (a.hd ? 1 : 0) + '|' + (S.flip ? 1 : 0) + '|' + (HOTSEAT ? 1 : 0);
+        let c = S.caches[k];
+        if (!c) {
+          c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w * sc)); c.height = Math.max(1, Math.round(h * sc));
+          const q = c.getContext('2d'); q.setTransform(sc, 0, 0, sc, 0, 0); if (S.flip) { q.translate(w, h); q.rotate(Math.PI); }
+          const g1 = g; g = q; try { fn(q); } catch (e) { console.error(e); } g = g1;
+          for (const o in S.caches) if (o.startsWith(key + '|')) delete S.caches[o];
+          S.caches[k] = c;
+        }
+        if (dx || dy) g.drawImage(c, dx, dy, w, h); else { g.save(); g.setTransform(sc, 0, 0, sc, 0, 0); g.drawImage(c, 0, 0, w, h); g.restore(); }
+      },
       has: name => { const A = SPR.on && cur && SPR.atl[cur.n]; return !!(A && A.ok && A.map[MODE === 'guest' ? name.replace(/cyan|pink/g, c => c === 'cyan' ? 'pink' : 'cyan') : name]); },
       _timers: timers,
     };
@@ -5691,7 +5706,7 @@ function Session(sfx) {
   }
   S.start = () => {
     E('ov').innerHTML = '';
-    S.parts = []; S.floats = []; S.shake = 0; S.evq = []; S.raw = [0, 0]; S.ginfo = ''; setInfoEl('');
+    S.parts = []; S.floats = []; S.shake = 0; S.caches = {}; S.evq = []; S.raw = [0, 0]; S.ginfo = ''; setInfoEl('');
     // who starts is random: over the network the host may hand the host role (side 'you', which usually starts) to the partner
     if (S.MODE === 'host' && !HOTSEAT && !S.noSwap && Arcade.randomStart !== false && Math.random() < .5) {
       S.MODE = 'guest'; netSend({ a: 'swap', n: cur.n }); S.waitCard();
@@ -8138,6 +8153,8 @@ registerGame({
       for (let i = 0; i < 10; i++) for (let j = 0; j < 3; j++) { g.fillStyle = (i + j) % 2 ? '#111' : '#fff'; g.fillRect(fx + i * sq, BY - 6 + j * 4, sq, 4); }
       api.spr('flag', CX + R - HW - 18, BY - 16, 28);
       api.spr('flag', CX, (TY + BY) / 2 - 8, 40);
+    }
+    function drawLapHD(g) {
       api.text(TR(`Круг ${Math.min(LAPS, cars[MI].lap + 1)}/${LAPS}`, `Lap ${Math.min(LAPS, cars[MI].lap + 1)}/${LAPS}`), CX, (TY + BY) / 2 + 36, 18, '#fff');
     }
     // nitro flame behind the leader while it is flying; speed is measured from the drawn positions (works on guest too)
@@ -8174,7 +8191,7 @@ registerGame({
         for (const c of cars) if (c.v > 60 && Math.random() < dt * 20) api.burst(c.x - Math.cos(c.a) * 15, c.y - Math.sin(c.a) * 15, 'rgba(255,255,255,.5)', 1, 30);
       },
       draw(g) {
-        if (api.hd && api.has('curb')) drawSceneHD(g); else {
+        if (api.hd && api.has('curb')) { api.cache('track', drawSceneHD); drawLapHD(g); } else {
         // grass
         g.fillStyle = '#3fae49'; g.fillRect(0, 0, W, H);
         g.fillStyle = 'rgba(0,0,0,.06)'; for (let y = 0; y < H; y += 28) g.fillRect(0, y, W, 14);
@@ -11308,11 +11325,11 @@ registerGame({
         ageRipples(dt); clock += dt;
       },
       draw(g) {
-        let gr = g.createLinearGradient(0, 0, 0, SURF); gr.addColorStop(0, '#ffb86b'); gr.addColorStop(1, '#ffe2a8');
+        api.cache('bg', g => { let gr = g.createLinearGradient(0, 0, 0, SURF); gr.addColorStop(0, '#ffb86b'); gr.addColorStop(1, '#ffe2a8');
         g.fillStyle = gr; g.fillRect(0, 0, W, SURF);
         api.circle(W / 2, SURF - 10, 30, 'rgba(255,214,10,.8)');
         gr = g.createLinearGradient(0, SURF, 0, H); gr.addColorStop(0, '#1fa3d6'); gr.addColorStop(1, '#0b2a6e');
-        g.fillStyle = gr; g.fillRect(0, SURF, W, H - SURF);
+        g.fillStyle = gr; g.fillRect(0, SURF, W, H - SURF); });
         // light rays + weeds + bubbles
         g.fillStyle = 'rgba(255,255,255,.05)';
         for (let i = 0; i < 4; i++) { const x = 40 + i * 90 + Math.sin(clock * .5 + i) * 10; g.beginPath(); g.moveTo(x, SURF); g.lineTo(x + 30, SURF); g.lineTo(x - 20, H); g.lineTo(x - 60, H); g.fill(); }
@@ -13268,7 +13285,7 @@ registerGame({
     function drawDial(g, t, r) {
       const tw = twist(r);
       const gr = g.createRadialGradient(CX - 30, CY - 40, 10, CX, CY, DR + 20); gr.addColorStop(0, '#ffffff'); gr.addColorStop(1, '#d9ccff');
-      const hd = api.spr('stopwatch', CX, CY - 22, 250); // clean face (own 12 marks), face radius ~97, face centre 22px below sprite centre
+      const hd = api.hd && api.has('stopwatch'); if (hd) api.cache('watch', () => api.spr('stopwatch', CX, CY - 22, 250)); // clean face (own 12 marks), face radius ~97, face centre 22px below sprite centre
       if (!hd) { api.circle(CX, CY, DR + 16, '#1d1340'); api.circle(CX, CY, DR + 10, C.violet); api.circle(CX, CY, DR, gr); }
       if (!hd) for (let i = 0; i < 60; i++) { const a = i / 60 * Math.PI * 2, l = i % 5 ? 6 : 14; g.strokeStyle = '#1d1340'; g.lineWidth = i % 5 ? 2 : 4; g.beginPath(); g.moveTo(CX + Math.sin(a) * (DR - 6), CY - Math.cos(a) * (DR - 6)); g.lineTo(CX + Math.sin(a) * (DR - 6 - l), CY - Math.cos(a) * (DR - 6 - l)); g.stroke(); }
       if (!api.hd) { api.circle(CX, CY - DR - 22, 12, '#1d1340'); api.rr(CX - 8, CY - DR - 40, 16, 12, 4); g.fillStyle = '#1d1340'; g.fill(); }
@@ -13323,9 +13340,9 @@ registerGame({
         } else if (S.ph === 'reveal') S.rv += dt;
       },
       draw(g) {
-        const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#1b1447'); bg.addColorStop(1, '#3a1670'); g.fillStyle = bg; g.fillRect(0, 0, W, H);
-        if (api.hd) { const hg = g.createRadialGradient(CX, CY, 40, CX, CY, 200); hg.addColorStop(0, 'rgba(120,200,255,.28)'); hg.addColorStop(1, 'rgba(120,200,255,0)'); g.fillStyle = hg; g.fillRect(0, 0, W, H); }
-        else for (let i = 0; i < 18; i++) { const a = i / 18 * Math.PI * 2 + tk * .1; api.circle(CX + Math.cos(a) * 165, CY + Math.sin(a) * 165, 2, 'rgba(255,255,255,.25)'); }
+        api.cache('bg', g => { const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#1b1447'); bg.addColorStop(1, '#3a1670'); g.fillStyle = bg; g.fillRect(0, 0, W, H);
+        if (api.hd) { const hg = g.createRadialGradient(CX, CY, 40, CX, CY, 200); hg.addColorStop(0, 'rgba(120,200,255,.28)'); hg.addColorStop(1, 'rgba(120,200,255,0)'); g.fillStyle = hg; g.fillRect(0, 0, W, H); } });
+        if (!api.hd) for (let i = 0; i < 18; i++) { const a = i / 18 * Math.PI * 2 + tk * .1; api.circle(CX + Math.cos(a) * 165, CY + Math.sin(a) * 165, 2, 'rgba(255,255,255,.25)'); }
         const r = S.rd - 1, t = myTime();
         drawDial(g, S.ph === 'run' ? t : 0, r);
         // round dots
@@ -16992,17 +17009,19 @@ registerGame({
     function drawLane(g, side) {
       const x0 = side === 'you' ? 0 : W / 2, c = S.c[side];
       g.save(); g.beginPath(); g.rect(x0, TOPY, W / 2, BOTY - TOPY); g.clip();
-      const rock = g.createLinearGradient(x0, 0, x0 + W / 2, 0); rock.addColorStop(0, side === 'you' ? '#8a5a3a' : '#7d4f33'); rock.addColorStop(1, side === 'you' ? '#a06a44' : '#94603c');
-      g.fillStyle = rock; g.fillRect(x0, TOPY, W / 2, BOTY - TOPY);
+      api.cache('rock_' + side, g => { const rock = g.createLinearGradient(x0, 0, x0 + W / 2, 0); rock.addColorStop(0, side === 'you' ? '#8a5a3a' : '#7d4f33'); rock.addColorStop(1, side === 'you' ? '#a06a44' : '#94603c');
+      g.fillStyle = rock; g.fillRect(x0, TOPY, W / 2, BOTY - TOPY); });
       // cracks and holds per metre (same layout in both lanes = fair)
-      const lo = Math.floor(c.dh - (BOTY - CLY) / PX) - 1, hi = Math.ceil(c.dh + (CLY - TOPY) / PX) + 1;
-      for (let m = Math.max(-2, lo); m <= Math.min(GOAL + 4, hi); m++) {
-        const y = sy(side, m);
-        g.strokeStyle = 'rgba(0,0,0,.12)'; g.lineWidth = 2; g.beginPath(); g.moveTo(x0 + hash(m) * 180, y); g.lineTo(x0 + hash(m + .5) * 180, y - 18); g.stroke();
-        if (m < 0 || m > GOAL) continue;
-        for (let k = 0; k < 2; k++) { const hx = x0 + 30 + hash(m * 3 + k) * 120, hy = y + hash(m * 7 + k) * 10 - 5; if (!api.spr('hold_' + ((m + k) % 6), hx, hy, (6 + hash(m + k) * 3) * 2.3, null, hash(m * 5) * 3)) { g.fillStyle = holdCols[(m + k) % 6]; g.beginPath(); g.ellipse(hx, hy, 6 + hash(m + k) * 3, 4.5, hash(m * 5) * 3, 0, 7); g.fill(); } }
-        if (m % 10 === 0 && m > 0 && m < GOAL) { api.text(`${m} ${TR('м', 'm')}`, x0 + 162, y, 10, 'rgba(255,255,255,.6)', 'right'); }
-      }
+      const CH = (GOAL + 7) * PX; // the whole hold column is drawn once and scrolled (one drawImage per frame instead of ~80 sprites)
+      api.cache('holds_' + side, g => {
+        for (let m = -2; m <= GOAL + 4; m++) {
+          const y = CH - (m + 3) * PX;
+          g.strokeStyle = 'rgba(0,0,0,.12)'; g.lineWidth = 2; g.beginPath(); g.moveTo(hash(m) * 180, y); g.lineTo(hash(m + .5) * 180, y - 18); g.stroke();
+          if (m < 0 || m > GOAL) continue;
+          for (let k = 0; k < 2; k++) { const hx = 30 + hash(m * 3 + k) * 120, hy = y + hash(m * 7 + k) * 10 - 5; if (!api.spr('hold_' + ((m + k) % 6), hx, hy, (6 + hash(m + k) * 3) * 2.3, null, hash(m * 5) * 3)) { g.fillStyle = holdCols[(m + k) % 6]; g.beginPath(); g.ellipse(hx, hy, 6 + hash(m + k) * 3, 4.5, hash(m * 5) * 3, 0, 7); g.fill(); } }
+          if (m % 10 === 0 && m > 0 && m < GOAL) { api.text(`${m} ${TR('м', 'm')}`, 162, y, 10, 'rgba(255,255,255,.6)', 'right'); }
+        }
+      }, W / 2, CH, x0, sy(side, -3) - CH);
       // ground and summit
       const gy = sy(side, 0); if (gy < BOTY) { g.fillStyle = '#3fa34d'; g.fillRect(x0, gy, W / 2, BOTY - gy); }
       const ty = sy(side, GOAL + .6);
@@ -17364,14 +17383,14 @@ registerGame({
         for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) { const v = at(c, r); if (v) disc(cx(c), cy(r), sideOf(v)); }
         if (S.anim) disc(cx(S.anim.c), S.anim.y, S.anim.s);
         // the frame with holes (HD: side posts behind it)
-        const fh = ROWS * CS + 46, fy = Y0 - 12 + fh / 2;
+        api.cache('frame', g => { const fh = ROWS * CS + 46, fy = Y0 - 12 + fh / 2;
         if (api.hd) { api.spr('post_l', X0 - 6, fy, 24, fh); api.spr('post_r', X0 + COLS * CS + 6, fy, 24, fh); }
         g.save(); g.beginPath(); api.rr(X0 - 10, Y0 - 8, COLS * CS + 20, ROWS * CS + 16, 18);
         for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) { g.moveTo(cx(c) + CS / 2 - 4, cy(r)); g.arc(cx(c), cy(r), CS / 2 - 4, 0, Math.PI * 2, true); }
         const fr = g.createLinearGradient(0, Y0, 0, Y0 + ROWS * CS); fr.addColorStop(0, '#3b6bff'); fr.addColorStop(1, '#1d3fcf');
         g.fillStyle = fr; g.fill('evenodd'); g.restore();
         for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (!api.spr('hole_rim', cx(c), cy(r), CS * 1.02)) api.circle(cx(c), cy(r), CS / 2 - 4, null, 'rgba(0,0,40,.45)', 2);
-        api.rr(X0 - 10, Y0 - 8, COLS * CS + 20, ROWS * CS + 16, 18); g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 2; g.stroke();
+        api.rr(X0 - 10, Y0 - 8, COLS * CS + 20, ROWS * CS + 16, 18); g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 2; g.stroke(); });
         // legs
         if (!api.hd) { g.fillStyle = '#1d3fcf'; g.fillRect(X0 - 4, Y0 + ROWS * CS + 8, 14, 22); g.fillRect(X0 + COLS * CS - 10, Y0 + ROWS * CS + 8, 14, 22); }
         // last move marker
@@ -18302,9 +18321,9 @@ registerGame({
       guestUpdate(dt) { cosmetic(dt); },
       draw(g) {
         g0 = g;
-        const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#2a1608'); bg.addColorStop(.5, '#4a2a12'); bg.addColorStop(1, '#2a1608'); g.fillStyle = bg; g.fillRect(0, 0, W, H);
+        api.cache('board', g => { const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#2a1608'); bg.addColorStop(.5, '#4a2a12'); bg.addColorStop(1, '#2a1608'); g.fillStyle = bg; g.fillRect(0, 0, W, H);
         api.rr(X0 - 9, Y0 - 9, N * CS + 18, N * CS + 18, 10); g.fillStyle = '#8a5a2b'; g.fill(); g.strokeStyle = '#e0b77a'; g.lineWidth = 2; g.stroke();
-        for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) { if (api.spr((r + c) % 2 ? 'sq_dark' : 'sq_light', X0 + c * CS + CS / 2, Y0 + r * CS + CS / 2, CS + .5, CS + .5)) continue; g.fillStyle = (r + c) % 2 ? '#7b4a26' : '#f3dcb3'; g.fillRect(X0 + c * CS, Y0 + r * CS, CS, CS); }
+        for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) { if (api.spr((r + c) % 2 ? 'sq_dark' : 'sq_light', X0 + c * CS + CS / 2, Y0 + r * CS + CS / 2, CS + .5, CS + .5)) continue; g.fillStyle = (r + c) % 2 ? '#7b4a26' : '#f3dcb3'; g.fillRect(X0 + c * CS, Y0 + r * CS, CS, CS); } });
         const mine = !S.over && (api.hotseat || api.mine(S.turn)) && !busy;
         const LM = S.lm, anim = LM && animT < hopT(LM);
         // last move trail
@@ -20177,7 +20196,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202610202045';
+const APP_VERSION = '202610211317';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
@@ -21858,7 +21877,7 @@ function plusLang() {
   set('setClipsL', '🎬 Видео-клипы: иногда записывать смешные моменты по 5 сек', '🎬 Video clips: sometimes record funny 5-second moments');
   chatLaunchers().forEach(b => { b.title = tr('Чат', 'Chat'); });
   $('bInstall2').textContent = '📲 ' + tr('Установить ярлык на рабочий стол', 'Install a desktop shortcut');
-  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 55 · 20.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
+  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 56 · 21.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
 }
 plusLang();
 try { document.documentElement.lang = LANG; } catch (e) {}
