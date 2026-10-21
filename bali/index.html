@@ -2676,10 +2676,14 @@ function picOf(p) { const c = p._pic; if (c && (c.img || performance.now() - c.t
 // картинки мест стоят в общей очереди глубины: ближние деревья, люди и машины их перекрывают, а они — дальние
 function queuePics(c) {
   const M = Map2D; const W = M.W, H = M.H; const bb = viewBBox(80);
-  for (const p of M.pois) { if (p.X < bb[0] || p.X > bb[2] || p.Y < bb[1] || p.Y > bb[3]) continue; if (!poiVisible(p)) continue; const o = picOf(p); if (!o.img || !o.km) continue;
+  if (!M.poiGrid) { M.poiGrid = new Map(); for (const p of M.pois) { const k = Math.floor(p.X / 2) + ',' + Math.floor(p.Y / 2); let a = M.poiGrid.get(k); if (!a) M.poiGrid.set(k, a = []); a.push(p); } }
+  const dyn = GL.on ? DQ.a.filter(e => e[2] !== undefined) : []; if (GL.on && !dyn.length) return;
+  const list = []; for (let cx = Math.floor(bb[0] / 2); cx <= Math.floor(bb[2] / 2); cx++) for (let cy = Math.floor(bb[1] / 2); cy <= Math.floor(bb[3] / 2); cy++) { const a = M.poiGrid.get(cx + ',' + cy); if (a) for (const p of a) list.push(p); }
+  for (const p of list) { if (p.X < bb[0] || p.X > bb[2] || p.Y < bb[1] || p.Y > bb[3]) continue; if (!poiVisible(p)) continue; const o = picOf(p); if (!o.img || !o.km) continue;
     const lw = o.km * M.s; if (lw < 1.5) continue; const lh = lw * o.img._h / o.img._w; const X0 = sx2(p.X, p.Y), Y0 = sy2(p.X, p.Y); if (X0 < -lw || X0 > W + lw || Y0 < -40 || Y0 > H + lh + 40) continue;
     const sh = lmShift({ p, km: o.km }); if (sh === 'wait') continue; const X = sh ? X0 + sh[0] * M.s : X0, Y = sh ? Y0 + sh[1] * M.s : Y0; const im = o.img;
-    DQ.add(Y, () => Art.drawSprite(c, im, X - lw / 2, Y - lh, lw, lh), X, lw * .8, lh); } }
+    if (GL.on) { let front = false; for (const e of dyn) { if (e[0] >= Y) continue; const ew = (e[3] || 20) / 2, eh = e[4] || 20; if (e[2] + ew < X - lw / 2 || e[2] - ew > X + lw / 2 || e[0] < Y - lh || e[0] - eh > Y) continue; front = true; break; } if (!front) continue; }
+    DQ.add(Y, () => Art.drawSprite(c, im, X - lw / 2, Y - lh, lw, lh), GL.on ? undefined : X, lw * .8, lh); } }
 function drawOverlay(c, now) {
   const M = Map2D; const L = layLevel(); const lay = layoutFor(L); const k = M.s / scaleOf(L);
   M.hitList = []; const vis = []; const W = M.W, H = M.H;
@@ -2957,6 +2961,7 @@ GL.build = function () {
     const sp = new PIXI.Sprite(PIXI.Texture.from(c)); sp.anchor.set(.5, (W * .62 * .62 + 2) / H); sp.position.set(p.x, p.y); sp._p = p; GL.L.volc.addChild(sp); return sp; });
   // дороги
   GL.buildRoads(); GL.buildTraffic();
+  if (GL.L.pics) { GL.L.pics.removeChildren().forEach(c => c.destroy()); GLP.sp.clear(); }
   GL.L.decor.removeChildren(); GLB.pc.forEach(pc => pc.destroy({ children: true })); GLB.pc.clear(); GLB.frames = null; if (GLB.ready) GLB.prebuild(); GL.decor.chunks.forEach(ch => ch.destroy({ children: true })); GL.decor.chunks.clear(); GL.decor.fine.forEach(ch => ch.destroy({ children: true })); GL.decor.fine.clear(); GL.texC = new Map(); GL.decor.lastLv = null;
   GL.lastCam = ''; if (GL._warmT) { GL._warmT = 0; GL.prewarm(); }
 };
@@ -3021,6 +3026,7 @@ function glUpdateChunk(ch, s, lv, fine) {
       else { v = d.r <= dens && !(sp._o.isB && s < 18); if (v && dyn) v = coarseOk(d, s); }
       sp.visible = v; } if (Map2D._okSkip) { ch._lv = -1; GL.pend = true; } }
   if (ch._lv !== lv) GL.pend = true;
+  if (ch._s === s && ch._sl === ch._lv) return; ch._s = s; ch._sl = ch._lv; // размеры зависят только от масштаба
   const tw = 256; for (const sp of ch._sp) { if (!sp.visible) continue; const o = sp._o; if (o.fixed) continue; const w = Math.max(o.isB ? 12 : s < 4 ? 5 : s < 8 ? 6.5 : 8, o.km * s) * sp._var; const k = (w / s) / (tw * o.tex._fw); sp.scale.set(k * sp._flip, k); }
 }
 GL.updateDecor = function (bb) {
@@ -3029,7 +3035,7 @@ GL.updateDecor = function (bb) {
   for (const ch of GL.decor.chunks.values()) ch.visible = false;
   let made = 0; if (!fine) { if (!GL.ckeys) { GL.ckeys = new Set(); for (const d of Map2D.decor) GL.ckeys.add(Math.floor(d.x / GL_CH) + ',' + Math.floor(d.y / GL_CH)); }
     const pad = 1, x0 = Math.floor((bb[0] - pad) / GL_CH), x1 = Math.floor((bb[2] + pad) / GL_CH), y0 = Math.floor((bb[1] - pad) / GL_CH), y1 = Math.floor((bb[3] + pad) / GL_CH);
-    for (const key of GL.ckeys) { const i = key.indexOf(','), cx = +key.slice(0, i), cy = +key.slice(i + 1); if (cx < x0 || cx > x1 || cy < y0 || cy > y1) continue; if (!GL.decor.chunks.has(key)) { if (made > 30) { GL.pend = true; continue; } made++; } const ch = glChunk(cx, cy); ch.visible = true; glUpdateChunk(ch, s, lv, false); } }
+    for (let cx = x0; cx <= x1; cx++) for (let cy = y0; cy <= y1; cy++) { const key = cx + ',' + cy; if (!GL.ckeys.has(key)) continue; if (!GL.decor.chunks.has(key)) { if (made > 30) { GL.pend = true; continue; } made++; } const ch = glChunk(cx, cy); ch.visible = true; glUpdateChunk(ch, s, lv, false); } }
   for (const ch of GL.decor.fine.values()) ch.visible = false;
   if (fine) { const now = performance.now(); made = 0; for (let cx = Math.floor((bb[0] - .1)); cx <= Math.floor(bb[2] + .1); cx++) for (let cy = Math.floor(bb[1] - .1); cy <= Math.floor(bb[3] + .3); cy++) { let ch = GL.decor.fine.get(cx + ',' + cy); if (!ch && !GLB.ready) { GL.pend = true; continue; } if (!ch && !HiR.ready(cx - .06, cy - .06, cx + 1.06, cy + 1.06)) { GL.pend = true; continue; } if (!ch && !isLand(cx + .5, cy + .5) && !isLand(cx, cy) && !isLand(cx + 1, cy + 1) && !isLand(cx + 1, cy) && !isLand(cx, cy + 1)) continue; if (!ch) { if (made > 3) { Map2D.dirty = true; GL.lastCam = ''; continue; } ch = glFineChunk(cx, cy); made++; } ch.visible = true; ch._t = now; glUpdateChunk(ch, s, lv, true); } }
 };
@@ -3039,7 +3045,7 @@ GL.render = function (now) {
   if (!GL.on) return; const M = Map2D, s = M.s;
   if (Night.step !== GL.step) GL.build();
   const tk = Math.floor(baliNow().min / 10) + '/' + Night.step + '/' + (App.showTraffic !== false); if (tk !== GL.trafficKey) GL.buildTraffic();
-  const cam = M.cx.toFixed(5) + ',' + M.cy.toFixed(5) + ',' + s.toFixed(4) + ',' + M.W + 'x' + M.H;
+  const cam = M.cx.toFixed(5) + ',' + M.cy.toFixed(5) + ',' + s.toFixed(4) + ',' + M.W + 'x' + M.H + '|' + [...M.enabled].join(',') + M.openOnly + M.favOnly + (M.focusIds ? M.focusIds.size : '');
   GL._t0 = performance.now(); if (cam === GL.lastCam && !GL.dirty && !GL.pend) return; GL.pend = false; GL.lastCam = cam; GL.dirty = false;
   const W = M.W, H = M.H; GL.world.scale.set(s); GL.world.position.set(W / 2 - M.cx * s, H / 2 - M.cy * s);
   // волны: экранная текстура, сдвигается вместе с картой
@@ -3058,7 +3064,7 @@ GL.render = function (now) {
   // вулканы
   for (const sp of GL.volc) { const p = sp._p, big = p.e > 2500 ? 1 : p.e > 2000 ? .7 : .5; const w = Math.max(16, Math.min(900, s * 5 * big)); const k = (w / s) / sp.texture.width; sp.scale.set(k); }
   // деревья и дома
-  GL.updateDecor(viewBBox(60)); GLB.update(viewBBox(60));
+  GL.updateDecor(viewBBox(60)); GLB.update(viewBBox(60)); GLP.update();
   GL.app.renderer.render(GL.app.stage);
 };
 
@@ -3117,6 +3123,21 @@ GLB.update = function (bb) { if (!GLB.ready) { GLB.load(); return; } const s = M
   for (const pc of GLB.pc.values()) pc.visible = false; if (!on) return; const C = GLB.C; let made = 0; const fa = Math.min(1, (s - GLB.minS) / 15 + .15); // дома меньше пикселя плавно проявляются, а не выскакивают
   for (let cx = Math.floor((bb[0] - .2) / C); cx <= Math.floor((bb[2] + .2) / C); cx++) for (let cy = Math.floor((bb[1] - .2) / C); cy <= Math.floor((bb[3] + .4) / C); cy++) { const key = cx + ',' + cy; if (!GLB.ch.has(key)) continue;
     let pc = GLB.pc.get(key); if (!pc) { if (made++ > 40) { GL.pend = true; continue; } pc = GLB.chunk(key); } pc.visible = true; pc.alpha = fa; } };
+
+// ===== Картинки мест на видеокарте: постоянное место и настоящий размер =====
+const GLP = { sp: new Map(), key: '' };
+GLP.update = function () { const M = Map2D; if (!GL.L.pics) { GL.L.pics = new PIXI.Container(); GL.L.pics.sortableChildren = true; GL.world.addChildAt(GL.L.pics, GL.world.getChildIndex(GL.L.decor) + 1); }
+  const fk = [...M.enabled].join(',') + M.openOnly + M.favOnly + (M.focusIds ? M.focusIds.size : '') + Night.step + (M.openOnly ? Math.floor(Date.now() / 6e5) : '');
+  const bb = viewBBox(80); if (!M.poiGrid) return;
+  const C = 2; for (let cx = Math.floor(bb[0] / C); cx <= Math.floor(bb[2] / C); cx++) for (let cy = Math.floor(bb[1] / C); cy <= Math.floor(bb[3] / C); cy++) { const a = M.poiGrid.get(cx + ',' + cy); if (!a) continue;
+    for (const p of a) { let sp = GLP.sp.get(p.id); const o = picOf(p);
+      if (!sp) { if (!o.img || !o.km) continue; sp = new PIXI.Sprite(glTexFor(o.img)); const t = sp.texture; sp.anchor.set(.5, 1); const sh = lmShift({ p, km: o.km }); const dx = sh && sh !== 'wait' ? sh[0] : 0, dy = sh && sh !== 'wait' ? sh[1] : 0;
+        sp.position.set(p.X + dx, p.Y + dy); sp.scale.set(o.km / (256 * t._fw)); sp.zIndex = p.Y + dy; sp._p = p; sp._fk = null; sp._step = Night.step; GLP.sp.set(p.id, sp); GL.L.pics.addChild(sp); }
+      if (sp._step !== Night.step) { sp.texture = glTexFor(o.img); sp._step = Night.step; }
+      if (sp._fk !== fk) { sp._fk = fk; sp.visible = poiVisible(p); } } }
+  // слишком мелкие (меньше ~1.5 пикселя) — плавно прозрачные, а не выскакивают
+  for (const sp of GL.L.pics.children) { const lw = sp.scale.x * 256 * sp.texture._fw * M.s; sp.alpha = Math.max(0, Math.min(1, (lw - 1.5) / 3)); sp.renderable = sp.alpha > 0; }
+};
 
 // ===== Живой остров =====
 const World = { clouds: [], birds: [], bikes: [], npcs: [], animals: [], boats: [], sea: [], surfers: [], flights: [], weather: null, night: 0, lastT: 0, lastSpawnKey: '' };
