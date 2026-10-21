@@ -1547,10 +1547,10 @@ function drawDecorDyn(c) {
   if (s >= FINE_S) { const C = FINE.cell; const fr = Math.max(.2, Math.min(1, (s - FINE_S) / 900 + .2));
     for (let gx = Math.floor(wb[0] / C); gx <= Math.floor(wb[2] / C); gx++) for (let gy = Math.floor(wb[1] / C); gy <= Math.floor(wb[3] / C); gy++) for (const d of fineCell(gx, gy)) {
       if ((d.v % 1000) / 1000 > fr) continue; const X = sx2(d.x, d.y), Y = sy2(d.x, d.y); if (X < -80 || X > M.W + 80 || Y < -20 || Y > M.H + 160) continue; DQ.add(Y, () => Decor.draw(c, d, X, Y, s));
-      if (World.night > .05 && d.k.startsWith('bld_') && d.v % 5) { const w = Math.max(12, bldKm(d.k) * s); M.lights.push({ X, Y: Y - w * .3, r: w * .75, k: 'win', v: d.v }); } }
+      if (World.night > .05 && d.k.startsWith('bld_') && d.v % 3 === 0) { const w = Math.max(12, bldKm(d.k) * s); M.lights.push({ X, Y: Y - w * .3, r: w * .75, k: 'win', v: d.v }); } }
   } else { const dens = s < 6 ? .12 : s < 10 ? .25 : s < 20 ? .5 : 1;
     for (let gx = Math.floor(wb[0] / .5); gx <= Math.floor(wb[2] / .5); gx++) for (let gy = Math.floor(wb[1] / .5); gy <= Math.floor(wb[3] / .5); gy++) { const a = M.dgrid.get(gx + ',' + gy); if (!a) continue;
-      for (const d of a) { if (d.r > dens) continue; const X = sx2(d.x, d.y), Y = sy2(d.x, d.y); if (X < -60 || X > M.W + 60 || Y < -10 || Y > M.H + 120) continue; if (!coarseOk(d, s)) continue; DQ.add(Y, () => Decor.draw(c, d, X, Y, s)); if (World.night > .05 && d.k.startsWith('bld_') && d.v % 5) { const w = Math.max(12, bldKm(d.k) * s); M.lights.push({ X, Y: Y - w * .3, r: w * .8, k: 'win', v: d.v }); } } } }
+      for (const d of a) { if (d.r > dens) continue; const X = sx2(d.x, d.y), Y = sy2(d.x, d.y); if (X < -60 || X > M.W + 60 || Y < -10 || Y > M.H + 120) continue; if (!coarseOk(d, s)) continue; DQ.add(Y, () => Decor.draw(c, d, X, Y, s)); if (World.night > .05 && d.k.startsWith('bld_') && d.v % 3 === 0) { const w = Math.max(12, bldKm(d.k) * s); M.lights.push({ X, Y: Y - w * .3, r: w * .8, k: 'win', v: d.v }); } } } }
 }
 // ===== Ночь и сумерки: цветокоррекция (умножение на сине-фиолетовый / тёплый закатный), а не чёрная плёнка; свет окон, фар, заведений и городов =====
 // огни городов издалека — чёткие точки (как огни с высоты), плотность по числу мест в квадрате 1 км
@@ -1567,19 +1567,24 @@ function drawNight(c, now) {
   const M = Map2D, n = World.night; if (n < .02) return; const dusk = Math.max(0, 1 - Math.abs(n - .45) / .45); const t = now / 1000, s = M.s;
   // 1) цветокоррекция: днём без изменений, в сумерках тёплый персиковый, ночью сине-фиолетовый
   let col = mixc([255, 255, 255], [255, 178, 128], dusk * .8); col = mixc(col, [92, 104, 196], Math.max(0, (n - .35) / .65));
+  const k = Math.max(0, (n - .3) / .7);
+  // снимок «дневной» картинки до затемнения — им освещённые места и будут открываться
+  const DS = NightLayer; if (k > 0) { if (!DS.day) DS.day = document.createElement('canvas'); if (DS.day.width !== M.cv.width || DS.day.height !== M.cv.height) { DS.day.width = M.cv.width; DS.day.height = M.cv.height; } const dg = DS.day.getContext('2d'); dg.clearRect(0, 0, DS.day.width, DS.day.height); dg.drawImage(M.cv, 0, 0); }
   c.save(); c.globalCompositeOperation = 'multiply'; c.fillStyle = `rgb(${col})`; c.fillRect(0, 0, M.W, M.H); c.globalCompositeOperation = 'source-over';
-  const k = Math.max(0, (n - .3) / .7); if (k <= 0) { c.restore(); return; }
+  if (k <= 0) { c.restore(); return; }
   // 2) свет — простые кружки одного цвета на отдельном слое: в местах наложения цвет тот же, без смешивания; слой кладётся один раз с общей прозрачностью
   const LL = NightLayer; const dpr = M.dpr; if (!LL.cv) LL.cv = document.createElement('canvas'); if (LL.cv.width !== M.cv.width || LL.cv.height !== M.cv.height) { LL.cv.width = M.cv.width; LL.cv.height = M.cv.height; }
   const g = LL.cv.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, LL.cv.width, LL.cv.height); g.setTransform(dpr, 0, 0, dpr, 0, 0);
   const circ = (X, Y, r) => { if (X < -r || X > M.W + r || Y < -r || Y > M.H + r) return; g.moveTo(X + r, Y); g.arc(X, Y, r, 0, 6.2832); };
-  g.fillStyle = '#FFD27A'; g.beginPath();
+  g.fillStyle = '#000'; g.beginPath();
   if (s < 45) { const a = cityDots(); const r = Math.max(1.2, Math.min(4, s * .2)); for (let q = 0; q < a.length; q += 3) circ(sx2(a[q], a[q + 1]), sy2(a[q], a[q + 1]), r * (.7 + .5 * a[q + 2])); }
   for (const o of M.lights) circ(o.X, o.k === 'win' ? o.Y + o.r * .3 : o.Y, o.k === 'win' ? o.r * .85 : o.r * .7);
-  for (const p of M.visiblePOI || []) { if (!['hotel', 'food', 'market', 'cafe', 'warung'].includes(p.c)) continue; circ(sx2(p.X, p.Y), sy2(p.X, p.Y), 16); }
+  for (const p of M.visiblePOI || []) { if (!['hotel', 'food', 'market', 'cafe', 'warung', 'nightlife'].includes(p.c)) continue; circ(sx2(p.X, p.Y), sy2(p.X, p.Y), p.c === 'nightlife' ? 26 + 3 * Math.sin(t * 2.5 + p.X * 9) : 16); }
   g.fill();
-  g.fillStyle = '#FF5CC0'; g.beginPath(); for (const p of M.visiblePOI || []) if (p.c === 'nightlife') circ(sx2(p.X, p.Y), sy2(p.X, p.Y), 26 + 3 * Math.sin(t * 2.5 + p.X * 9)); g.fill();
-  c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = (s < 45 ? .55 : .3) * k; c.drawImage(LL.cv, 0, 0); c.globalAlpha = 1;
+  // в кругах открываем исходную (дневную) картинку с лёгким тёплым оттенком
+  g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-in'; g.drawImage(DS.day, 0, 0);
+  g.globalCompositeOperation = 'source-atop'; g.fillStyle = 'rgba(255,200,90,.22)'; g.fillRect(0, 0, LL.cv.width, LL.cv.height); g.globalCompositeOperation = 'source-over';
+  c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = k; c.drawImage(LL.cv, 0, 0); c.globalAlpha = 1;
   c.restore();
 }
 const DQ = { a: [], b: [], add(y, f) { this.a.push([y, f]); }, top(f) { this.b.push(f); },
@@ -1596,7 +1601,7 @@ function drawRoute(c, now) {
   c.strokeStyle = '#fff'; c.lineWidth = 9; c.beginPath(); R.pts.forEach(([la, ln], i) => { const X = sx2(toX(ln), toY(la)), Y = sy2(toX(ln), toY(la)); i ? c.lineTo(X, Y) : c.moveTo(X, Y); }); c.stroke();
   c.strokeStyle = R.approx ? '#FF8A00' : '#7B2FF7'; c.lineWidth = 5.5; c.setLineDash(R.approx ? [10, 9] : []); c.stroke(); c.setLineDash([]);
   if (!R.len) { R.cum = [0]; let Lk = 0; for (let i = 1; i < R.pts.length; i++) { Lk += kmBetween(R.pts[i - 1][0], R.pts[i - 1][1], R.pts[i][0], R.pts[i][1]); R.cum.push(Lk); } R.len = Lk; }
-  const q = ((now / 1000) * .08 % 1) * R.len; let i = 1; while (i < R.cum.length - 1 && R.cum[i] < q) i++;
+  const dtR = Math.min(.1, (now - (R.lt || now)) / 1000); R.lt = now; R.q = ((R.q || 0) + Math.min(R.len * .08, 70 / Map2D.s) * dtR) % R.len; const q = R.q; let i = 1; while (i < R.cum.length - 1 && R.cum[i] < q) i++;
   const a = R.pts[i - 1], b = R.pts[i]; const f = (q - R.cum[i - 1]) / Math.max(1e-6, R.cum[i] - R.cum[i - 1]);
   const la = a[0] + (b[0] - a[0]) * f, ln = a[1] + (b[1] - a[1]) * f; const X = sx2(toX(ln), toY(la)), Y = sy2(toX(ln), toY(la));
   const dir = sx2(toX(b[1]), toY(b[0])) - sx2(toX(a[1]), toY(a[0])) >= 0 ? 1 : -1;
@@ -1739,7 +1744,7 @@ World.draw = function (c, now) {
   for (const b of W.boats) {
     let x, y, dir = 1;
     if (b.k === 'jukung') { wanderer(b, dt, false, b.sp, b.r); x = b.x; y = b.y; dir = b.face; }
-    else { b.t += b.sp * dt * .05 * b.dir; if (b.t > b.len) { b.t = b.len; b.dir = -1; } if (b.t < 0) { b.t = 0; b.dir = 1; }
+    else { b.t += Math.min(b.sp * .05, 60 / s) * dt * b.dir; if (b.t > b.len) { b.t = b.len; b.dir = -1; } if (b.t < 0) { b.t = 0; b.dir = 1; }
       let acc = 0, k = 1; for (; k < b.path.length; k++) { const sl = Math.hypot(b.path[k][0] - b.path[k - 1][0], b.path[k][1] - b.path[k - 1][1]); if (acc + sl >= b.t) break; acc += sl; } k = Math.min(k, b.path.length - 1);
       const A = b.path[k - 1], B = b.path[k]; const sl = Math.hypot(B[0] - A[0], B[1] - A[1]) || 1; const f = (b.t - acc) / sl; x = A[0] + (B[0] - A[0]) * f; y = A[1] + (B[1] - A[1]) * f;
       dir = (sx2(B[0], B[1]) - sx2(A[0], A[1])) * b.dir >= 0 ? 1 : -1; }
@@ -1750,7 +1755,7 @@ World.draw = function (c, now) {
   }
   // транспорт на дорогах (плавно, без скачков)
   if (s >= 10) for (const b of W.bikes) {
-    let a = b.road.a; const nseg = a.length / 2 - 1; let rem = b.sp * dt * 1.5;
+    let a = b.road.a; const nseg = a.length / 2 - 1; let rem = Math.min(b.sp * .75, 70 / s) * dt; // реальная скорость 20–45 км/ч, вблизи не быстрее ~70 px/с
     while (rem > 0) { const x1 = a[b.si * 2], y1 = a[b.si * 2 + 1], x2 = a[b.si * 2 + 2], y2 = a[b.si * 2 + 3]; const L = Math.hypot(x2 - x1, y2 - y1) || 1e-4;
       if (b.dir > 0) { const left = (1 - b.f) * L; if (rem < left) { b.f += rem / L; rem = 0; } else { rem -= left; if (b.si < nseg - 1) { b.si++; b.f = 0; } else if (!nextRoad(b, a[a.length - 2], a[a.length - 1])) { b.dir = -1; b.f = 1; } } }
       else { const left = b.f * L; if (rem < left) { b.f -= rem / L; rem = 0; } else { rem -= left; if (b.si > 0) { b.si--; b.f = 1; } else if (!nextRoad(b, a[0], a[1])) { b.dir = 1; b.f = 0; } } }
@@ -1815,7 +1820,7 @@ World.drawSky = function (c, now) {
   }
   // самолёты
   const dpsX = toX(115.1675), dpsY = toY(-8.7482);
-  for (const a of activeFlights()) {
+  if (s < 220) for (const a of activeFlights()) { // вблизи самолёты не показываем: на уровне улиц они пролетали бы экран за долю секунды
     const dist = a.p * 240; const x = dpsX + Math.sin(a.br) * dist, y = dpsY - Math.cos(a.br) * dist; const X = sx2(x, y), Y = sy2(x, y); if (!onScreen(X, Y)) continue;
     const sz = Math.max(26, Math.min(64, 20 + a.p * 40 + Math.min(s, 30) * .6)) * UIK; const ang = (a.dep ? a.br : a.br + Math.PI) - (M.rot ? Math.PI / 2 : 0);
     const pl = Art.pickFrom('veh_plane', 0);
