@@ -751,7 +751,7 @@ const Tex = {
   imgs: {}, sizeKm: { grass: 2.4, sand: .9, sea: 5, rice: 1.6, jungle: 2.6, forest: 1.5, rock: 1, reef: 1.5, street: .6 },
   add(name, canvas) { this.imgs[name] = canvas; },
   load(names, base = 'tex/') { const B = /duetplay\.app$/.test(location.hostname) && location.hostname !== 'bali.duetplay.app' ? 'https://bali.duetplay.app/' : ''; let n = 0;
-    for (const nm of names) { const im = new Image(); im.onload = () => { const w = im.width, h = im.height; const cv = document.createElement('canvas'); cv.width = w * 2; cv.height = h * 2; const g = cv.getContext('2d');
+    for (const nm of names) { const im = new Image(); im.crossOrigin = 'anonymous'; im.onload = () => { const w = im.width, h = im.height; const cv = document.createElement('canvas'); cv.width = w * 2; cv.height = h * 2; const g = cv.getContext('2d');
       g.drawImage(im, 0, 0); g.save(); g.translate(w * 2, 0); g.scale(-1, 1); g.drawImage(im, 0, 0); g.restore(); g.save(); g.translate(0, h * 2); g.scale(1, -1); g.drawImage(im, 0, 0); g.restore(); g.save(); g.translate(w * 2, h * 2); g.scale(-1, -1); g.drawImage(im, 0, 0); g.restore();
       cv._name = 'tex_' + nm; this.imgs[nm] = cv; if (++n && typeof Tiles !== 'undefined') { Tiles.clear(); Map2D.dirty = true; } }; im.src = B + base + nm + '.png?v=' + (window.TEXV || ''); } },
   ready(n) { return !!this.imgs[n]; },
