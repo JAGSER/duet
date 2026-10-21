@@ -1342,7 +1342,7 @@ function drawBase(c, i, j, L, X, Y, size) {
   c.drawImage(t2, (u - ib * TILE) * dpr, (v - jb * TILE) * dpr, TILE * f * dpr, TILE * f * dpr, X, Y, size + .6, size + .6); return true; }
 const scaleOf = L => Math.pow(2, L / 2);
 
-function renderTile(L, i, j) {
+function renderTile(L, i, j, quick) {
   const M = Map2D; const sL = scaleOf(L); const dpr = Math.min(M.dpr, 2);
   const c = document.createElement('canvas'); c.width = c.height = TILE * dpr; const g = Night.hookTile(c.getContext('2d')); g.scale(dpr, dpr);
   const u0 = i * TILE / sL, v0 = j * TILE / sL, u1 = u0 + TILE / sL, v1 = v0 + TILE / sL;
@@ -1408,7 +1408,7 @@ function renderTile(L, i, j) {
       if (s > 6 && s < 500 && App.showTraffic !== false) { g.lineCap = 'round'; for (const r of rs) { if (r.k > 4) continue; const a = r.a; for (let q = 2; q < a.length; q += 2) { const t = trafficLevel((a[q - 2] + a[q]) / 2, (a[q - 1] + a[q + 1]) / 2, r.k); const col = trafficColor(t); if (!col) continue; g.strokeStyle = col; g.lineWidth = Math.max(1.2, wOut(r.k) - 2.6); g.beginPath(); g.moveTo(X(a[q - 2], a[q - 1]), Y(a[q - 2], a[q - 1])); g.lineTo(X(a[q], a[q + 1]), Y(a[q], a[q + 1])); g.stroke(); } } }
     }
     // декор: деревья, дома, кусты — по биому (вблизи рисуется в общей очереди глубины вместе с людьми — см. drawDecorDyn)
-    if (s > 0 && s < DECOR_DYN_S) {
+    if (s > 0 && s < DECOR_DYN_S && !quick) {
       if (s >= FINE_S) { const C = FINE.cell, pd = .06; const items = [];
         for (let gx = Math.floor((wb[0] - pd) / C); gx <= Math.floor((wb[2] + pd) / C); gx++) for (let gy = Math.floor((wb[1] - pd) / C); gy <= Math.floor((wb[3] + pd) / C); gy++) for (const d of fineCell(gx, gy)) items.push(d);
         const fr = Math.max(.2, Math.min(1, (s - FINE_S) / 900 + .2)); items.sort((a, b) => vv(a.x, a.y) - vv(b.x, b.y)); for (const d of items) { if ((d.v % 1000) / 1000 > fr) continue; Decor.draw(g, d, X(d.x, d.y), Y(d.x, d.y), s); }
@@ -1423,6 +1423,7 @@ function renderTile(L, i, j) {
     // вулканы
     for (const p of M.peaks) { const big = p.e > 2500 ? 1 : p.e > 2000 ? .7 : .5; const w = Math.max(44 * big + 10, Math.min(200, s * 5 * big)); const Xp = X(p.x, p.y), Yp = Y(p.x, p.y); if (Xp < -w || Xp > TILE + w || Yp < -w || Yp > TILE + w) continue; drawVolcano(g, Xp, Yp, w, p, s); }
   }
+  if (quick) c._stale = true;
   return c;
 }
 
@@ -1578,8 +1579,11 @@ function drawTiles(c, now) {
   while (miss.length && (performance.now() - t0 < Tiles.budgetMs || !M.hadTiles)) { const [, i, j] = miss.shift(); Tiles.put(L, i, j, renderTile(L, i, j)); }
   let D = T;
   if (miss.length) { M.dirty = true; let alt = null;
-    for (let d = 1; d <= 12 && !alt; d++) for (const e of [-d, d]) { const V = view(L + e); if (V.L >= 0 && (V.i1 - V.i0 + 1) * (V.j1 - V.j0 + 1) <= 60 && !missing(V).length) { alt = V; break; } }
-    if (alt) D = alt; }
+    // соседний готовый уровень — только если почти без растяжения (до 1.4×) или более мелкий
+    for (const e of [-1, 1, 2, 3, 4]) { const V = view(L + e); if (V.L >= 0 && (V.i1 - V.i0 + 1) * (V.j1 - V.j0 + 1) <= 80 && !missing(V).length) { alt = V; break; } }
+    if (alt) D = alt;
+    else { // упрощённые плитки (земля, вода, дороги) — быстро и без мыла; деревья и дома дорисуются следом
+      while (miss.length && performance.now() - t0 < 40) { const [, i, j] = miss.shift(); Tiles.put(L, i, j, renderTile(L, i, j, true)); } } }
   c.fillStyle = SEA_COL; c.fillRect(0, 0, M.W, M.H);
   const size = TILE * M.s / D.sL; const stale = [];
   for (let i = D.i0; i <= D.i1; i++) for (let j = D.j0; j <= D.j1; j++) {
@@ -1589,7 +1593,10 @@ function drawTiles(c, now) {
   }
   if (D === T || !miss.length) M.dispL = D.L;
   // устаревшие плитки обновляем понемногу — старая картинка остаётся на экране
-  for (const [i, j] of stale) { if (performance.now() - t0 > Tiles.budgetMs) { M.dirty = true; break; } Tiles.put(D.L, i, j, renderTile(D.L, i, j)); }
+  if (M.s !== M._ps) { M._ps = M.s; M._zt = now; }
+  const calm = now - (M._zt || 0) > 180; // во время зума не дорисовываем детали — без рывков
+  if (stale.length) M.dirty = true;
+  if (calm) for (const [i, j] of stale) { if (performance.now() - t0 > Tiles.budgetMs) break; Tiles.put(D.L, i, j, renderTile(D.L, i, j)); }
   M.hadTiles = true;
 }
 
@@ -1601,9 +1608,10 @@ function frame(now) {
   if (!isFinite(M.cx) || !isFinite(M.cy) || !isFinite(M.s) || M.s <= 0) { fitAll(true); M.anim = null; }
   M.cx = Math.max(-110, Math.min(80, M.cx)); M.cy = Math.max(-45, Math.min(70, M.cy)); M.s = Math.max(M.minS, Math.min(M.maxS, M.s));
   const c = M.ctx; c.setTransform(M.dpr, 0, 0, M.dpr, 0, 0);
+  World.night = nightFactor(); { const st = Math.round(World.night * Night.N); if (st !== Night.step) { Night.step = st; Night.cc.clear(); M.dirty = true; } }
   drawTiles(c, now);
   M.dynHits = [];
-  M.lights = []; World.night = nightFactor(); { const st = Math.round(World.night * Night.N); if (st !== Night.step) { Night.step = st; Night.cc.clear(); M.dirty = true; } }
+  M.lights = [];
   drawRoute(c, now);
   World.draw(c, now);
   drawDecorDyn(c);
