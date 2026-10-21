@@ -1395,7 +1395,7 @@ function layoutFor(L) {
     const U = vu(p.X, p.Y) * sL, V = vv(p.X, p.Y) * sL;
     const uniq = sL > 3.5 ? Art.landmark(p) : null; const pc = !uniq && sL > 3.5 ? picCard(p.id) : null; const lm = uniq || pc || (sL > 3.5 ? landmarkSprite(p) : null); const art = !lm && sL > 60 && p.r <= 4 ? Art.building(p) : null;
     const size = UIK * (p.r === 1 ? (sL < 5 ? 24 : 30) : p.r === 2 ? 26 : p.r === 3 ? 22 : 19);
-    const lmw = pc ? Math.max(40, Math.min(96, sL * 2)) * UIK : lm ? Math.max(30, Math.min(70, sL * 3)) * (Art.ok(lm) ? 1.25 : 1) : art ? Math.max(34, Math.min(64, sL * .22)) : 0; const lmh = lmw ? lmw * (lm || art)._h / (lm || art)._w : 0;
+    const lmw = pc ? Math.max(40, Math.min(96, sL * 2)) * UIK : lm === SPR.umbrella ? Math.max(16, personPx(sL) * 1.3) : lm ? Math.max(30, Math.min(70, sL * 3)) * (Art.ok(lm) ? 1.25 : 1) : art ? Math.max(34, Math.min(64, sL * .22)) : 0; const lmh = lmw ? lmw * (lm || art)._h / (lm || art)._w : 0;
     const r = [U - Math.max(size, lmw) / 2 - gap, V - lmh - size - gap, U + Math.max(size, lmw) / 2 + gap, V + gap];
     if (!free(r)) continue; add(r);
     let label = null; const wantLabel = (p.r === 1 && sL > 4.5) || (p.r === 2 && sL > 9) || (p.r === 3 && sL > 30) || sL > 110;
