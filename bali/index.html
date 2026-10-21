@@ -180,6 +180,10 @@ h4{margin:16px 0 6px;font-size:15px;font-weight:900}
 @media (prefers-reduced-motion:reduce){.bob,.dance{animation:none}}
 #chips{cursor:grab}
 #btnShow{display:none;position:absolute;right:14px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:30;width:46px;height:46px;border-radius:50%;border:0;background:rgba(255,255,255,.92);box-shadow:0 4px 14px rgba(34,22,58,.25);align-items:center;justify-content:center;cursor:pointer;opacity:.75}
+#routeBar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(96px + env(safe-area-inset-bottom,0px));z-index:7;display:flex;gap:6px;align-items:center;background:#fff;border-radius:999px;padding:5px 5px 5px 14px;box-shadow:0 8px 22px rgba(34,22,58,.28);font:800 13.5px Nunito,sans-serif;color:var(--ink);max-width:calc(100% - 24px)}
+#routeBar[hidden]{display:none}#routeBar .rbt{background:none;border:0;font:inherit;color:inherit;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:6px 2px}
+#routeBar .rbx{background:var(--ink);color:#fff;border:0;border-radius:999px;font:800 13px Nunito,sans-serif;padding:9px 14px;cursor:pointer;white-space:nowrap}
+#app.noui #routeBar{display:none!important}
 #app.noui .hud,#app.noui .side,#app.noui .nav,#app.noui #emotes,#app.noui #results,#app.noui #toasts{display:none!important}
 #app.noui #btnShow{display:flex}
 .rp{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:6px 0;padding:6px;border-radius:14px;background:#f3eefc}.rp span{font-weight:800;font-size:14px}.rpb{width:44px;height:40px;border-radius:12px;border:0;background:#7B2FF7;color:#fff;font-size:24px;font-weight:900;cursor:pointer}
@@ -225,6 +229,7 @@ h4{margin:16px 0 6px;font-size:15px;font-weight:900}
   <button id="btnHide" aria-label="Скрыть интерфейс" title="Скрыть интерфейс"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#22163A" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path d="M3 3l18 18"/></svg></button>
   <button id="btnLocate" aria-label="Где я"><svg width="22" height="22" viewBox="0 0 24 24" fill="#7B2FF7" aria-hidden="true"><path d="M12 2l7 19-7-4-7 4z"/></svg></button>
 </div>
+<div id="routeBar" hidden><button class="rbt" id="rbOpen">🧭 Маршрут</button><button class="rbx" id="rbX" aria-label="Сбросить маршрут">✕ Сбросить</button></div>
 <nav class="nav" aria-label="Разделы">
   <button id="navLayers"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></svg>Слои</button>
   <button id="navEvents"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="3"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>События</button>
@@ -533,7 +538,11 @@ function poiIcon(cat, size, highlight) {
 }
 
 // ===== Иллюстрированные спрайты (плоский 2D) =====
-function mkCanvas(w, h, fn) { const dpr = 2; const c = document.createElement('canvas'); c.width = w * dpr; c.height = h * dpr; const x = c.getContext('2d'); x.scale(dpr, dpr); fn(x); c._w = w; c._h = h; return c; }
+function mkCanvas(w, h, fn) { const dpr = 6; /* запас разрешения — чётко при любом приближении */ const c = document.createElement('canvas'); c.width = w * dpr; c.height = h * dpr; const x = c.getContext('2d'); x.scale(dpr, dpr); fn(x); c._w = w; c._h = h; return c; }
+// рисовые террасы — вектор (рисуются прямо в плитке, без растягивания картинки)
+function terraceDraw(x) {
+  for (let i = 0; i < 7; i++) { x.fillStyle = i % 2 ? '#74C94F' : '#82D45A'; x.beginPath(); x.moveTo(0, 6 + i * 6.5); x.quadraticCurveTo(40, i * 6.5 - 2, 80, 6 + i * 6.5); x.lineTo(80, 13 + i * 6.5); x.quadraticCurveTo(40, 5 + i * 6.5, 0, 13 + i * 6.5); x.fill(); x.strokeStyle = '#66B846'; x.lineWidth = .8; x.stroke(); }
+}
 const SPR = {};
 function buildSprites() {
   SPR.palm = mkCanvas(40, 48, x => {
@@ -658,9 +667,7 @@ function buildSprites() {
   });
   SPR.sun = mkCanvas(60, 60, x => { x.fillStyle = 'rgba(255,214,51,.35)'; x.beginPath(); x.arc(30, 30, 28, 0, 7); x.fill(); x.fillStyle = '#FFD233'; x.beginPath(); x.arc(30, 30, 18, 0, 7); x.fill(); });
   SPR.moon = mkCanvas(50, 50, x => { x.fillStyle = 'rgba(255,248,200,.25)'; x.beginPath(); x.arc(25, 25, 24, 0, 7); x.fill(); x.fillStyle = '#FFF6C8'; x.beginPath(); x.arc(25, 25, 14, 0, 7); x.fill(); x.fillStyle = '#E8DDA0'; x.beginPath(); x.arc(20, 21, 3, 0, 7); x.arc(29, 29, 2, 0, 7); x.fill(); });
-  SPR.terrace = mkCanvas(80, 50, x => {
-    for (let i = 0; i < 7; i++) { x.fillStyle = i % 2 ? '#74C94F' : '#82D45A'; x.beginPath(); x.moveTo(0, 6 + i * 6.5); x.quadraticCurveTo(40, i * 6.5 - 2, 80, 6 + i * 6.5); x.lineTo(80, 13 + i * 6.5); x.quadraticCurveTo(40, 5 + i * 6.5, 0, 13 + i * 6.5); x.fill(); x.strokeStyle = '#66B846'; x.lineWidth = .8; x.stroke(); }
-  });
+  SPR.terrace = mkCanvas(80, 50, terraceDraw);
   SPR.ogoh = mkCanvas(34, 44, x => { // огох-огох
     x.fillStyle = '#C0392B'; x.beginPath(); x.arc(17, 14, 10, 0, 7); x.fill(); x.fillStyle = '#FFD21F'; x.beginPath(); x.moveTo(7, 8); x.lineTo(10, 0); x.lineTo(14, 6); x.lineTo(17, -1); x.lineTo(20, 6); x.lineTo(24, 0); x.lineTo(27, 8); x.fill();
     x.fillStyle = '#fff'; x.beginPath(); x.arc(13, 13, 3, 0, 7); x.arc(21, 13, 3, 0, 7); x.fill(); x.fillStyle = '#22163A'; x.beginPath(); x.arc(13, 13, 1.4, 0, 7); x.arc(21, 13, 1.4, 0, 7); x.fill();
@@ -680,7 +687,7 @@ const Art = {
     const jobs = list.map(it => new Promise(res => {
       const im = new Image(); im.decoding = 'async';
       im.onload = () => { try {
-          const maxD = it.max || 256; const k = Math.min(1, maxD / Math.max(it.w, it.h)) * 2; const c = document.createElement('canvas');
+          const maxD = it.max || (/^(lm_|bld_)/.test(it.n) ? 512 : 256); const k = Math.min(1, maxD / Math.max(it.w, it.h)) * 2; const c = document.createElement('canvas');
           c.width = Math.max(1, Math.round(it.w * k)); c.height = Math.max(1, Math.round(it.h * k)); c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
           c._w = it.w; c._h = it.h; c._art = 1; c._face = it.f || 'r'; c._name = it.n; c._src = im;
           (Art.set[it.g] = Art.set[it.g] || []).push(c); Art.byName[it.n] = c;
@@ -1331,6 +1338,7 @@ const Tiles = { m: new Map(), max: 160, budgetMs: 9,
   put(L, i, j, c) { this.m.set(this.key(L, i, j), c); while (this.m.size > this.max) this.m.delete(this.m.keys().next().value); },
 };
 const levelOf = s => Math.round(Math.log2(s) * 2);
+const tileLevelOf = s => Math.ceil(Math.log2(s) * 2 - 1e-6);
 // базовые плитки крупного уровня: не вытесняются из кэша, рисуются сразу целиком
 const BaseT = { L: 5, m: new Map(),
   warm() { const sB = scaleOf(this.L); const q = []; for (let i = Math.floor(-100 * sB / TILE); i <= Math.ceil(85 * sB / TILE); i++) for (let j = Math.floor(-50 * sB / TILE); j <= Math.ceil(70 * sB / TILE); j++) q.push([i, j]);
@@ -1381,7 +1389,7 @@ function renderTile(L, i, j, quick) {
     blob(toX(115.15), toY(-8.81), 9, 'rgba(225,205,140,.55)', 'rgba(225,205,140,0)');
     blob(toX(115.215), toY(-8.66), 6, 'rgba(245,232,210,.65)', 'rgba(245,232,210,0)');
     if (s > 5) for (const t of M.terraces) { if (!inB([t.x - t.r * 1.5, t.y - t.r, t.x + t.r * 1.5, t.y + t.r], 1)) continue;
-      { const w = t.r * s * 2.2; g.globalAlpha = .95; g.drawImage(SPR.terrace, X(t.x, t.y) - w / 2, Y(t.x, t.y) - w * .3, w, w * .62); g.globalAlpha = 1; } }
+      { const w = t.r * s * 2.2; g.save(); g.translate(X(t.x, t.y) - w / 2, Y(t.x, t.y) - w * .3); g.scale(w / 80, w / 80); terraceDraw(g); g.restore(); } }
     // карта из спутниковых снимков → флет (Runway) → вектор
     if (MapT.list.size && s > 1.5) { const z = 12, n = 4096; const tx0 = Math.floor((toLng(wb[0]) + 180) / 360 * n), tx1 = Math.floor((toLng(wb[2]) + 180) / 360 * n);
       const ty = lat => { const r = lat * Math.PI / 180; return Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n); };
@@ -1478,7 +1486,7 @@ function layoutFor(L) {
     let label = null; const wantLabel = (p.r === 1 && sL > 4.5) || (p.r === 2 && sL > 9) || (p.r === 3 && sL > 30) || sL > 110;
     if (wantLabel) { const nm = (p.nr && p.r <= 2 ? p.nr : p.n); const t = nm.length > 24 ? nm.slice(0, 23) + '…' : nm; mctx.font = (p.r <= 2 ? '900 ' + 12.5 * UIK : '800 ' + 11.5 * UIK) + 'px Nunito, sans-serif'; const tw = mctx.measureText(t).width;
       const lr = [U - tw / 2 - 3, V + 2, U + tw / 2 + 3, V + 4 + 15 * UIK]; if (free(lr)) { add(lr); label = { t, f: mctx.font }; } }
-    out.pois.push({ p, lm: lmImg, lmw, lmh, size, label, pc: pcOn, dot, nopin: !!lmImg && sL < 2500 });
+    out.pois.push({ p, km: lmKm, lm: lmImg, lmw, lmh, size, label, pc: pcOn, dot, nopin: !!lmImg && sL < 2500 });
     if (out.pois.length > 6000) break;
   } };
   placePass(true);
@@ -1504,13 +1512,15 @@ function layoutFor(L) {
 
 // ===== Динамический слой: значки, районы, события =====
 // большая картинка места не должна стоять на дороге или в воде: ищем ближайшее свободное место (в пикселях уровня L), значок остаётся на месте точкой
-function lmShift(it, L) {
-  const key = L + ':' + HiR.ver + ':' + Map2D.rot; if (it._shk === key) return it._sh; it._shk = key; it._sh = null;
-  const sL = scaleOf(L), p = it.p, hw = it.lmw * .42, dep = Math.min(it.lmh * .35, it.lmw * .3);
-  const w = (du, dv) => Map2D.rot ? [p.X - dv / sL, p.Y + du / sL] : [p.X + du / sL, p.Y + dv / sL];
-  const ok = (ou, ov) => { for (const [du, dv] of [[0, 0], [-hw, 0], [hw, 0], [0, -dep], [-hw * .6, -dep], [hw * .6, -dep]]) { const [x, y] = w(ou + du, ov + dv); if (!isLandF(x, y) || !roadClear(x, y, sL, 1.5 / sL)) return false; } return true; };
+function lmShift(it) {
+  // сдвиг считается один раз в километрах (по размеру картинки на местности) — не зависит от приближения и не скачет
+  const p = it.p, km = it.km || .1; if (p._shKm === km && p._shOk) return p._sh;
+  const now = performance.now(); if (p._shKm === km && now - (p._shT || 0) < 600) return 'wait'; p._shT = now;
+  const ready = !HiR.list.size || HiR.ready(p.X - km - .2, p.Y - km - .2, p.X + km + .2, p.Y + km + .2); p._shKm = km; p._shOk = ready; p._sh = null; if (!ready) return 'wait';
+  const R = 400, hw = km * .42, dep = km * .3;
+  const ok = (ou, ov) => { for (const [du, dv] of [[0, 0], [-hw, 0], [hw, 0], [0, -dep], [-hw * .6, -dep], [hw * .6, -dep]]) { const x = p.X + ou + du, y = p.Y + ov + dv; if (!isLandF(x, y) || !roadClear(x, y, R, 1.5 / R)) return false; } return true; };
   if (ok(0, 0)) return null;
-  for (let r = 5; r <= 60; r += 5) for (let a = 0; a < 16; a++) { const an = a / 16 * 6.283 + (r % 12 ? .2 : 0); const ou = Math.cos(an) * r, ov = Math.sin(an) * r; if (ok(ou, ov)) { it._sh = [ou, ov]; return it._sh; } }
+  for (let r = km * .1; r <= km * 1.2; r += km * .1) for (let a = 0; a < 16; a++) { const an = a / 16 * 6.283 + .2; const ou = Math.cos(an) * r, ov = Math.sin(an) * r; if (ok(ou, ov)) { p._sh = [ou, ov]; return p._sh; } }
   return null; }
 // готовые картинки подписей (текст с обводкой рисуется один раз, а не каждый кадр)
 const TxtC = new Map();
@@ -1520,6 +1530,12 @@ function txtSpr(t, font, fill, stroke, lw) { const k = t + '|' + font + fill + s
   const by = h - lw - h * .28; if (lw) { g.lineWidth = lw; g.strokeStyle = stroke; g.strokeText(t, w / 2, by); } g.fillStyle = fill; g.fillText(t, w / 2, by);
   o = { c, w, h, by }; if (TxtC.size > 3000) TxtC.clear(); TxtC.set(k, o); return o; }
 function drawTxt(c, t, font, fill, stroke, lw, X, Y) { const o = txtSpr(t, font, fill, stroke, lw); c.drawImage(o.c, X - o.w / 2, Y - o.by, o.w, o.h); }
+// картинки мест стоят в общей очереди глубины: ближние деревья, люди и машины их перекрывают, а они — дальние
+function queuePics(c) {
+  const M = Map2D; const L = levelOf(M.s); const lay = layoutFor(L); const k = M.s / scaleOf(L); const W = M.W, H = M.H;
+  for (const it of lay.pois) { if (!it.lm) continue; const X0 = sx2(it.p.X, it.p.Y), Y0 = sy2(it.p.X, it.p.Y); const lw = it.lmw * k, lh = it.lmh * k; if (X0 < -lw || X0 > W + lw || Y0 < -40 || Y0 > H + lh + 40) continue;
+    const sh = lmShift(it); if (sh === 'wait') continue; const X = sh ? X0 + sh[0] * M.s : X0, Y = sh ? Y0 + sh[1] * M.s : Y0; const im = it.lm;
+    DQ.add(Y, () => Art.drawSprite(c, im, X - lw / 2, Y - lh, lw, lh), X, lw * .8, lh); } }
 function drawOverlay(c, now) {
   const M = Map2D; const L = levelOf(M.s); const lay = layoutFor(L); const k = M.s / scaleOf(L);
   M.hitList = []; const vis = []; const W = M.W, H = M.H;
@@ -1528,13 +1544,13 @@ function drawOverlay(c, now) {
   // места (снизу вверх)
   const items = [];
   for (const it of lay.pois) { const X0 = sx2(it.p.X, it.p.Y), Y0 = sy2(it.p.X, it.p.Y); if (X0 < -80 || X0 > W + 80 || Y0 < -40 || Y0 > H + 120) continue;
-    const sh = it.lmw ? lmShift(it, L) : null; const X = sh ? X0 + sh[0] * k : X0, Y = sh ? Y0 + sh[1] * k : Y0; it.X0 = X0; it.Y0 = Y0; it.sh = !!sh; items.push([Y, X, it]); }
+    let sh = it.lmw ? lmShift(it) : null; if (sh === 'wait') sh = null; const X = sh ? X0 + sh[0] * M.s : X0, Y = sh ? Y0 + sh[1] * M.s : Y0; it.X0 = X0; it.Y0 = Y0; it.sh = !!sh; items.push([Y, X, it]); }
   if (M.selected && !items.some(x => x[2].p === M.selected)) { const p = M.selected; items.push([sy2(p.X, p.Y), sx2(p.X, p.Y), { p, lm: null, lmw: 0, lmh: 0, size: 32 * UIK, label: { t: p.nr || p.n, f: '900 ' + 12.5 * UIK + 'px Nunito, sans-serif' } }]); }
   items.sort((a, b) => a[0] - b[0]);
   for (const [Y, X, it] of items) {
     const p = it.p; const sel = M.selected && M.selected.id === p.id; vis.push(p);
     if (it.sh && it.lm) { c.strokeStyle = 'rgba(34,22,58,.45)'; c.lineWidth = 1.5; c.setLineDash([3, 3]); c.beginPath(); c.moveTo(it.X0, it.Y0); c.lineTo(X, Y); c.stroke(); c.setLineDash([]); c.fillStyle = '#fff'; c.beginPath(); c.arc(it.X0, it.Y0, 4.5, 0, 7); c.fill(); c.fillStyle = '#7B2FF7'; c.beginPath(); c.arc(it.X0, it.Y0, 2.6, 0, 7); c.fill(); }
-    const lw = it.lmw * k, lh = it.lmh * k; if (it.lm) Art.drawSprite(c, it.lm, X - lw / 2, Y - lh, lw, lh);
+    const lw = it.lmw * k, lh = it.lmh * k;
     const ic = Art.pin(p.c, sel ? it.size + 6 : it.size, sel); const S = it.pc || (it.nopin && !sel) || (it.dot && !sel) ? 0 : ic._s; const yy = Y - lh - S + 4;
     if (it.dot && !sel) { c.fillStyle = '#fff'; c.beginPath(); c.arc(X, Y - 3, 5 * UIK, 0, 7); c.fill(); c.fillStyle = CATS[p.c] ? CATS[p.c].col : '#888'; c.beginPath(); c.arc(X, Y - 3, 3.2 * UIK, 0, 7); c.fill(); }
     if (S) c.drawImage(ic, X - S / 2, yy, S, S); else if (sel) { c.strokeStyle = '#7B2FF7'; c.lineWidth = 4; c.beginPath(); c.arc(X, Y - lh + lw / 2, lw / 2, 0, 7); c.stroke(); }
@@ -1584,7 +1600,7 @@ function drawTiles(c, now) {
   const u0 = cu - M.W / 2 / M.s, v0 = cv - M.H / 2 / M.s, u1 = cu + M.W / 2 / M.s, v1 = cv + M.H / 2 / M.s;
   const view = L => { const sL = scaleOf(L); return { L, sL, i0: Math.floor(u0 * sL / TILE), i1: Math.floor(u1 * sL / TILE), j0: Math.floor(v0 * sL / TILE), j1: Math.floor(v1 * sL / TILE) }; };
   const missing = V => { const out = []; for (let i = V.i0; i <= V.i1; i++) for (let j = V.j0; j <= V.j1; j++) if (!Tiles.get(V.L, i, j)) out.push([Math.hypot(i - (V.i0 + V.i1) / 2, j - (V.j0 + V.j1) / 2), i, j]); return out.sort((a, b) => a[0] - b[0]); };
-  const L = levelOf(M.s); const T = view(L);
+  const L = tileLevelOf(M.s); const T = view(L);
   if (M.s !== M._ps) { M._ps = M.s; M._zt = now; }
   const calm = now - (M._zt || 0) > 160;
   let miss = missing(T); let D = T;
@@ -1627,6 +1643,7 @@ function frame(now) {
   World.draw(c, now);
   App.drawPeople && App.drawPeople(c, now);
   drawMe(c, now);
+  queuePics(c);
   drawDecorDyn(c);
   DQ.flush();
   drawNight(c, now);
@@ -1638,13 +1655,13 @@ function frame(now) {
 
 // ===== Декор вблизи: дома и деревья в очереди глубины — кто ближе, тот спереди =====
 const DECOR_DYN_S = 45;
-function decorDynOn() { return scaleOf(levelOf(Map2D.s)) >= DECOR_DYN_S; }
+function decorDynOn() { return scaleOf(tileLevelOf(Map2D.s)) >= DECOR_DYN_S; }
 function coarseOk(d, s) { // крупный декор не стоит на видимых дорогах
   const L = levelOf(s), ck = L + ':' + HiR.ver; if (d._ck === ck) return d._ok; d._ck = ck; const isB = (d.k || (d.k = Decor.kind(d))).startsWith('bld_');
   const w = Math.max(isB ? 12 : 8, (isB ? bldKm(d.k) : treeKm(d.k)) * s); d._ok = isLandF(d.x, d.y) && roadClear(d.x, d.y, scaleOf(L), w * .4 / scaleOf(L)); return d._ok; }
 function drawDecorDyn(c) {
   // деревья и дома нарисованы в плитках; здесь поверх людей/машин перерисовываем только те, что стоят перед ними (ближе к зрителю)
-  const M = Map2D; if (!decorDynOn()) return; const L = levelOf(M.s), sL = scaleOf(L), k = M.s / sL;
+  const M = Map2D; if (!decorDynOn()) return; const L = tileLevelOf(M.s), sL = scaleOf(L), k = M.s / sL;
   const dyn = DQ.a.filter(e => e[2] !== undefined); if (!dyn.length) return;
   const hp = personPx(M.s) * 1.6; let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9; for (const e of dyn) { const w = (e[3] || hp) / 2; x0 = Math.min(x0, e[2] - w); x1 = Math.max(x1, e[2] + w); y0 = Math.min(y0, e[0] - (e[4] || hp)); y1 = Math.max(y1, e[0]); }
   const hit = (X, Y, w, h) => { for (const e of dyn) { if (e[0] >= Y) continue; const ew = (e[3] || hp) / 2, eh = e[4] || hp; if (e[2] + ew < X - w / 2 || e[2] - ew > X + w / 2 || e[0] < Y - h || e[0] - eh > Y) continue; return true; } return false; };
@@ -1864,8 +1881,8 @@ World.draw = function (c, now) {
     const VH = personPx(s) * (b.kind === "bus" ? 1.25 : .95), bk = b.kind, bv = b.v, vw = b.view, al = fadeA(b, now); if (W.night > .3) M.lights.push({ X: X + (vw === 'side' ? dir * VH * .7 : 0), Y: Y + (vw === 'front' ? 4 : vw === 'back' ? -4 : 0), r: VH * .5, k: 'head' }); DQ.add(Y + 3, () => { c.globalAlpha = al; Art.drawVehicle(c, bk, X, Y + 3, 0, dir, bv, vw, VH); c.globalAlpha = 1; }, X, VH * 1.6, VH);
   }
   // пешеходы
-  if (s >= 45) { const N = W.npcs, SEP = Math.max(.012, 34 * UIK / s); for (let i = 0; i < N.length; i++) for (let j = i + 1; j < N.length; j++) { const A = N[i], B = N[j]; const dx = B.x - A.x, dy = B.y - A.y, d = Math.hypot(dx, dy);
-      if (d < SEP && d > 1e-6) { const k = (SEP - d) * .04 / d; const ax = A.x - dx * k, ay = A.y - dy * k, bx = B.x + dx * k, by = B.y + dy * k; if (okSpot(ax, ay)) { A.x = ax; A.y = ay; } if (okSpot(bx, by)) { B.x = bx; B.y = by; } } } }
+  if (s >= 45) { const N = W.npcs, SEP = .007; /* 7 м на местности */ for (let i = 0; i < N.length; i++) for (let j = i + 1; j < N.length; j++) { const A = N[i], B = N[j]; const dx = B.x - A.x, dy = B.y - A.y, d = Math.hypot(dx, dy);
+      if (d < SEP && d > 1e-6) { const k = Math.min((SEP - d) * .04, .0011 * dt) / d; const ax = A.x - dx * k, ay = A.y - dy * k, bx = B.x + dx * k, by = B.y + dy * k; if (okSpot(ax, ay)) { A.x = ax; A.y = ay; } if (okSpot(bx, by)) { B.x = bx; B.y = by; } } } }
   if (s >= 45) for (const n of W.npcs) {
     wanderer(n, dt, true, .0011, Math.min(.25, M.W / M.s * .35)); if (!n.moving && Math.random() < .0005) n.say = { txt: pick(NPC_LINES), until: now + 4500 };
     const X = sx2(n.x, n.y), Y = sy2(n.x, n.y); if (!onScreen(X, Y, 40)) continue;
@@ -1876,7 +1893,7 @@ World.draw = function (c, now) {
   // животные
   if (s >= 16) for (const a of W.animals) {
     if ((a.k === 'cat' || a.k === 'dog' || a.k === 'rooster') && s < 120) continue; if (a.k === 'monkey' && s < 40) continue; if (a.dying && now - a.dying > 700) continue;
-    wanderer(a, dt, true, a.sp * 1.5, a.r);
+    wanderer(a, dt, true, a.sp * .4, a.r);
     const X = sx2(a.x, a.y), Y = sy2(a.x, a.y); if (!onScreen(X, Y, 30)) continue;
     const spr = Art.animal(a.k, a.v); if (!spr) continue; const w = Math.max(8, personPx(s) * (a.k === 'cow' || a.k === 'buffalo' ? 1.3 : a.k === 'monkey' ? .6 : a.k === 'dog' ? .6 : a.k === 'duck' || a.k === 'rooster' ? .4 : .45)); const h = w * spr._h / spr._w;
     const bob = a.moving ? Math.abs(Math.sin(t * 9 + a.hx)) * 2 : 0; const flip = (spr._face === 'l' ? -1 : 1) * (a.face || 1);
@@ -2464,6 +2481,7 @@ async function buildRoute(t) {
   if (mode === 'bike') min = min * (.85 + jam * .6) + 3; if (mode === 'car') min = min * (1.25 + jam * 1.2) + 4;
   const price = mode === 'car' ? `≈ IDR ${(Math.round((15000 + km * 6500) / 1000) * 1000).toLocaleString('ru-RU')} на Grab/Gojek (машина)` : mode === 'bike' ? `≈ IDR ${(Math.round((10000 + km * 2800) / 1000) * 1000).toLocaleString('ru-RU')} на байк-такси Gojek/Grab` : '';
   Map2D.route = { pts, approx };
+  App.routeShort = (min < 60 ? Math.round(min) + ' мин' : Math.floor(min / 60) + ' ч ' + Math.round(min % 60) + ' мин') + ' · ' + fmtKm(km); updRouteBar();
   App.routeInfo = `<div class="route-sum"><b>${min < 60 ? Math.round(min) + ' мин' : Math.floor(min / 60) + ' ч ' + Math.round(min % 60) + ' мин'}</b><span>${fmtKm(km)}${rush && mode !== 'foot' ? (jam > .5 ? ' · пробки' : ' · плотно') : ''}</span></div>${price ? `<p class="mut">${price}</p>` : ''}${approx ? '<p class="mut sm">Сервис маршрутов недоступен — показано примерно, по прямой с поправкой на дороги. Для точной навигации откройте Google.</p>' : '<p class="mut sm">Маршрут по дорогам OpenStreetMap. Время — с поправкой на балийский трафик.</p>'}`;
   openRoutePlanner(t);
   // показываем весь маршрут
@@ -2477,7 +2495,7 @@ function sheetClick(e) {
   const b = e.target.closest('[data-act]'); if (!b) return; const a = b.dataset.act;
   if (a === 'routeto') { buildRoute({ lat: +b.dataset.lat, lng: +b.dataset.lng, name: b.dataset.name }); }
   else if (a === 'rmode') { App.routeMode = b.dataset.m; if (App.routeTarget) buildRoute(App.routeTarget); else openRoutePlanner(); }
-  else if (a === 'clearroute') { Map2D.route = null; App.routeTarget = null; App.routeInfo = ''; closeSheet(); }
+  else if (a === 'clearroute') { clearRoute(); closeSheet(); }
   else if (a === 'place') { const id = b.dataset.id; if (id.startsWith('d:')) { const d = App.districts[+id.slice(2)]; if (d) { openDistrict(d); flyTo(d.lat, d.lng, Math.max(Map2D.s, 12)); } return; } const p = Map2D.poiById.get(id); if (p) { openPlace(p); flyToScreenSafe(p.y, p.x, Math.max(Map2D.s, 120)); } }
   else if (a === 'fav') { const id = b.dataset.id; if (Map2D.favs.has(id)) Map2D.favs.delete(id); else Map2D.favs.add(id); LS.set('favs', [...Map2D.favs]); b.textContent = Map2D.favs.has(id) ? '★ В избранном' : '☆ В избранное'; Map2D.dirty = true; buildChips(); if (Map2D.favs.has(id)) toast('Добавлено. Список — кнопка «★ Избранное» вверху'); }
   else if (a === 'share') { const p = Map2D.poiById.get(b.dataset.id); shareText(p.n, `${p.n} — ${p.sub || ''}`, `https://www.google.com/maps/search/?api=1&query=${p.y},${p.x}`, p); }
@@ -2771,6 +2789,11 @@ function toast(t, ms = 3200, onClick) {
   const el = document.createElement('div'); el.className = 'toast'; el.textContent = t; if (onClick) { el.style.cursor = 'pointer'; el.onclick = () => { onClick(); el.remove(); }; }
   $('#toasts').appendChild(el); setTimeout(() => el.classList.add('out'), ms); setTimeout(() => el.remove(), ms + 400);
 }
+
+// плашка активного маршрута над меню: видно, что маршрут включён, и его можно сбросить одним нажатием
+function updRouteBar() { const el = document.getElementById('routeBar'); if (!el) return; const on = !!Map2D.route; el.hidden = !on; if (on) document.getElementById('rbOpen').textContent = '🧭 ' + (App.routeTarget && App.routeTarget.name ? App.routeTarget.name + ' · ' : '') + (App.routeShort || 'Маршрут'); }
+function clearRoute() { Map2D.route = null; App.routeTarget = null; App.routeInfo = ''; App.routeShort = ''; Map2D.dirty = true; updRouteBar(); }
+(function bindRB() { if (!document.getElementById('rbX')) return document.addEventListener('DOMContentLoaded', bindRB); const x = document.getElementById('rbX'), o = document.getElementById('rbOpen'); if (x) x.onclick = e => { e.stopPropagation(); clearRoute(); }; if (o) o.onclick = e => { e.stopPropagation(); openRoutePlanner(App.routeTarget); }; })();
 
 boot();
 </script>
