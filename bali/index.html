@@ -677,6 +677,12 @@ function buildSprites() {
 }
 
 // ===== Графика: векторные спрайты (из Runway → вектор) с запасными процедурными =====
+// уменьшенные копии спрайта (как mip-уровни): рисуем почти 1:1, без дорогого сжатия большой картинки на лету
+function mip(im, need) { if (!im || !im.width) return im; need = Math.ceil(need); if (need * 1.6 >= im.width) return im;
+  let n = 8; while (n < need) n *= 2; if (n * 1.3 >= im.width) return im; const m = im._mips || (im._mips = {}); let c = m[n]; if (c) return c;
+  let src = im, w = im.width, h = im.height; // сжимаем ступенями по 2× — качественно
+  while (w / 2 >= n) { const t = document.createElement('canvas'); t.width = Math.max(1, Math.round(w / 2)); t.height = Math.max(1, Math.round(h / 2)); const g = t.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(src, 0, 0, t.width, t.height); src = t; w = t.width; h = t.height; }
+  c = src === im ? im : src; for (const k of ['_w', '_h', '_name', '_face', '_art', '_noNight']) if (im[k] !== undefined) c[k] = im[k]; m[n] = c; return c; }
 const Art = {
   set: {},         // группа → [спрайт-канвасы]
   byName: {},      // имя → спрайт
@@ -702,7 +708,7 @@ const Art = {
       await Art.load(list.map(it => ({ ...it, src: 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(it.svg) }))); } catch (e) {}
   },
   pickFrom(g, v) { const a = Art.set[g]; if (!a || !a.length) return null; return a[Math.abs(v | 0) % a.length]; },
-  drawSprite(c, s, x, y, w, h) { if (s) c.drawImage(s, x, y, w, h); },
+  drawSprite(c, s, x, y, w, h) { if (s) c.drawImage(mip(s, w * Math.min(2, Map2D.dpr || 1)), x, y, w, h); },
   // уникальные иллюстрации известных мест
   landmark(p) {
     if (p._lm !== undefined) return p._lm;
@@ -833,7 +839,7 @@ const Decor = {
     // фиксированный географический размер (одинаковые дома — одинаковые), минимум в пикселях на мелком масштабе
     const km = isB ? bldKm(k) : treeKm(k);
     let w = Math.max(isB ? 12 : s < 4 ? 5 : s < 8 ? 6.5 : 8, km * s) * (isB ? 1 : (.9 + (d.v % 97) / 480));
-    if (spr) { const h = w * spr._h / spr._w; if ((d.v % 2) && !isB) { g.save(); g.translate(X, 0); g.scale(-1, 1); g.drawImage(spr, -w / 2, Y - h * .92, w, h); g.restore(); } else g.drawImage(spr, X - w / 2, Y - h * .92, w, h); return; }
+    if (spr) { spr = mip(spr, w * Math.min(2, Map2D.dpr || 1)); const h = w * spr._h / spr._w; if ((d.v % 2) && !isB) { g.save(); g.translate(X, 0); g.scale(-1, 1); g.drawImage(spr, -w / 2, Y - h * .92, w, h); g.restore(); } else g.drawImage(spr, X - w / 2, Y - h * .92, w, h); return; }
     if (isB) { if (s > 60) drawHouse(g, X, Y, w, (d.v % 100) / 100); return; }
     const f = SPR[FALLBACK[k] || 'tree']; const h = w * f._h / f._w; g.drawImage(f, X - w / 2, Y - h * .85, w, h);
   },
@@ -1190,7 +1196,9 @@ function seaPath(ax, ay, bx, by) {
 const Dens = { k: 1, x0: -92, y0: -48, w: 170, h: 115, a: null };
 function buildDensity() { const D = Dens; D.a = new Uint16Array(D.w * D.h); for (const p of Map2D.pois) { const i = Math.floor(p.X - D.x0), j = Math.floor(p.Y - D.y0); if (i >= 0 && j >= 0 && i < D.w && j < D.h) D.a[j * D.w + i]++; } }
 function density(x, y) { const D = Dens; const i = Math.floor(x - D.x0), j = Math.floor(y - D.y0); if (i < 0 || j < 0 || i >= D.w || j >= D.h) return 0; return D.a[j * D.w + i]; }
-function biome(x, y) {
+const BiomeC = new Map();
+function biome(x, y) { const key = Math.round(x * 4) + ',' + Math.round(y * 4); let b = BiomeC.get(key); if (b === undefined) { b = biome0(x, y); if (BiomeC.size > 60000) BiomeC.clear(); BiomeC.set(key, b); } return b; }
+function biome0(x, y) {
   const M = Map2D; let coast = false; for (const [dx, dy] of [[.35, 0], [-.35, 0], [0, .35], [0, -.35]]) if (!isLand(x + dx, y + dy)) { coast = true; break; }
   const d = density(x, y);
   if (M.peaks.some(p => Math.hypot(p.x - x, p.y - y) < (p.e > 2500 ? 7 : 4.5))) return 'mount';
@@ -1329,6 +1337,7 @@ function onTap(px, py) { Map2D.tapBlock = performance.now() + 500; const h = hit
 function onLongPress(cx, cy) { const [x, y] = w2(cx, cy); App.onLongPress(toLat(y), toLng(x)); }
 
 // ===== Плитки статичного слоя =====
+const LITE = /lite/.test(location.pathname + location.search); // тестовый облегчённый режим
 const TILE = 256; const SEA_COL = '#1E88E0';
 const Tiles = { m: new Map(), max: 160, budgetMs: 9,
   clear() { for (const t of this.m.values()) t._stale = true; },
@@ -1413,10 +1422,12 @@ function renderTile(L, i, j, quick) {
         g.beginPath(); for (const r of rs) { if (r.k !== k) continue; const a = r.a; g.moveTo(X(a[0], a[1]), Y(a[0], a[1])); for (let q = 2; q < a.length; q += 2) g.lineTo(X(a[q], a[q + 1]), Y(a[q], a[q + 1])); } g.stroke(); g.globalAlpha = 1;
       }
       // пробки: подкраска загруженных дорог (ближе к центру — краснее), только на главных дорогах
-      if (s > 6 && s < 500 && App.showTraffic !== false) { g.lineCap = 'round'; for (const r of rs) { if (r.k > 4) continue; const a = r.a; for (let q = 2; q < a.length; q += 2) { const t = trafficLevel((a[q - 2] + a[q]) / 2, (a[q - 1] + a[q + 1]) / 2, r.k); const col = trafficColor(t); if (!col) continue; g.strokeStyle = col; g.lineWidth = Math.max(1.2, wOut(r.k) - 2.6); g.beginPath(); g.moveTo(X(a[q - 2], a[q - 1]), Y(a[q - 2], a[q - 1])); g.lineTo(X(a[q], a[q + 1]), Y(a[q], a[q + 1])); g.stroke(); } } }
+      if (s > 6 && s < 500 && App.showTraffic !== false && JAMS.some(j => inB([j[0] - j[2], j[1] - j[2], j[0] + j[2], j[1] + j[2]], 0))) { g.lineCap = 'round'; // пробки: все отрезки одного цвета и толщины — одним штрихом
+      const P = new Map(); for (const r of rs) { if (r.k > 4) continue; const a = r.a; for (let q = 2; q < a.length; q += 2) { const col = trafficColor(trafficLevel((a[q - 2] + a[q]) / 2, (a[q - 1] + a[q + 1]) / 2, r.k)); if (!col) continue; const key = col + '|' + r.k; let L = P.get(key); if (!L) P.set(key, L = []); L.push(a[q - 2], a[q - 1], a[q], a[q + 1]); } }
+      for (const [key, L] of P) { const [col, k] = key.split('|'); g.strokeStyle = col; g.lineWidth = Math.max(1.2, wOut(+k) - 2.6); g.beginPath(); for (let q = 0; q < L.length; q += 4) { g.moveTo(X(L[q], L[q + 1]), Y(L[q], L[q + 1])); g.lineTo(X(L[q + 2], L[q + 3]), Y(L[q + 2], L[q + 3])); } g.stroke(); } }
     }
     // декор: деревья, дома, кусты — по биому (вблизи рисуется в общей очереди глубины вместе с людьми — см. drawDecorDyn)
-    if (s > 0 && !quick) {
+    if (s > 0 && !quick && !LITE) {
       if (s >= FINE_S) { const C = FINE.cell, pd = Math.max(.06, 160 / s); const items = [];
         for (let gx = Math.floor((wb[0] - pd) / C); gx <= Math.floor((wb[2] + pd) / C); gx++) for (let gy = Math.floor((wb[1] - pd) / C); gy <= Math.floor((wb[3] + pd) / C); gy++) for (const d of fineCell(gx, gy)) items.push(d);
         const fr = Math.max(.2, Math.min(1, (s - FINE_S) / 900 + .2)); items.sort((a, b) => vv(a.x, a.y) - vv(b.x, b.y)); for (const d of items) { if ((d.v % 1000) / 1000 > fr) continue; Decor.draw(g, d, X(d.x, d.y), Y(d.x, d.y), s); }
@@ -1640,15 +1651,12 @@ function frame(now) {
   M.dynHits = [];
   M.lights = [];
   drawRoute(c, now);
-  World.draw(c, now);
-  App.drawPeople && App.drawPeople(c, now);
-  drawMe(c, now);
-  queuePics(c);
-  drawDecorDyn(c);
+  if (!LITE) World.draw(c, now);
+  if (!LITE) { App.drawPeople && App.drawPeople(c, now); drawMe(c, now); queuePics(c); drawDecorDyn(c); }
   DQ.flush();
   drawNight(c, now);
   drawOverlay(c, now);
-  World.drawSky(c, now);
+  if (!LITE) World.drawSky(c, now);
   if (App.onViewChange) App.onViewChange();
   requestAnimationFrame(frame);
 }
@@ -1772,7 +1780,7 @@ function applyWeather(w) {
 // ===== Пробки: по времени суток и известным узким местам (Чангу–Семиньяк, Денпасар, Санур, Убуд, байпас, аэропорт) =====
 const JAMS = [[-8.65, 115.14, 4.5, 1.0], [-8.69, 115.17, 3.5, 1.0], [-8.66, 115.22, 5, .8], [-8.72, 115.19, 3.5, .9], [-8.51, 115.26, 3, .7], [-8.74, 115.17, 2.5, .8], [-8.80, 115.17, 3, .5]].map(([la, ln, r, w]) => [toX(ln), toY(la), r, w]);
 function trafficLevel(x, y, k) { // 0 свободно .. 1 стоим
-  const n = baliNow(); const m = n.min; const rush = Math.max(0, 1 - Math.abs(m - 8.5 * 60) / 100) * .9 + Math.max(0, 1 - Math.abs(m - 17.5 * 60) / 120) + (m > 11 * 60 && m < 15 * 60 ? .35 : 0); if (m < 5.5 * 60 || m > 22 * 60) return 0;
+  const T = trafficLevel; if (!T._n || performance.now() - T._t > 2000) { T._n = baliNow(); T._t = performance.now(); } const n = T._n; const m = n.min; const rush = Math.max(0, 1 - Math.abs(m - 8.5 * 60) / 100) * .9 + Math.max(0, 1 - Math.abs(m - 17.5 * 60) / 120) + (m > 11 * 60 && m < 15 * 60 ? .35 : 0); if (m < 5.5 * 60 || m > 22 * 60) return 0;
   let z = 0; for (const [jx, jy, r, w] of JAMS) { const d = Math.hypot(x - jx, y - jy); if (d < r) z = Math.max(z, w * (1 - d / r)); }
   const kk = k <= 2 ? 1 : k === 3 ? .8 : .55; return Math.max(0, Math.min(1, z * Math.min(1, rush) * kk * (n.dow === 0 ? .6 : 1)));
 }
