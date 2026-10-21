@@ -757,12 +757,12 @@ const Decor = {
   draw(g, d, X, Y, s) {
     const k = d.k || (d.k = this.kind(d)); const isB = k.startsWith('bld_');
     if (isB && s < 18) return; // дома видны ближе
-    const spr = Art.pickFrom(k, d.v);
+    if (!d.fine && s >= FINE_S) return;
+    let spr = Art.pickFrom(k, d.v); if (!isB && !(spr && /_f/.test(spr._name || ''))) spr = flatTree(k, d.v);
     // размер в км: дерево ~25 м, дом ~20–40 м; на мелком масштабе — минимальный экранный размер
-    // размер привязан к росту людей на карте: дерево ≈ 2 роста, дом ≈ 2.5 роста
-    const ph = Math.max(6, Math.min(52, s * .16)) * (typeof UIK !== 'undefined' ? UIK : 1);
-    const mult = isB ? (k === 'bld_apartment' || k === 'bld_resortsmall' || k === 'bld_hotel' || k === 'bld_resort' ? 3.4 : 2.6) : (k === 'tree_banyan' ? 2.6 : k === 'tree_bush' ? 1.0 : k.startsWith('tree_palm') ? 2.2 : 1.9);
-    let w = Math.max(isB ? 14 : 9, ph * mult) * (.85 + (d.v % 97) / 320);
+    // фиксированный географический размер (одинаковые дома — одинаковые), минимум в пикселях на мелком масштабе
+    const km = isB ? bldKm(k) : treeKm(k);
+    let w = Math.max(isB ? 12 : 8, km * s) * (isB ? 1 : (.9 + (d.v % 97) / 480));
     if (spr) { const h = w * spr._h / spr._w; if ((d.v % 2) && !isB) { g.save(); g.translate(X, 0); g.scale(-1, 1); g.drawImage(spr, -w / 2, Y - h * .92, w, h); g.restore(); } else g.drawImage(spr, X - w / 2, Y - h * .92, w, h); return; }
     if (isB) { if (s > 60) drawHouse(g, X, Y, w, (d.v % 100) / 100); return; }
     const f = SPR[FALLBACK[k] || 'tree']; const h = w * f._h / f._w; g.drawImage(f, X - w / 2, Y - h * .85, w, h);
@@ -772,6 +772,35 @@ function drawHouse(c, X, Y, w, r) {
   c.fillStyle = '#F5E6CF'; c.fillRect(X - w * .4, Y - w * .45, w * .8, w * .45);
   c.fillStyle = r < .5 ? '#C8553D' : '#8B5E3C'; c.beginPath(); c.moveTo(X - w * .55, Y - w * .42); c.lineTo(X, Y - w * .85); c.lineTo(X + w * .55, Y - w * .42); c.fill();
   c.fillStyle = '#6B4A3A'; c.fillRect(X - w * .08, Y - w * .25, w * .16, w * .25);
+}
+
+// ===== Простые плоские деревья (2 тона, 1–3 формы) =====
+const _ftc = {};
+function flatTree(k, v) {
+  const tone = v % 3, key = k + tone; if (_ftc[key]) return _ftc[key];
+  const W = 120, H = 150, c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d');
+  const G = [['#3DBE6B', '#2FA05A'], ['#4CC774', '#37A862'], ['#35B062', '#27924F']][tone], trunk = '#9A6B4F';
+  const circ = (x, y, r, col) => { g.fillStyle = col; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); };
+  const rect = (x, y, w, h, col) => { g.fillStyle = col; g.beginPath(); g.roundRect ? g.roundRect(x, y, w, h, Math.min(w, h) / 2) : g.rect(x, y, w, h); g.fill(); };
+  if (k.startsWith('tree_palm')) {
+    g.strokeStyle = trunk; g.lineWidth = 9; g.lineCap = 'round'; g.beginPath(); g.moveTo(58, 148); g.quadraticCurveTo(52, 90, 64, 52); g.stroke();
+    g.fillStyle = G[0]; for (const a of [-2.6, -1.9, -1.2, -.5, .2]) { g.save(); g.translate(64, 50); g.rotate(a); g.beginPath(); g.ellipse(26, 0, 30, 9, 0, 0, 7); g.fill(); g.restore(); }
+    circ(64, 50, 7, G[1]);
+  } else if (k === 'tree_pine') {
+    rect(54, 112, 12, 36, trunk); g.fillStyle = G[1]; g.beginPath(); g.moveTo(60, 18); g.lineTo(100, 118); g.lineTo(20, 118); g.fill(); g.fillStyle = G[0]; g.beginPath(); g.moveTo(60, 8); g.lineTo(88, 74); g.lineTo(32, 74); g.fill();
+  } else if (k === 'tree_banana') {
+    rect(55, 80, 10, 68, '#8DB34F'); g.fillStyle = G[0]; for (const a of [-2.4, -1.57, -.7]) { g.save(); g.translate(60, 80); g.rotate(a); g.beginPath(); g.ellipse(30, 0, 34, 12, 0, 0, 7); g.fill(); g.restore(); }
+  } else if (k === 'tree_bush') {
+    circ(44, 120, 26, G[1]); circ(74, 116, 30, G[0]);
+  } else if (k === 'tree_bamboo') {
+    for (const x of [40, 58, 76]) rect(x, 30, 8, 118, '#7FBF4A'); g.fillStyle = G[0]; g.beginPath(); g.ellipse(60, 40, 40, 26, 0, 0, 7); g.fill();
+  } else if (k === 'tree_banyan') {
+    rect(50, 90, 20, 58, trunk); g.fillStyle = G[1]; g.beginPath(); g.ellipse(60, 66, 56, 40, 0, 0, 7); g.fill(); circ(60, 56, 30, G[0]);
+  } else {
+    const col = k === 'tree_bougain' ? ['#E64C9A', '#C93A84'] : k === 'tree_frangipani' ? ['#7FD08E', '#5DB873'] : k === 'tree_mango' ? ['#2E9E55', '#24854A'] : G;
+    rect(53, 90, 14, 58, trunk); circ(60, 62, 44, col[1]); circ(66, 54, 32, col[0]);
+  }
+  c._w = W; c._h = H; c._name = 'flat_' + key; return (_ftc[key] = c);
 }
 
 // ===== Персонажи: векторные спрайты + анимации =====
@@ -913,7 +942,7 @@ const UIK = (matchMedia('(pointer:coarse)').matches || innerWidth < 700) ? 1.0 :
 const Map2D = {
   cv: null, ctx: null, W: 0, H: 0, dpr: 1,
   cx: 0, cy: 8, s: 3, rot: 0,  // центр (км, мир), масштаб (пикс/км), поворот 0 — горизонтально, 1 — вертикально
-  minS: 1.2, maxS: 900,
+  minS: 1.2, maxS: 5000,
   land: [], landLo: [], lakes: [], roads: [], peaks: [], trees: [], terraces: [],
   pois: [], visiblePOI: [], hitList: [], dynHits: [], selected: null,
   enabled: new Set(), openOnly: false, favOnly: false, favs: new Set(), focusIds: null,
@@ -948,6 +977,49 @@ function buildMask() {
   x.fill();
   const d = x.getImageData(0, 0, m.w, m.h).data; m.a = new Uint8Array(m.w * m.h); for (let i = 0; i < m.a.length; i++) m.a[i] = d[i * 4] > 127 ? 1 : 0;
 }
+// ===== Индекс дорог (для отступа домов и деревьев) =====
+const RoadIdx = { g: new Map(), C: .05 };
+function buildRoadIdx() {
+  const G = RoadIdx.g, C = RoadIdx.C; G.clear();
+  for (const r of Map2D.roads) { const a = r.a; for (let q = 2; q < a.length; q += 2) { const x1 = a[q - 2], y1 = a[q - 1], x2 = a[q], y2 = a[q + 1]; const L = Math.hypot(x2 - x1, y2 - y1), n = Math.ceil(L / (C * .5)) + 1; let last = '';
+    for (let i = 0; i <= n; i++) { const t = i / n, k = Math.floor((x1 + (x2 - x1) * t) / C) + ',' + Math.floor((y1 + (y2 - y1) * t) / C); if (k === last) continue; last = k; let c = G.get(k); if (!c) G.set(k, c = []); c.push(x1, y1, x2, y2); } } }
+}
+function roadDist(x, y, maxd) {
+  const C = RoadIdx.C, R = Math.ceil(maxd / C); let best = maxd; const cx = Math.floor(x / C), cy = Math.floor(y / C);
+  for (let i = -R; i <= R; i++) for (let j = -R; j <= R; j++) { const a = RoadIdx.g.get((cx + i) + ',' + (cy + j)); if (!a) continue;
+    for (let q = 0; q < a.length; q += 4) { const x1 = a[q], y1 = a[q + 1], dx = a[q + 2] - x1, dy = a[q + 3] - y1; const L2 = dx * dx + dy * dy || 1e-12; let t = ((x - x1) * dx + (y - y1) * dy) / L2; t = t < 0 ? 0 : t > 1 ? 1 : t; const d = Math.hypot(x - x1 - dx * t, y - y1 - dy * t); if (d < best) best = d; } }
+  return best;
+}
+// ===== Подробный декор вблизи: дома и деревья фиксированного размера, не на дорогах =====
+const FINE_N = { city: [26, 8], beachtown: [16, 16], resort: [12, 22], town: [14, 18], village: [7, 24], rice: [2, 10], jungle: [0, 36], highland: [2, 18], mount: [0, 8], dry: [3, 10], coast: [2, 14] };
+const FINE = { cell: .25, cache: new Map() };
+function bldKm(k) { return k === 'bld_apartment' || k === 'bld_resortsmall' || k === 'bld_hotel' || k === 'bld_resort' ? .03 : k === 'bld_ricehut' ? .014 : .022; }
+function treeKm(k) { return k === 'tree_banyan' ? .024 : k === 'tree_bush' ? .007 : k.startsWith('tree_palm') ? .018 : .015; }
+function fineCell(gx, gy) {
+  const key = gx + ',' + gy; let a = FINE.cache.get(key); if (a) return a; a = [];
+  let seed = ((gx * 73856093) ^ (gy * 19349663)) >>> 0 || 1; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const x0 = gx * FINE.cell, y0 = gy * FINE.cell; const cx = x0 + FINE.cell / 2, cy = y0 + FINE.cell / 2;
+  if (isLand(cx, cy) || isLand(x0, y0) || isLand(x0 + FINE.cell, y0 + FINE.cell)) {
+    const b = biome(cx, cy); const [nb, nt] = FINE_N[b] || [4, 14]; const set = BIOME_SET[b] || BIOME_SET.village;
+    const pick = pre => { const L = set.filter(e => e[0].startsWith(pre)); if (!L.length) return pre === 'bld_' ? 'bld_house' : 'tree_round'; const tot = L.reduce((q, e) => q + e[1], 0); let r = rnd() * tot; for (const e of L) { r -= e[1]; if (r <= 0) return e[0]; } return L[0][0]; };
+    const blds = [];
+    for (let i = 0, tries = 0; i < nb && tries < nb * 6; tries++) { const x = x0 + rnd() * FINE.cell, y = y0 + rnd() * FINE.cell; if (!isLand(x, y)) continue; const k = pick('bld_'); const hw = bldKm(k) / 2;
+      if (roadDist(x, y, hw + .01) < hw + .006) continue; if (blds.some(o => Math.abs(o.x - x) < (o.hw + hw) * 1.05 && Math.abs(o.y - y) < (o.hw + hw) * .8)) continue;
+      const d = { x, y, k, v: Math.floor(rnd() * 1e6), hw, fine: 1 }; blds.push(d); a.push(d); i++; }
+    for (let i = 0, tries = 0; i < nt && tries < nt * 4; tries++) { const x = x0 + rnd() * FINE.cell, y = y0 + rnd() * FINE.cell; if (!isLand(x, y)) continue; const k = pick('tree_'); const hw = treeKm(k) / 2;
+      if (roadDist(x, y, hw + .006) < hw * .6 + .003) continue; if (blds.some(o => Math.abs(o.x - x) < o.hw + hw * .5 && Math.abs(o.y - y) < o.hw * .8 + hw * .3)) continue;
+      a.push({ x, y, k, v: Math.floor(rnd() * 1e6), hw, fine: 1 }); i++; }
+    a.sort((p, q) => p.y - q.y);
+  }
+  FINE.cache.set(key, a); if (FINE.cache.size > 3000) FINE.cache.delete(FINE.cache.keys().next().value);
+  return a;
+}
+// стоит ли точка внутри дома (для пешеходов)
+function inBuilding(x, y, pad = .004) { const C = FINE.cell; const gx = Math.floor(x / C), gy = Math.floor(y / C);
+  for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (const d of fineCell(gx + i, gy + j)) if (d.k.startsWith('bld_') && Math.abs(d.x - x) < d.hw + pad && Math.abs(d.y - y) < d.hw * .7 + pad) return true; return false; }
+const FINE_S = 260; // с этого масштаба показываем подробный декор
+function personPx(s) { return Math.max(14, Math.min(60, s * .0087)) * UIK; }
+
 function isLand(x, y) { const m = Mask; const i = Math.floor((x - m.x0) * m.k), j = Math.floor((y - m.y0) * m.k); if (i < 0 || j < 0 || i >= m.w || j >= m.h) return false; return m.a[j * m.w + i] === 1; }
 function segOnLand(x1, y1, x2, y2, want = true) { const n = Math.ceil(Math.hypot(x2 - x1, y2 - y1) * Mask.k) + 1; for (let i = 0; i <= n; i++) { const t = i / n; if (isLand(x1 + (x2 - x1) * t, y1 + (y2 - y1) * t) !== want) return false; } return true; }
 // ближайшая точка моря от суши (для сёрферов, лодок)
@@ -1019,6 +1091,7 @@ function initMap(geo, pois) {
   M.decor.sort((a, b) => a.y - b.y);
   M.dgrid = new Map(); for (const d of M.decor) { const k = Math.floor(d.x / .5) + ',' + Math.floor(d.y / .5); let a = M.dgrid.get(k); if (!a) M.dgrid.set(k, a = []); a.push(d); }
   M.rgrid = new Map(); M.roads.forEach((r, idx) => { for (let gx = Math.floor(r.bb[0] / 4); gx <= Math.floor(r.bb[2] / 4); gx++) for (let gy = Math.floor(r.bb[1] / 4); gy <= Math.floor(r.bb[3] / 4); gy++) { const k = gx + ',' + gy; let a = M.rgrid.get(k); if (!a) M.rgrid.set(k, a = []); a.push(idx); } });
+  buildRoadIdx();
   M.rot = 0; Screen.apply(LS.get('land', false));
   resize();
   window.addEventListener('resize', resize);
@@ -1163,7 +1236,7 @@ function renderTile(L, i, j) {
       const lv = s < 6 ? 1 : s < 14 ? 2 : s < 70 ? 3 : 4; const idx = new Set();
       for (let gx = Math.floor((wb[0] - 1) / 4); gx <= Math.floor((wb[2] + 1) / 4); gx++) for (let gy = Math.floor((wb[1] - 1) / 4); gy <= Math.floor((wb[3] + 1) / 4); gy++) for (const k of (M.rgrid.get(gx + ',' + gy) || [])) idx.add(k);
       const rs = [...idx].map(k => M.roads[k]).filter(r => r.k <= lv && inB(r.bb, .5));
-      const wOut = k => Math.max(1.6, Math.min(16, (k === 1 ? .1 : k === 2 ? .075 : k === 3 ? .05 : .035) * s * (s > 60 ? .55 : 1)) + 2);
+      const wOut = k => Math.max(1.6, Math.min(s > 1000 ? 34 : 16, (k === 1 ? .1 : k === 2 ? .075 : k === 3 ? .05 : .035) * s * (s > 60 ? .55 : 1)) + 2);
       for (const pass of [0, 1]) for (let k = lv; k >= 1; k--) {
         g.strokeStyle = pass ? (k === 1 ? '#FFE9A8' : '#F4F1EA') : (k <= 2 ? '#fff' : 'rgba(255,255,255,.85)'); g.lineWidth = pass ? wOut(k) - 2.2 : wOut(k);
         g.beginPath(); for (const r of rs) { if (r.k !== k) continue; const a = r.a; g.moveTo(X(a[0], a[1]), Y(a[0], a[1])); for (let q = 2; q < a.length; q += 2) g.lineTo(X(a[q], a[q + 1]), Y(a[q], a[q + 1])); } g.stroke();
@@ -1171,11 +1244,16 @@ function renderTile(L, i, j) {
     }
     // декор: деревья, дома, кусты — по биому
     if (s > 3.2) {
+      if (s >= FINE_S) { const C = FINE.cell, pd = .06; const items = [];
+        for (let gx = Math.floor((wb[0] - pd) / C); gx <= Math.floor((wb[2] + pd) / C); gx++) for (let gy = Math.floor((wb[1] - pd) / C); gy <= Math.floor((wb[3] + pd) / C); gy++) for (const d of fineCell(gx, gy)) items.push(d);
+        items.sort((a, b) => vv(a.x, a.y) - vv(b.x, b.y)); for (const d of items) Decor.draw(g, d, X(d.x, d.y), Y(d.x, d.y), s);
+      } else {
       const items = []; const pad = 1.5;
       for (let gx = Math.floor((wb[0] - pad) / .5); gx <= Math.floor((wb[2] + pad) / .5); gx++) for (let gy = Math.floor((wb[1] - pad) / .5); gy <= Math.floor((wb[3] + pad) / .5); gy++) { const a = M.dgrid.get(gx + ',' + gy); if (a) for (const d of a) items.push(d); }
       const dens = s < 6 ? .12 : s < 10 ? .25 : s < 20 ? .5 : 1;
       items.sort((a, b) => vv(a.x, a.y) - vv(b.x, b.y));
       for (const d of items) { if (d.r > dens) continue; Decor.draw(g, d, X(d.x, d.y), Y(d.x, d.y), s); }
+      }
     }
     // вулканы
     for (const p of M.peaks) { const big = p.e > 2500 ? 1 : p.e > 2000 ? .7 : .5; const w = Math.max(44 * big + 10, Math.min(520, s * 12 * big)); const Xp = X(p.x, p.y), Yp = Y(p.x, p.y); if (Xp < -w || Xp > TILE + w || Yp < -w || Yp > TILE + w) continue; drawVolcano(g, Xp, Yp, w, p, s); }
@@ -1351,7 +1429,7 @@ const DQ = { a: [], b: [], add(y, f) { this.a.push([y, f]); }, top(f) { this.b.p
 function drawMe(c, now) {
   const M = Map2D; if (!M.me) return; const me = Me.pos(); const X = sx2(toX(me.lng), toY(me.lat)), Y = sy2(toX(me.lng), toY(me.lat));
   const t = (now % 2000) / 2000; c.fillStyle = `rgba(123,47,247,${.35 * (1 - t)})`; c.beginPath(); c.arc(X, Y, 10 + t * 26, 0, 7); c.fill();
-  const h = Math.max(30, Math.min(96, M.s * .6)) * UIK; DQ.add(Y, () => Me.draw(c, X, Y, h, now));
+  const h = personPx(M.s) * 1.15; DQ.add(Y, () => Me.draw(c, X, Y, h, now));
   M.dynHits.push({ type: 'me', x: X, y: Y - h / 2, r: h / 3 });
 }
 function drawRoute(c, now) {
@@ -1380,6 +1458,7 @@ const onScreen = (X, Y, m = 60) => X > -m && X < Map2D.W + m && Y > -m && Y < Ma
 function wanderer(o, dt, onLandOnly, speed, radius) {
   if (!o.tx || o.wait > 0) { o.wait = (o.wait || 0) - dt; if (o.wait > 0) return;
     for (let k = 0; k < 8; k++) { const a = Math.random() * 6.283, r = Math.random() * radius; const tx = o.hx + Math.cos(a) * r, ty = o.hy + Math.sin(a) * r;
+      if (onLandOnly === true && Map2D.s >= FINE_S && (inBuilding(tx, ty) || inBuilding((o.x + tx) / 2, (o.y + ty) / 2))) continue;
       if (onLandOnly === true ? segOnLand(o.x, o.y, tx, ty, true) : onLandOnly === false ? segOnLand(o.x, o.y, tx, ty, false) : true) { o.tx = tx; o.ty = ty; break; } }
     if (!o.tx) { o.tx = o.hx; o.ty = o.hy; } }
   const dx = o.tx - o.x, dy = o.ty - o.y, d = Math.hypot(dx, dy); if (d < 1e-4) { o.tx = null; o.wait = rand(1, 5); o.moving = false; return; }
@@ -1457,9 +1536,9 @@ function spawnAround() {
   W.npcs = W.npcs.filter(n => inBB(n.x, n.y));
   const tn = Math.min(M.s > 200 ? 22 : 12, 30);
   if (W.npcs.length < tn) { const hot = M.visiblePOI.filter(p => ['beach', 'food', 'cafe', 'nightlife', 'sight', 'temple', 'market', 'shop', 'warung', 'surf'].includes(p.c));
-    if (hot.length) { const p = pick(hot); let x = p.X + rand(-.14, .14), y = p.Y + rand(-.14, .14); if (!isLand(x, y)) { x = p.X + rand(-.03, .03); y = p.Y + rand(-.03, .03); }
+    if (hot.length) { const p = pick(hot); const sr = Math.min(.14, M.W / M.s * .45); let x = p.X + rand(-sr, sr), y = p.Y + rand(-sr, sr); if (!isLand(x, y)) { x = p.X + rand(-.03, .03); y = p.Y + rand(-.03, .03); }
       const busy = W.npcs.filter(o => o.poi === p.id).length >= 2 || W.npcs.some(o => Math.hypot(o.x - x, o.y - y) < .03);
-      if (!busy && isLand(x, y)) { const a = avRandom(); if (p.c === 'beach' || p.c === 'surf') { a.top = pick(['tank', 'tshirt']); a.bottom = 'shorts'; } W.npcs.push({ poi: p.id, x, y, hx: x, hy: y, av: Chars.random(a), ph: rand(0, 6), wait: rand(0, 3), face: 1, say: null }); } } }
+      if (!busy && isLand(x, y) && !(M.s >= FINE_S && inBuilding(x, y))) { const a = avRandom(); if (p.c === 'beach' || p.c === 'surf') { a.top = pick(['tank', 'tshirt']); a.bottom = 'shorts'; } W.npcs.push({ poi: p.id, x, y, hx: x, hy: y, av: Chars.random(a), ph: rand(0, 6), wait: rand(0, 3), face: 1, say: null }); } } }
 }
 const NPC_LINES = ['Где тут самый вкусный смузи-боул?', 'Опять пробка в Чангу…', 'Обезьяна украла мои очки!', 'Ещё один кокос, пожалуйста', 'Закат через 20 минут — бежим!', 'Я тут на неделю. Уже третий год.', 'Сегодня точно встану на доску', 'Кто-нибудь видел мой байк?', 'Терима касих!', 'Wi‑Fi есть? Работаю.', 'Пойдём на Батур к рассвету?', 'Ещё массаж — и домой', 'Кто на вечеринку в Улувату?', 'Бинтанг или кокос?'];
 
@@ -1508,15 +1587,15 @@ World.draw = function (c, now) {
     const ddx = (sx2(x2, y2) - sx2(x1, y1)) * b.dir, ddy = (sy2(x2, y2) - sy2(x1, y1)) * b.dir; if (Math.abs(ddx) > .5) b.face = ddx >= 0 ? 1 : -1; const dir = b.face || 1;
     const ax = Math.abs(ddx), ay = Math.abs(ddy); if (!b.view) b.view = 'side';
     if (b.view === 'side' ? ay > ax * 1.4 : ax > ay * 1.4) b.view = ay > ax ? (ddy > 0 ? 'front' : 'back') : 'side'; else if (b.view !== 'side') b.view = ddy > 0 ? 'front' : 'back';
-    const VH = Math.max(14, Math.min(52, s * .16)) * UIK * (b.kind === "bus" ? 1.25 : .95), bk = b.kind, bv = b.v, vw = b.view; DQ.add(Y + 3, () => Art.drawVehicle(c, bk, X, Y + 3, 0, dir, bv, vw, VH));
+    const VH = personPx(s) * (b.kind === "bus" ? 1.25 : .95), bk = b.kind, bv = b.v, vw = b.view; DQ.add(Y + 3, () => Art.drawVehicle(c, bk, X, Y + 3, 0, dir, bv, vw, VH));
   }
   // пешеходы
   if (s >= 45) { const N = W.npcs, SEP = Math.max(.012, 34 * UIK / s); for (let i = 0; i < N.length; i++) for (let j = i + 1; j < N.length; j++) { const A = N[i], B = N[j]; const dx = B.x - A.x, dy = B.y - A.y, d = Math.hypot(dx, dy);
       if (d < SEP && d > 1e-6) { const k = (SEP - d) * .04 / d; const ax = A.x - dx * k, ay = A.y - dy * k, bx = B.x + dx * k, by = B.y + dy * k; if (isLand(ax, ay)) { A.x = ax; A.y = ay; } if (isLand(bx, by)) { B.x = bx; B.y = by; } } } }
   if (s >= 45) for (const n of W.npcs) {
-    wanderer(n, dt, true, .0011, .14); if (!n.moving && Math.random() < .0015) n.say = { txt: pick(NPC_LINES), until: now + 4500 };
+    wanderer(n, dt, true, .0011, Math.min(.14, M.W / M.s * .4)); if (!n.moving && Math.random() < .0015) n.say = { txt: pick(NPC_LINES), until: now + 4500 };
     const X = sx2(n.x, n.y), Y = sy2(n.x, n.y); if (!onScreen(X, Y, 40)) continue;
-    const h = Math.max(30, Math.min(52, s * .16)) * UIK, an = n.moving ? 'walk' : 'idle', fc = n.face; DQ.add(Y, () => Chars.draw(c, n.av, X, Y, h, an, t + n.ph, fc));
+    const h = personPx(s), an = n.moving ? 'walk' : 'idle', fc = n.face; DQ.add(Y, () => Chars.draw(c, n.av, X, Y, h, an, t + n.ph, fc));
     M.dynHits.push({ type: 'npc', n, x: X, y: Y - h / 2, r: h / 3 });
     if (n.say && now < n.say.until && s > 40) { const tx = n.say.txt; DQ.top(() => bubble(c, X, Y - h - 6, tx)); }
   }
@@ -1525,7 +1604,7 @@ World.draw = function (c, now) {
     if ((a.k === 'cat' || a.k === 'dog' || a.k === 'rooster') && s < 120) continue; if (a.k === 'monkey' && s < 40) continue;
     wanderer(a, dt, true, a.sp * 1.5, a.r);
     const X = sx2(a.x, a.y), Y = sy2(a.x, a.y); if (!onScreen(X, Y, 30)) continue;
-    const spr = Art.animal(a.k, a.v); if (!spr) continue; const w = (a.k === 'cow' ? 34 : a.k === 'monkey' ? 24 : a.k === 'dog' ? 24 : 20) * u; const h = w * spr._h / spr._w;
+    const spr = Art.animal(a.k, a.v); if (!spr) continue; const w = Math.max(8, personPx(s) * (a.k === 'cow' || a.k === 'buffalo' ? 1.3 : a.k === 'monkey' ? .6 : a.k === 'dog' ? .6 : a.k === 'duck' || a.k === 'rooster' ? .4 : .45)); const h = w * spr._h / spr._w;
     const bob = a.moving ? Math.abs(Math.sin(t * 9 + a.hx)) * 2 : 0; const flip = (spr._face === 'l' ? -1 : 1) * (a.face || 1);
     DQ.add(Y, () => { c.save(); c.translate(X, Y - bob); c.scale(flip, 1); c.drawImage(spr, -w / 2, -h, w, h); c.restore(); });
     M.dynHits.push({ type: 'animal', k: a.k, x: X, y: Y - h / 2, r: w / 2 });
@@ -2207,7 +2286,7 @@ App.drawPeople = function (c, now) {
     const tx = toX(p.pos[1]), ty = toY(p.pos[0]); const dx = tx - p.sp.x, dy = ty - p.sp.y, d = Math.hypot(dx, dy);
     let moving = false; if (d > 3) { p.sp.x = tx; p.sp.y = ty; } else if (d > 1e-4) { const st = Math.min(d, .03 * 1 / 60); p.sp.x += dx / d * st; p.sp.y += dy / d * st; moving = true; const sdx = sx2(tx, ty) - sx2(p.sp.x, p.sp.y); if (Math.abs(sdx) > .3) p.face = sdx > 0 ? 1 : -1; }
     const X = sx2(p.sp.x, p.sp.y), Y = sy2(p.sp.x, p.sp.y); if (X < -40 || X > M.W + 40 || Y < -60 || Y > M.H + 40) continue;
-    const h = Math.max(40, Math.min(80, M.s * .5)) * UIK; const anim = moving ? 'walk' : (ANIMS[p.an] ? p.an : 'idle');
+    const h = personPx(M.s) * 1.1; const anim = moving ? 'walk' : (ANIMS[p.an] ? p.an : 'idle');
     c.fillStyle = 'rgba(236,45,154,.25)'; c.beginPath(); c.ellipse(X, Y, h * .3, h * .1, 0, 0, 7); c.fill();
     const fc = p.face || 1; DQ.add(Y, () => Chars.draw(c, p.av, X, Y, h, anim, t + X * .01, fc));
     DQ.top(() => { c.font = '800 ' + 11.5 * UIK + 'px Nunito, sans-serif'; c.textAlign = 'center'; c.lineWidth = 3.5; c.strokeStyle = '#fff'; c.fillStyle = '#7B2FF7'; c.strokeText(p.n, X, Y + 14 * UIK); c.fillText(p.n, X, Y + 14 * UIK);
