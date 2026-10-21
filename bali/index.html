@@ -752,7 +752,6 @@ const Night = { step: 0, N: 4, cache: new Map(), cc: new Map(), tex: {},
   kindOf(nm) { return !nm ? null : /^bld_(house|villa|shophouse|apartment|resortsmall|hotel|resort|ricehut)/.test(nm) ? 'bld' : /^(bld_|lm_)/.test(nm) ? 'lm' : /^(tree_|flat_)/.test(nm) ? 'plant' : /^veh_/.test(nm) ? 'veh' : /^(rig_|chr_)/.test(nm) ? 'person' : /^ani_/.test(nm) ? 'ani' : 'bld'; },
   rgb(r, g, b, kind, t) {
     const L = (.3 * r + .59 * g + .11 * b) / 255;
-    if ((kind === 'bld' && L > .1 && L < .36 && b - r > 38 && b > 70) || ((kind === 'bld' || kind === 'lm') && b > 185 && r < 75 && g < 162 && g > 100)) return [r + (255 - r) * t, g + (206 - g) * t, b + (84 - b) * t]; // окна: тёмно-синие и синие стёкла
     const tt = Math.pow(L, 1.45); let nr = 10 + 84 * tt, ng = 32 + 110 * tt, nb = 54 + 132 * tt; const gr = L * 255, ch = kind === 'person' ? .5 : kind === 'ground' ? .22 : .32;
     nr += (r - gr) * ch; ng += (g - gr) * ch; nb += (b - gr) * ch; if (kind === 'person') { nr = nr * .55 + r * .45; ng = ng * .55 + g * .45; nb = nb * .55 + b * .45; }
     return [r + (nr - r) * t, g + (ng - g) * t, b + (nb - b) * t]; },
@@ -764,8 +763,22 @@ const Night = { step: 0, N: 4, cache: new Map(), cc: new Map(), tex: {},
   // ночная версия спрайта (кэш по шагу)
   img(im, kind) { if (!this.step || !im) return im; let e = this.cache.get(im); if (!e) { e = []; this.cache.set(im, e); } if (e[this.step]) return e[this.step];
     const w = im.width, h = im.height; if (!w || !h) return im; const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const g = cv.getContext('2d', { willReadFrequently: true }); g.drawImage(im, 0, 0);
-    try { const d = g.getImageData(0, 0, w, h), a = d.data, t = this.t(); for (let i = 0; i < a.length; i += 4) { if (!a[i + 3]) continue; const q = this.rgb(a[i], a[i + 1], a[i + 2], kind, t); a[i] = q[0]; a[i + 1] = q[1]; a[i + 2] = q[2]; } g.putImageData(d, 0, 0); } catch (err) { return im; }
+    try { const d = g.getImageData(0, 0, w, h), a = d.data, t = this.t(); const wm = (kind === 'bld' || kind === 'lm') ? (im._wm || (im._wm = this.windows(a, w, h))) : null;
+      for (let i = 0, p = 0; i < a.length; i += 4, p++) { if (!a[i + 3]) continue; if (wm && wm[p]) { a[i] += (255 - a[i]) * t; a[i + 1] += (208 - a[i + 1]) * t; a[i + 2] += (86 - a[i + 2]) * t; continue; } const q = this.rgb(a[i], a[i + 1], a[i + 2], kind, t); a[i] = q[0]; a[i + 1] = q[1]; a[i + 2] = q[2]; }
+      g.putImageData(d, 0, 0); } catch (err) { return im; }
     for (const k of ['_w', '_h', '_name', '_face', '_art', '_s']) if (im[k] !== undefined) cv[k] = im[k]; return e[this.step] = cv; },
+  // окна = небольшие компактные (почти прямоугольные) пятна цвета стекла: тёмно-синего или голубого; большие и неправильные области (основа силуэта, тени) не трогаем
+  windows(a, w, h) { const N = w * h, cand = new Uint8Array(N); let opaque = 0;
+    for (let p = 0, i = 0; p < N; p++, i += 4) { if (a[i + 3] < 128) continue; opaque++; const r = a[i], g = a[i + 1], b = a[i + 2], L = (.3 * r + .59 * g + .11 * b) / 255;
+      if ((L > .07 && L < .4 && b - r > 28 && b - g > 14 && b > 60) || (b > 175 && r < 110 && g > 95 && g < 175 && b - g > 30)) cand[p] = 1; }
+    const out = new Uint8Array(N), seen = new Uint8Array(N), st = new Int32Array(N), maxA = Math.max(30, opaque * .03), maxS = Math.max(w, h) * .22;
+    for (let p0 = 0; p0 < N; p0++) { if (!cand[p0] || seen[p0]) continue; let n = 0, top = 0, x0 = w, x1 = 0, y0 = h, y1 = 0; st[top++] = p0; seen[p0] = 1; const pix = [];
+      while (top) { const p = st[--top]; pix.push(p); n++; const x = p % w, y = (p / w) | 0; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+        if (x > 0 && cand[p - 1] && !seen[p - 1]) { seen[p - 1] = 1; st[top++] = p - 1; } if (x < w - 1 && cand[p + 1] && !seen[p + 1]) { seen[p + 1] = 1; st[top++] = p + 1; }
+        if (y > 0 && cand[p - w] && !seen[p - w]) { seen[p - w] = 1; st[top++] = p - w; } if (y < h - 1 && cand[p + w] && !seen[p + w]) { seen[p + w] = 1; st[top++] = p + w; } }
+      const bw = x1 - x0 + 1, bh = y1 - y0 + 1, fill = n / (bw * bh);
+      if (n >= 6 && n <= maxA && bw <= maxS && bh <= maxS && fill >= .42 && bw / bh < 4 && bh / bw < 4) for (const p of pix) out[p] = 1; }
+    return out; },
   texImg(name, im) { if (!this.step) return im; const k = name + this.step; return this.tex[k] || (this.tex[k] = this.img(im, 'ground')); },
   // подмена drawImage у контекста: всё с именем спрайта рисуется ночной версией
   hook(ctx) { if (ctx._nh) return ctx; ctx._nh = 1; const o = ctx.drawImage; ctx.drawImage = function (im, ...r) { if (Night.step && im && im._name && !im._noNight) im = Night.img(im, Night.kindOf(im._name)); return o.call(this, im, ...r); }; return ctx; },
@@ -1593,6 +1606,7 @@ const mixc = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
 function flatPool(c, X, Y, rx, ry, col, a) { c.fillStyle = col; for (const [k, al] of [[1, .10], [.68, .12], [.38, .16]]) { c.globalAlpha = a * al; c.beginPath(); c.ellipse(X, Y, rx * k, ry * k, 0, 0, 7); c.fill(); } c.globalAlpha = 1; }
 function drawNight(c, now) {
   // ночь — это перекраска картинок (Night в art.js); здесь только огоньки городов издалека, где окна ещё не различимы
+  return; // огоньки издалека убраны по просьбе
   const M = Map2D, s = M.s, k = Night.t(); if (k < .5 || s >= 45) return; const a = cityDots(), fa = Math.min(1, (45 - s) / 20) * (k - .5) * 2, r = Math.max(1, Math.min(3, s * .15));
   c.save(); c.fillStyle = '#FFD45A'; c.globalAlpha = fa; c.beginPath(); for (let q = 0; q < a.length; q += 3) { const X = sx2(a[q], a[q + 1]), Y = sy2(a[q], a[q + 1]); if (X < -4 || X > M.W + 4 || Y < -4 || Y > M.H + 4) continue; const rr = r * (.7 + .5 * a[q + 2]); c.moveTo(X + rr, Y); c.arc(X, Y, rr, 0, 6.2832); } c.fill(); c.restore();
 }
