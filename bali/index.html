@@ -742,9 +742,37 @@ const Tex = {
   imgs: {}, sizeKm: { grass: 1.2, sand: .5, sea: 3, rice: .8, forest: 1.5, rock: 1, reef: 1.5, street: .6 },
   add(name, canvas) { this.imgs[name] = canvas; },
   ready(n) { return !!this.imgs[n]; },
-  pattern(g, n, s, u0, v0) { const im = this.imgs[n]; const p = g.createPattern(im, 'repeat'); const k = (this.sizeKm[n] * s) / im.width; const m = new DOMMatrix([k, 0, 0, k, -u0 * s % (im.width * k), -v0 * s % (im.height * k)]); p.setTransform(m); return p; },
+  pattern(g, n, s, u0, v0) { const im = Night.texImg(n, this.imgs[n]); const p = g.createPattern(im, 'repeat'); const k = (this.sizeKm[n] * s) / im.width; const m = new DOMMatrix([k, 0, 0, k, -u0 * s % (im.width * k), -v0 * s % (im.height * k)]); p.setTransform(m); return p; },
 };
 
+// ===== Ночь: перекраска самих векторных картинок (не фильтр сверху) =====
+// земля, дороги, деревья, стены уходят в тёмно-сине-бирюзовую гамму с сохранением оттенка; стёкла окон загораются тёплым жёлтым
+const Night = { step: 0, N: 4, cache: new Map(), cc: new Map(), tex: {},
+  t() { return this.step / this.N; },
+  kindOf(nm) { return !nm ? null : /^bld_(house|villa|shophouse|apartment|resortsmall|hotel|resort|ricehut)/.test(nm) ? 'bld' : /^(bld_|lm_)/.test(nm) ? 'lm' : /^(tree_|flat_)/.test(nm) ? 'plant' : /^veh_/.test(nm) ? 'veh' : /^(rig_|chr_)/.test(nm) ? 'person' : /^ani_/.test(nm) ? 'ani' : 'bld'; },
+  rgb(r, g, b, kind, t) {
+    const L = (.3 * r + .59 * g + .11 * b) / 255;
+    if ((kind === 'bld' && L > .1 && L < .36 && b - r > 38 && b > 70) || ((kind === 'bld' || kind === 'lm') && b > 185 && r < 75 && g < 162 && g > 100)) return [r + (255 - r) * t, g + (206 - g) * t, b + (84 - b) * t]; // окна: тёмно-синие и синие стёкла
+    const tt = Math.pow(L, 1.45); let nr = 10 + 84 * tt, ng = 32 + 110 * tt, nb = 54 + 132 * tt; const gr = L * 255, ch = kind === 'person' ? .5 : kind === 'ground' ? .22 : .32;
+    nr += (r - gr) * ch; ng += (g - gr) * ch; nb += (b - gr) * ch; if (kind === 'person') { nr = nr * .55 + r * .45; ng = ng * .55 + g * .45; nb = nb * .55 + b * .45; }
+    return [r + (nr - r) * t, g + (ng - g) * t, b + (nb - b) * t]; },
+  // цвет-строка для земли/дорог в плитках
+  c(css, kind = 'ground') { if (!this.step || typeof css !== 'string') return css; const key = css + this.step + kind; let o = this.cc.get(key); if (o) return o;
+    let r, g, b, a = 1, m; if ((m = css.match(/^#([0-9a-f]{3,8})$/i))) { let h = m[1]; if (h.length === 3) h = h.split('').map(x => x + x).join(''); r = parseInt(h.slice(0, 2), 16); g = parseInt(h.slice(2, 4), 16); b = parseInt(h.slice(4, 6), 16); if (h.length === 8) a = parseInt(h.slice(6, 8), 16) / 255; }
+    else if ((m = css.match(/^rgba?\(([^)]+)\)$/))) { const p = m[1].split(',').map(Number); [r, g, b] = p; if (p.length > 3) a = p[3]; } else return css;
+    const q = this.rgb(r, g, b, kind, this.t()); o = `rgba(${q.map(Math.round).join(',')},${a})`; this.cc.set(key, o); if (this.cc.size > 4000) this.cc.clear(); return o; },
+  // ночная версия спрайта (кэш по шагу)
+  img(im, kind) { if (!this.step || !im) return im; let e = this.cache.get(im); if (!e) { e = []; this.cache.set(im, e); } if (e[this.step]) return e[this.step];
+    const w = im.width, h = im.height; if (!w || !h) return im; const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const g = cv.getContext('2d', { willReadFrequently: true }); g.drawImage(im, 0, 0);
+    try { const d = g.getImageData(0, 0, w, h), a = d.data, t = this.t(); for (let i = 0; i < a.length; i += 4) { if (!a[i + 3]) continue; const q = this.rgb(a[i], a[i + 1], a[i + 2], kind, t); a[i] = q[0]; a[i + 1] = q[1]; a[i + 2] = q[2]; } g.putImageData(d, 0, 0); } catch (err) { return im; }
+    for (const k of ['_w', '_h', '_name', '_face', '_art', '_s']) if (im[k] !== undefined) cv[k] = im[k]; return e[this.step] = cv; },
+  texImg(name, im) { if (!this.step) return im; const k = name + this.step; return this.tex[k] || (this.tex[k] = this.img(im, 'ground')); },
+  // подмена drawImage у контекста: всё с именем спрайта рисуется ночной версией
+  hook(ctx) { if (ctx._nh) return ctx; ctx._nh = 1; const o = ctx.drawImage; ctx.drawImage = function (im, ...r) { if (Night.step && im && im._name && !im._noNight) im = Night.img(im, Night.kindOf(im._name)); return o.call(this, im, ...r); }; return ctx; },
+  hookTile(ctx) { this.hook(ctx); const P = CanvasRenderingContext2D.prototype; const fd = Object.getOwnPropertyDescriptor(P, 'fillStyle'), sd = Object.getOwnPropertyDescriptor(P, 'strokeStyle');
+    Object.defineProperty(ctx, 'fillStyle', { get() { return fd.get.call(this); }, set(v) { fd.set.call(this, Night.c(v)); } });
+    Object.defineProperty(ctx, 'strokeStyle', { get() { return sd.get.call(this); }, set(v) { sd.set.call(this, Night.c(v)); } }); return ctx; },
+};
 // ===== Декор по биомам =====
 const BIOME_SET = {
   coast: [['tree_palm', .75], ['tree_palm3', .15], ['tree_bush', .1]],
@@ -1142,7 +1170,7 @@ function biome(x, y) {
 
 function initMap(geo, pois) {
   const M = Map2D;
-  M.cv = document.getElementById('map'); M.ctx = M.cv.getContext('2d');
+  M.cv = document.getElementById('map'); M.ctx = Night.hook(M.cv.getContext('2d'));
   M.land = geo.land.map(r => { const a = ringToKm(r); return { a, bb: bboxOf(a) }; });
   M.landLo = geo.landLo.map(r => { const a = ringToKm(r); return { a, bb: bboxOf(a) }; });
   M.lakes = geo.lakes.map(l => { const a = ringToKm(l.g); return { n: l.n, a, bb: bboxOf(a) }; });
@@ -1267,7 +1295,7 @@ function onLongPress(cx, cy) { const [x, y] = w2(cx, cy); App.onLongPress(toLat(
 const TILE = 256;
 const Tiles = { m: new Map(), max: 90, budgetMs: 9,
   clear() { this.m.clear(); },
-  key(L, i, j) { return L + ':' + i + ':' + j; },
+  key(L, i, j) { return L + ':' + i + ':' + j + ':' + Night.step; },
   get(L, i, j) { const k = this.key(L, i, j); const t = this.m.get(k); if (t) { this.m.delete(k); this.m.set(k, t); } return t; },
   put(L, i, j, c) { this.m.set(this.key(L, i, j), c); while (this.m.size > this.max) this.m.delete(this.m.keys().next().value); },
 };
@@ -1276,7 +1304,7 @@ const scaleOf = L => Math.pow(2, L / 2);
 
 function renderTile(L, i, j) {
   const M = Map2D; const sL = scaleOf(L); const dpr = Math.min(M.dpr, 2);
-  const c = document.createElement('canvas'); c.width = c.height = TILE * dpr; const g = c.getContext('2d'); g.scale(dpr, dpr);
+  const c = document.createElement('canvas'); c.width = c.height = TILE * dpr; const g = Night.hookTile(c.getContext('2d')); g.scale(dpr, dpr);
   const u0 = i * TILE / sL, v0 = j * TILE / sL, u1 = u0 + TILE / sL, v1 = v0 + TILE / sL;
   const rot = M.rot; const X = (x, y) => ((rot ? y : x) - u0) * sL, Y = (x, y) => ((rot ? -x : y) - v0) * sL;
   const wb = rot ? [-v1, u0, -v0, u1] : [u0, v0, u1, v1]; // мировой bbox плитки
@@ -1298,7 +1326,7 @@ function renderTile(L, i, j) {
     sh(Math.max(2.5, Math.min(18, .14 * s)), Tex.ready('sand') ? Tex.pattern(g, 'sand', s, u0, v0) : '#F2D79C');
     g.fillStyle = Tex.ready('grass') ? Tex.pattern(g, 'grass', s, u0, v0) : '#6CC24A'; g.beginPath(); for (const p of polys) poly(p.a); g.fill();
     g.save(); g.beginPath(); for (const p of polys) poly(p.a); g.clip();
-    const blob = (x, y, r, c0, c1) => { const Xp = X(x, y), Yp = Y(x, y), R = r * s; if (Xp < -R || Xp > TILE + R || Yp < -R || Yp > TILE + R) return; const gg = g.createRadialGradient(Xp, Yp, 0, Xp, Yp, R); gg.addColorStop(0, c0); gg.addColorStop(1, c1); g.fillStyle = gg; g.fillRect(Xp - R, Yp - R, R * 2, R * 2); };
+    const blob = (x, y, r, c0, c1) => { const Xp = X(x, y), Yp = Y(x, y), R = r * s; if (Xp < -R || Xp > TILE + R || Yp < -R || Yp > TILE + R) return; const gg = g.createRadialGradient(Xp, Yp, 0, Xp, Yp, R); gg.addColorStop(0, Night.c(c0)); gg.addColorStop(1, Night.c(c1)); g.fillStyle = gg; g.fillRect(Xp - R, Yp - R, R * 2, R * 2); };
     for (const p of M.peaks) blob(p.x, p.y, p.e > 2500 ? 16 : p.e > 1900 ? 10 : 7, 'rgba(20,90,40,.55)', 'rgba(20,90,40,0)');
     blob(toX(114.55), toY(-8.2), 30, 'rgba(15,95,45,.5)', 'rgba(15,95,45,0)');
     blob(toX(115.15), toY(-8.81), 9, 'rgba(225,205,140,.55)', 'rgba(225,205,140,0)');
@@ -1522,7 +1550,7 @@ function frame(now) {
   const c = M.ctx; c.setTransform(M.dpr, 0, 0, M.dpr, 0, 0);
   drawTiles(c, now);
   M.dynHits = [];
-  M.lights = []; World.night = nightFactor();
+  M.lights = []; World.night = nightFactor(); { const st = Math.round(World.night * Night.N); if (st !== Night.step) { Night.step = st; Night.cc.clear(); M.dirty = true; } }
   drawRoute(c, now);
   World.draw(c, now);
   drawDecorDyn(c);
@@ -1564,28 +1592,9 @@ const mixc = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
 // пятно света во флет-стиле: 2–3 вложенных эллипса с чёткими краями, без градиента
 function flatPool(c, X, Y, rx, ry, col, a) { c.fillStyle = col; for (const [k, al] of [[1, .10], [.68, .12], [.38, .16]]) { c.globalAlpha = a * al; c.beginPath(); c.ellipse(X, Y, rx * k, ry * k, 0, 0, 7); c.fill(); } c.globalAlpha = 1; }
 function drawNight(c, now) {
-  const M = Map2D, n = World.night; if (n < .02) return; const dusk = Math.max(0, 1 - Math.abs(n - .45) / .45); const t = now / 1000, s = M.s;
-  // 1) цветокоррекция: днём без изменений, в сумерках тёплый персиковый, ночью сине-фиолетовый
-  let col = mixc([255, 255, 255], [255, 178, 128], dusk * .8); col = mixc(col, [92, 104, 196], Math.max(0, (n - .35) / .65));
-  const k = Math.max(0, (n - .3) / .7);
-  // снимок «дневной» картинки до затемнения — им освещённые места и будут открываться
-  const DS = NightLayer; if (k > 0) { if (!DS.day) DS.day = document.createElement('canvas'); if (DS.day.width !== M.cv.width || DS.day.height !== M.cv.height) { DS.day.width = M.cv.width; DS.day.height = M.cv.height; } const dg = DS.day.getContext('2d'); dg.clearRect(0, 0, DS.day.width, DS.day.height); dg.drawImage(M.cv, 0, 0); }
-  c.save(); c.globalCompositeOperation = 'multiply'; c.fillStyle = `rgb(${col})`; c.fillRect(0, 0, M.W, M.H); c.globalCompositeOperation = 'source-over';
-  if (k <= 0) { c.restore(); return; }
-  // 2) свет — простые кружки одного цвета на отдельном слое: в местах наложения цвет тот же, без смешивания; слой кладётся один раз с общей прозрачностью
-  const LL = NightLayer; const dpr = M.dpr; if (!LL.cv) LL.cv = document.createElement('canvas'); if (LL.cv.width !== M.cv.width || LL.cv.height !== M.cv.height) { LL.cv.width = M.cv.width; LL.cv.height = M.cv.height; }
-  const g = LL.cv.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, LL.cv.width, LL.cv.height); g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const circ = (X, Y, r) => { if (X < -r || X > M.W + r || Y < -r || Y > M.H + r) return; g.moveTo(X + r, Y); g.arc(X, Y, r, 0, 6.2832); };
-  g.fillStyle = '#000'; g.beginPath();
-  if (s < 45) { const a = cityDots(); const r = Math.max(1.2, Math.min(4, s * .2)); for (let q = 0; q < a.length; q += 3) circ(sx2(a[q], a[q + 1]), sy2(a[q], a[q + 1]), r * (.7 + .5 * a[q + 2])); }
-  for (const o of M.lights) circ(o.X, o.k === 'win' ? o.Y + o.r * .3 : o.Y, o.k === 'win' ? o.r * .85 : o.r * .7);
-  for (const p of M.visiblePOI || []) { if (!['hotel', 'food', 'market', 'cafe', 'warung', 'nightlife'].includes(p.c)) continue; circ(sx2(p.X, p.Y), sy2(p.X, p.Y), p.c === 'nightlife' ? 26 + 3 * Math.sin(t * 2.5 + p.X * 9) : 16); }
-  g.fill();
-  // в кругах открываем исходную (дневную) картинку с лёгким тёплым оттенком
-  g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-in'; g.drawImage(DS.day, 0, 0);
-  g.globalCompositeOperation = 'source-atop'; g.fillStyle = 'rgba(255,200,90,.22)'; g.fillRect(0, 0, LL.cv.width, LL.cv.height); g.globalCompositeOperation = 'source-over';
-  c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = k; c.drawImage(LL.cv, 0, 0); c.globalAlpha = 1;
-  c.restore();
+  // ночь — это перекраска картинок (Night в art.js); здесь только огоньки городов издалека, где окна ещё не различимы
+  const M = Map2D, s = M.s, k = Night.t(); if (k < .5 || s >= 45) return; const a = cityDots(), fa = Math.min(1, (45 - s) / 20) * (k - .5) * 2, r = Math.max(1, Math.min(3, s * .15));
+  c.save(); c.fillStyle = '#FFD45A'; c.globalAlpha = fa; c.beginPath(); for (let q = 0; q < a.length; q += 3) { const X = sx2(a[q], a[q + 1]), Y = sy2(a[q], a[q + 1]); if (X < -4 || X > M.W + 4 || Y < -4 || Y > M.H + 4) continue; const rr = r * (.7 + .5 * a[q + 2]); c.moveTo(X + rr, Y); c.arc(X, Y, rr, 0, 6.2832); } c.fill(); c.restore();
 }
 const DQ = { a: [], b: [], add(y, f) { this.a.push([y, f]); }, top(f) { this.b.push(f); },
   flush() { this.a.sort((p, q) => p[0] - q[0]); for (const e of this.a) e[1](); for (const f of this.b) f(); this.a.length = 0; this.b.length = 0; } };
