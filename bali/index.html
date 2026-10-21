@@ -667,7 +667,7 @@ const Art = {
         } catch (e) {} res(); };
       im.onerror = () => res(); im.src = it.src.startsWith('data:') ? it.src : base + it.src;
     }));
-    await Promise.all(jobs); Art.loaded = true;
+    await Promise.all(jobs); Art.loaded = true; if (typeof Rig !== 'undefined') Rig.build(); if (typeof renderTopAvatar === 'function') try { renderTopAvatar(); } catch (e) {}
     if (typeof Tiles !== 'undefined') { Tiles.clear(); Layout.clear(); }
   },
   async fetchAll(url = 'art.json') {
@@ -773,7 +773,7 @@ function drawHouse(c, X, Y, w, r) {
 // ===== Персонажи: векторные спрайты + анимации =====
 const ANIMS = { idle: 'Стоять', walk: 'Идти', run: 'Бежать', jump: 'Прыжок', wave: 'Помахать', dance: 'Танец', sit: 'Сесть', spin: 'Кружиться' };
 const Chars = {
-  list() { return Art.set.chr || []; },
+  list() { const ids = Rig.ids(); if (ids.length) return Rig._list || (Rig._list = ids.map(id => ({ _name: 'rig_' + id, _rig: id, get _src() { return { src: Rig.thumb(id) }; } }))); return Art.set.chr || []; },
   random(fallback) { const L = Chars.list(); if (!L.length) return fallback || avRandom(); const s = L[Math.floor(Math.random() * L.length)]; return { c: s._name, hue: 0 }; },
   sprite(av) { if (!av || !av.c) return null; const s = Art.byName[av.c]; if (s) return s; const L = Chars.list(); if (!L.length) return null; let h = 0; for (const ch of av.c) h = (h * 31 + ch.charCodeAt(0)) | 0; return L[Math.abs(h) % L.length]; },
   frame(av, anim, t) { // кадры поз (если сгенерированы для этого героя)
@@ -783,6 +783,7 @@ const Chars = {
   },
   // рисует персонажа, X,Y — точка у ног
   draw(c, av, X, Y, h, anim = 'idle', t = 0, face = 1) {
+    const rg = Chars.rigOf(av); if (rg) { Rig.draw(c, rg, X, Y, h, anim, t, face); return; }
     const spr = Chars.frame(av, anim, t) || Chars.sprite(av);
     let dy = 0, rot = 0, sxk = 1, syk = 1;
     switch (anim) {
@@ -805,7 +806,58 @@ const Chars = {
     c.restore();
   },
   // SVG/картинка для анкеты и карточки человека
-  thumb(av) { const s = Chars.sprite(av); if (s && s._src) return s._src.src; return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(avatarSVG(av || avRandom(), { pose: 'wave' })); },
+  rigOf(av) { if (!av || !av.c) return null; const ids = Rig.ids(); if (!ids.length) return null; if (av.c.startsWith('rig_')) { const r = Rig.get(av.c.slice(4)); if (r) return r; } let h = 0; for (const ch of av.c) h = (h * 31 + ch.charCodeAt(0)) | 0; return Rig.get(ids[Math.abs(h) % ids.length]); },
+  thumb(av) { const rg = Chars.rigOf(av); if (rg) { const id = Object.keys(Rig.map).find(k => Rig.map[k] === rg); return Rig.thumb(id); } const s = Chars.sprite(av); if (s && s._src) return s._src.src; return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(avatarSVG(av || avRandom(), { pose: 'wave' })); },
+};
+
+
+// ===== Персонажи-марионетки: голова, торс, руки, ноги отдельно =====
+const RIG_PARTS = ['head', 'torso', 'larm', 'rarm', 'lleg', 'rleg'];
+const Rig = {
+  map: null,
+  build() { const m = {}; for (const k in Art.byName) { const r = /^rig_(.+)_(head|torso|larm|rarm|lleg|rleg)$/.exec(k); if (r) (m[r[1]] = m[r[1]] || {})[r[2]] = Art.byName[k]; }
+    Rig.map = {}; for (const id in m) if (RIG_PARTS.every(p => m[id][p])) Rig.map[id] = m[id]; Rig._list = null; return Rig.map; },
+  get(id) { if (!Rig.map) Rig.build(); return Rig.map[id] || null; },
+  ids() { if (!Rig.map) Rig.build(); return Object.keys(Rig.map); },
+  // геометрия в единицах исходника: ноль — точка у ног
+  geo(P) {
+    const W = q => q._w, H = q => q._h; const legH = Math.max(H(P.lleg), H(P.rleg)), tW = W(P.torso), tH = H(P.torso);
+    const hipY = -legH * .9, tTop = hipY - tH, headBottom = tTop + H(P.head) * .1;
+    return { legH, tW, tH, hipY, tTop, headBottom, total: legH * .9 + tH + H(P.head) * .9 };
+  },
+  pose(anim, t, ph) {
+    const o = { la: 0, ra: 0, ll: 0, rl: 0, hd: 0, dy: 0, lsy: 1, lly: 0, rly: 0, sit: 0 };
+    const sw = Math.sin(t * 7 + ph);
+    switch (anim) {
+      case 'walk': o.ll = sw * .14; o.rl = -sw * .14; o.lly = Math.max(0, sw) * .06; o.rly = Math.max(0, -sw) * .06; o.la = -sw * .3; o.ra = -sw * .3; o.dy = -Math.abs(Math.cos(t * 7 + ph)) * .015; break;
+      case 'run': { const r = Math.sin(t * 12 + ph); o.ll = r * .22; o.rl = -r * .22; o.lly = Math.max(0, r) * .1; o.rly = Math.max(0, -r) * .1; o.la = -r * .6; o.ra = -r * .6; o.dy = -Math.abs(Math.cos(t * 12 + ph)) * .05; break; }
+      case 'wave': o.ra = -2.5 + Math.sin(t * 9) * .35; o.la = .05; break;
+      case 'dance': { const d = Math.sin(t * 6); o.la = 2.3 + d * .5; o.ra = -2.3 + d * .5; o.ll = d * .15; o.rl = d * .15; o.hd = d * .12; o.dy = -Math.abs(Math.sin(t * 12)) * .04; break; }
+      case 'jump': { const q = (t % 1.1) / 1.1; const air = Math.sin(Math.min(1, q / .7) * Math.PI); o.dy = -air * .45; o.la = 2.6 * air; o.ra = -2.6 * air; o.ll = -.2 * air; o.rl = .2 * air; break; }
+      case 'sit': o.ll = -1.35; o.rl = 1.35; o.sit = 1; break;
+      case 'spin': break;
+    }
+    return o;
+  },
+  draw(c, P, X, Y, h, anim, t, face, ph = 0) {
+    const g = Rig.geo(P); const k = h / g.total; const o = Rig.pose(anim, t, ph);
+    c.save(); c.translate(X, Y);
+    c.fillStyle = 'rgba(20,10,50,.16)'; c.beginPath(); c.ellipse(0, 0, h * .2, h * .055, 0, 0, 7); c.fill();
+    c.translate(0, o.dy * h); c.scale(k * (face < 0 ? -1 : 1) * (anim === 'spin' ? Math.cos(t * 6) || .01 : 1), k);
+    const limb = (q, x, y, a, sy = 1) => { c.save(); c.translate(x, y); c.rotate(a); c.scale(1, sy); c.drawImage(q, -q._w / 2, -q._w * .12, q._w, q._h); c.restore(); };
+    const lx = Math.max(g.tW * .2, Math.max(P.lleg._w, P.rleg._w) * .5);
+    const by = o.sit ? g.legH * .75 : 0; c.translate(0, by);
+    limb(P.lleg, -lx, g.hipY + P.lleg._w * .12 - o.lly * g.legH, o.ll, o.lsy); limb(P.rleg, lx, g.hipY + P.rleg._w * .12 - o.rly * g.legH, o.rl, o.lsy);
+    // руки за торсом, если подняты вверх — поверх
+    const ax = g.tW / 2 - P.larm._w * .3, ay = g.tTop + g.tH * .12 + P.larm._w * .12;
+    c.drawImage(P.torso, -g.tW / 2, g.tTop, g.tW, g.tH);
+    limb(P.larm, -ax, ay, o.la); limb(P.rarm, ax, ay, o.ra);
+    c.save(); c.translate(0, g.headBottom); c.rotate(o.hd); c.drawImage(P.head, -P.head._w / 2, -P.head._h, P.head._w, P.head._h); c.restore();
+    c.restore();
+  },
+  thumb(id) { const P = Rig.get(id); if (!P) return null; Rig._th = Rig._th || {}; if (Rig._th[id]) return Rig._th[id];
+    const g = Rig.geo(P); const H = 300, k = H / g.total; const cv = document.createElement('canvas'); cv.width = Math.ceil(Math.max(g.tW + P.larm._w * 1.6, P.head._w) * k) + 20; cv.height = H + 16;
+    Rig.draw(cv.getContext('2d'), P, cv.width / 2, H + 8, H, 'idle', 0, 1); return (Rig._th[id] = cv.toDataURL()); },
 };
 
 // ===== Мой персонаж =====
