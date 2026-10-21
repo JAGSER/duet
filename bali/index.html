@@ -763,7 +763,7 @@ const Night = { step: 0, N: 4, cache: new Map(), cc: new Map(), tex: {},
   // ночная версия спрайта (кэш по шагу)
   img(im, kind) { if (!this.step || !im) return im; let e = this.cache.get(im); if (!e) { e = []; this.cache.set(im, e); } if (e[this.step]) return e[this.step];
     const w = im.width, h = im.height; if (!w || !h) return im; const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const g = cv.getContext('2d', { willReadFrequently: true }); g.drawImage(im, 0, 0);
-    try { const d = g.getImageData(0, 0, w, h), a = d.data, t = this.t(); const wm = (kind === 'bld' || kind === 'lm') ? (im._wm || (im._wm = this.windows(a, w, h))) : null;
+    try { const d = g.getImageData(0, 0, w, h), a = d.data, t = this.t(); const wm = null; // подсветка окон отключена
       for (let i = 0, p = 0; i < a.length; i += 4, p++) { if (!a[i + 3]) continue; if (wm && wm[p]) { a[i] += (255 - a[i]) * t; a[i + 1] += (208 - a[i + 1]) * t; a[i + 2] += (86 - a[i + 2]) * t; continue; } const q = this.rgb(a[i], a[i + 1], a[i + 2], kind, t); a[i] = q[0]; a[i + 1] = q[1]; a[i + 2] = q[2]; }
       g.putImageData(d, 0, 0); } catch (err) { return im; }
     for (const k of ['_w', '_h', '_name', '_face', '_art', '_s']) if (im[k] !== undefined) cv[k] = im[k]; return e[this.step] = cv; },
