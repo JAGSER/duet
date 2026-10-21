@@ -1,3 +1,10 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+</head>
+<body>
 <title>Живая карта Бали</title>
 <meta name="description" content="Живая иллюстрированная карта Бали: места, пляжи, кафе, клубы, события, люди онлайн и маршруты.">
 <meta name="theme-color" content="#1F8EE6">
@@ -135,6 +142,24 @@ h4{margin:16px 0 6px;font-size:15px;font-weight:900}
 .toast{background:var(--ink);color:#fff;font-weight:800;font-size:13.5px;padding:12px 16px;border-radius:18px;box-shadow:0 8px 20px rgba(0,0,0,.3);transition:opacity .4s, transform .4s}
 .toast.out{opacity:0;transform:translateY(10px)}
 @media (min-width:900px){#sheet{left:auto;right:16px;transform:none;bottom:96px;border-radius:28px;max-height:calc(100vh - 200px);width:420px;animation:none}.side{bottom:110px}}
+@media (max-width:700px), (pointer:coarse){
+ .search{height:54px}.search input{font-size:17px}
+ #btnMe{width:54px;height:54px}
+ .pillx{height:36px;font-size:14.5px;padding:0 14px}
+ .chip{height:42px;font-size:15.5px;padding:0 16px}.chip i{width:12px;height:12px}
+ .side button{width:54px;height:54px;font-size:26px}
+ .nav{height:74px}.nav button{font-size:12.5px;min-width:60px}.nav button svg{width:26px;height:26px}.nav .fab{width:68px;height:68px;margin-top:-34px}
+ .sh-h h3{font-size:25px}.desc{font-size:17px}.mut{font-size:14.5px}.sm{font-size:13px}
+ .btn{min-height:50px;font-size:16px;padding:0 18px}.btn.sm{min-height:42px;font-size:14.5px}
+ .li b{font-size:16px}.li span{font-size:14px}.li>i{width:42px;height:42px}.li{grid-template-columns:46px 1fr}
+ .tip{font-size:15.5px}.facts b{font-size:16px}.facts span{font-size:12.5px}
+ .svc span{font-size:14px}.tabs button{min-height:42px;font-size:15px}
+ .tile b{font-size:16.5px}.tile span{font-size:13.5px}.fl{font-size:15px}.fl b{font-size:17px}
+ .res b{font-size:16px}.res span{font-size:14px}
+ .msg{font-size:16px}.inp{font-size:17px}.toast{font-size:15.5px}
+ .catb{font-size:15px;padding:12px}.pill{font-size:15px;min-height:42px}.sw{width:40px;height:40px}
+ .lbl{font-size:13px}.chk{font-size:15.5px}
+}
 </style>
 <canvas id="map" aria-label="Иллюстрированная карта Бали"></canvas>
 <div class="hud">
@@ -594,6 +619,7 @@ function buildSprites() {
 }
 
 // ===== Движок карты =====
+const UIK = (matchMedia('(pointer:coarse)').matches || innerWidth < 700) ? 1.25 : 1;
 const Map2D = {
   cv: null, ctx: null, W: 0, H: 0, dpr: 1,
   cx: 0, cy: 8, s: 3,          // центр (км), масштаб (пикс/км)
@@ -617,11 +643,12 @@ function initMap(geo, pois) {
   M.land = geo.land.map(r => { const a = ringToKm(r); return { a, bb: bboxOf(a) }; });
   M.landLo = geo.landLo.map(r => { const a = ringToKm(r); return { a, bb: bboxOf(a) }; });
   M.lakes = geo.lakes.map(l => { const a = ringToKm(l.g); return { n: l.n, a, bb: bboxOf(a) }; });
-  M.roads = geo.roads.map(r => { const a = ringToKm(r.g); return { k: r.k, n: r.n, a, bb: bboxOf(a) }; });
-  M.peaks = geo.peaks.filter(p => +p.e >= 1700 || /Agung|Batur|Batukaru/i.test(p.n)).map(p => ({ n: p.n, e: +p.e || 0, x: toX(p.p[0]), y: toY(p.p[1]), lat: p.p[1], lng: p.p[0] }));
+  M.roads = geo.roads.map(r => { const a = ringToKm(r.g); return { k: r.k, n: r.n, a, bb: bboxOf(a) }; })
+    .filter(r => { let on = 0, n = 0; for (let i = 0; i < r.a.length; i += 2) { n++; for (const L of M.land) if (r.a[i] >= L.bb[0] && r.a[i] <= L.bb[2] && r.a[i + 1] >= L.bb[1] && r.a[i + 1] <= L.bb[3] && pip(L.a, r.a[i], r.a[i + 1])) { on++; break; } } return on / n > .6; });
+  M.peaks = geo.peaks.filter(p => +p.e >= 1700 || /^Gunung (Agung|Batur|Batukaru)\b/i.test(p.n)).map(p => ({ n: p.n, e: +p.e || 0, x: toX(p.p[0]), y: toY(p.p[1]), lat: p.p[1], lng: p.p[0] }));
   // дедуп вершин
   const pk = []; for (const p of M.peaks.sort((a, b) => b.e - a.e)) if (!pk.some(q => Math.hypot(q.x - p.x, q.y - p.y) < 4.5)) pk.push(p); M.peaks = pk;
-  M.pois = pois.map(p => ({ ...p, X: toX(p.x), Y: toY(p.y) }));
+  M.pois = pois.map(p => ({ ...p, X: toX(p.x), Y: toY(p.y) })).filter(p => p.x > 114.43 || M.land.some(L => pip(L.a, p.X, p.Y)) || ['dive', 'surf', 'beach', 'transport'].includes(p.c));
   M.poiById = new Map(M.pois.map(p => [p.id, p]));
   // деревья и пальмы — детерминированно
   const main = M.landLo[0];
@@ -801,7 +828,7 @@ function renderBase() {
     if (s > 40 && !quick) { c.font = '700 11px Nunito, sans-serif'; c.fillStyle = '#6B5E7A'; c.textAlign = 'center'; const done = new Set();
       for (const r of rs) { if (!r.n || done.has(r.n) || r.k > 3) continue; const i = Math.floor(r.a.length / 4) * 2; const X = sx(r.a[i]), Y = sy(r.a[i + 1]); if (X < 20 || X > M.W - 20 || Y < 20 || Y > M.H - 20) continue; done.add(r.n); c.fillText(r.n.replace(/^Jalan /, 'Jl. '), X, Y - 6); } }
   }
-  Occ.reset(); Occ.add([0, 0, M.W, 150]); Occ.add([M.W - 70, M.H - 300, M.W, M.H]); Occ.add([0, M.H - 90, M.W, M.H]);
+  Occ.reset(); Occ.add([0, 0, M.W, 150 * UIK]); Occ.add([M.W - 70 * UIK, M.H - 300 * UIK, M.W, M.H]); Occ.add([0, M.H - 95 * UIK, M.W, M.H]);
   drawDecor(c);
   // вулканы
   for (const p of M.peaks) {
@@ -840,7 +867,7 @@ function drawHouse(c, X, Y, w, r) {
   c.fillStyle = '#6B4A3A'; c.fillRect(X - w * .08, Y - w * .25, w * .16, w * .25);
 }
 function drawVolcano(c, X, Y, w, p) {
-  const h = w * .62; const active = /Batur|Agung/i.test(p.n);
+  const h = w * .62; const active = /^Gunung (Batur|Agung)\b/i.test(p.n);
   c.save(); c.translate(X, Y);
   c.fillStyle = '#7C6655'; c.beginPath(); c.moveTo(-w / 2, h * .35); c.quadraticCurveTo(-w * .2, -h * .45, -w * .1, -h * .62); c.lineTo(w * .1, -h * .62); c.quadraticCurveTo(w * .2, -h * .45, w / 2, h * .35); c.closePath(); c.fill();
   c.fillStyle = '#5E4B3F'; c.beginPath(); c.moveTo(0, -h * .62); c.lineTo(w * .1, -h * .62); c.quadraticCurveTo(w * .2, -h * .45, w / 2, h * .35); c.lineTo(w * .05, h * .35); c.closePath(); c.fill();
@@ -857,14 +884,14 @@ function drawDistricts(c) {
   c.textAlign = 'center';
   for (const d of App.districts) {
     const X = sx(d.X), Y = sy(d.Y); if (X < -100 || X > M.W + 100 || Y < -40 || Y > M.H + 40) continue;
-    const fs = Math.round(Math.max(12, Math.min(20, s * .9)));
+    const fs = Math.round(UIK * Math.max(12, Math.min(20, s * .9)));
     c.font = '900 ' + fs + 'px Nunito, sans-serif'; const tw = c.measureText(d.name_ru).width;
     const dr = [X - tw / 2 - 12, Y - fs * .8 - 2, X + tw / 2 + 12, Y + fs * .7 + 2]; if (!Occ.free(dr)) continue; Occ.add(dr);
     c.fillStyle = 'rgba(34,22,58,.78)'; c.beginPath(); c.roundRect(X - tw / 2 - 10, Y - fs * .8, tw + 20, fs * 1.5, fs * .75); c.fill();
     c.fillStyle = '#fff'; c.fillText(d.name_ru, X, Y + fs * .3);
     M.hitList.push({ type: 'district', d, x: X, y: Y, r: Math.max(18, tw / 2) });
     if (s > 7 && s < 45 && App.showJokes) {
-      c.font = '700 11px Nunito, sans-serif'; const words = d.joke.split(' '); const lines = []; let line = '';
+      c.font = '700 ' + 11 * UIK + 'px Nunito, sans-serif'; const words = d.joke.split(' '); const lines = []; let line = '';
       for (const w of words) { const t = line ? line + ' ' + w : w; if (c.measureText(t).width > 170) { lines.push(line); line = w; } else line = t; } if (line) lines.push(line);
       const bw = Math.min(190, Math.max(...lines.map(l => c.measureText(l).width)) + 18), bh = lines.length * 14 + 10; const bx = X - bw / 2, by = Y + fs + 4; const jr = [bx, by - 6, bx + bw, by + bh]; if (!Occ.free(jr)) continue; Occ.add(jr);
       c.fillStyle = 'rgba(255,255,255,.95)'; c.beginPath(); c.roundRect(bx, by, bw, bh, 10); c.fill(); c.beginPath(); c.moveTo(X - 6, by); c.lineTo(X, by - 6); c.lineTo(X + 6, by); c.fill();
@@ -908,7 +935,7 @@ function drawPOIs(c) {
     if (drawn.length > 260) break;
     const X = sx(p.X), Y = sy(p.Y); const sel = M.selected && M.selected.id === p.id;
     const lm = p.r <= 2 && s > 3.5 ? landmarkSprite(p) : null;
-    const size = sel ? 32 : p.r === 1 ? (s < 5 ? 24 : 30) : p.r === 2 ? 26 : p.r === 3 ? 22 : 19;
+    const size = UIK * (sel ? 32 : p.r === 1 ? (s < 5 ? 24 : 30) : p.r === 2 ? 26 : p.r === 3 ? 22 : 19);
     const lmw = lm ? Math.max(28, Math.min(54, s * 2.6)) : 0, lmh = lm ? lmw * lm._h / lm._w : 0;
     const top = Y - lmh - size; const iconR = [X - size / 2 - gap, top - gap, X + size / 2 + gap, Y + gap];
     if (!sel && !Occ.free(iconR)) continue;
@@ -918,9 +945,9 @@ function drawPOIs(c) {
     const wantLabel = sel || (p.r === 1 && s > 4.5) || (p.r === 2 && s > 9) || (p.r === 3 && s > 30) || s > 110;
     if (wantLabel) {
       const nm = (p.nr && p.r <= 2 ? p.nr : p.n); const t = nm.length > 24 ? nm.slice(0, 23) + '…' : nm;
-      c.font = (p.r <= 2 ? '900 12.5px' : '800 11.5px') + ' Nunito, sans-serif'; const tw = c.measureText(t).width;
-      const lr = [X - tw / 2 - 3, Y + 2, X + tw / 2 + 3, Y + 18];
-      if (sel || Occ.free(lr)) { Occ.add(lr); label = { t, f: c.font, y: Y + 14 }; }
+      c.font = (p.r <= 2 ? '900 ' + 12.5 * UIK + 'px' : '800 ' + 11.5 * UIK + 'px') + ' Nunito, sans-serif'; const tw = c.measureText(t).width;
+      const lr = [X - tw / 2 - 3, Y + 2, X + tw / 2 + 3, Y + 4 + 15 * UIK];
+      if (sel || Occ.free(lr)) { Occ.add(lr); label = { t, f: c.font, y: Y + 3 + 12 * UIK }; }
     }
     drawn.push({ p, X, Y, sel, lm, lmw, lmh, size, label });
   }
@@ -1927,3 +1954,6 @@ function toast(t, ms = 3200, onClick) {
 
 boot();
 </script>
+
+</body>
+</html>
