@@ -698,11 +698,15 @@ const Art = {
     const pad = 4, S = size + pad * 2, dpr = 2; c = document.createElement('canvas'); c.width = c.height = S * dpr; const x = c.getContext('2d'); x.scale(dpr, dpr);
     if (sel) { x.fillStyle = '#FFD21F'; x.beginPath(); x.arc(S / 2, S / 2, size / 2 + 3, 0, 7); x.fill(); } x.drawImage(s, pad, pad, size, size); c._s = S; _iconCache.set(key, c); return c; },
   vehicle(kind, v) { return Art.pickFrom('veh_' + kind, v) || null; },
-  drawVehicle(c, kind, X, Y, w, dir, v = 0) {
-    const s = Art.vehicle(kind, v);
-    if (s) { const h = w * s._h / s._w; const flip = (s._face === 'r' ? 1 : -1) * dir < 0; c.save(); c.translate(X, Y); if (flip) c.scale(-1, 1); c.drawImage(s, -w / 2, -h, w, h); c.restore(); return; }
-    const sp = kind === 'car' ? SPR.car : kind === 'boat' ? SPR.boat : kind === 'jukung' ? SPR.jukung : kind === 'ferry' ? SPR.boat : SPR.scooter; const h = w * sp._h / sp._w;
-    c.save(); c.translate(X, Y); if (dir < 0) c.scale(-1, 1); c.drawImage(sp, -w / 2, -h, w, h); c.restore();
+  // view: 'side' | 'front' (едет вниз, к зрителю) | 'back' (едет вверх); H — высота (для наземного транспорта одинаковая)
+  drawVehicle(c, kind, X, Y, w, dir, v = 0, view = 'side', H = 0) {
+    let s = view !== 'side' ? Art.pickFrom('veh_' + kind + '_' + view, v) : null; const turned = !!s;
+    if (!s) s = Art.pickFrom('veh_' + kind + '_side', v) || Art.vehicle(kind, v);
+    if (!s) s = kind === 'car' || kind === 'bus' ? SPR.car : kind === 'boat' || kind === 'ferry' ? SPR.boat : kind === 'jukung' ? SPR.jukung : SPR.scooter;
+    const asp = (s._w || s.width) / (s._h || s.height); let h = H || w / asp, ww = h * asp;
+    let fx = 1; if (!turned && view !== 'side') ww *= .5; // нет картинки ракурса — сужаем боковую
+    if (!turned || view === 'side') { const face = s._face || 'r'; fx = (face === 'r' ? 1 : -1) * dir < 0 ? -1 : 1; if (s === SPR.car || s === SPR.boat || s === SPR.jukung || s === SPR.scooter) fx = dir < 0 ? -1 : 1; }
+    c.save(); c.translate(X, Y); if (fx < 0) c.scale(-1, 1); c.drawImage(s, -ww / 2, -h, ww, h); c.restore();
   },
   animal(kind, v) { return Art.pickFrom('ani_' + kind, v) || SPR[kind] || null; },
 };
@@ -831,7 +835,7 @@ const Me = {
     const dt = Math.min(.1, (now - (this._t || now)) / 1000); this._t = now; this.update(dt);
     const av = App.me ? App.me.av : avRandom(1); Chars.draw(c, av, X, Y, h, this.anim, now / 1000, this.face);
     if (App.me) { c.font = '900 ' + 12 * UIK + 'px Nunito, sans-serif'; c.textAlign = 'center'; c.lineWidth = 4; c.strokeStyle = '#fff'; c.fillStyle = '#7B2FF7'; c.strokeText(App.me.name || 'Я', X, Y + 16 * UIK); c.fillText(App.me.name || 'Я', X, Y + 16 * UIK); }
-    if (this.say) bubble(c, X, Y - h - 6, this.say.text, '#7B2FF7');
+    if (this.say) { const tx = this.say.text; DQ.top(() => bubble(c, X, Y - h - 6, tx, '#7B2FF7')); }
     // граница района прогулки
     if (Map2D.s > 30 && (this.tx !== null || App.walkMode)) { c.strokeStyle = 'rgba(123,47,247,.35)'; c.setLineDash([8, 8]); c.lineWidth = 2; c.beginPath(); c.arc(sx2(this.hx, this.hy), sy2(this.hx, this.hy), this.R * Map2D.s, 0, 7); c.stroke(); c.setLineDash([]); }
   },
@@ -1271,15 +1275,18 @@ function frame(now) {
   drawRoute(c, now);
   App.drawPeople && App.drawPeople(c, now);
   drawMe(c, now);
+  DQ.flush();
   World.drawSky(c, now);
   if (App.onViewChange) App.onViewChange();
   requestAnimationFrame(frame);
 }
 
+const DQ = { a: [], b: [], add(y, f) { this.a.push([y, f]); }, top(f) { this.b.push(f); },
+  flush() { this.a.sort((p, q) => p[0] - q[0]); for (const e of this.a) e[1](); for (const f of this.b) f(); this.a.length = 0; this.b.length = 0; } };
 function drawMe(c, now) {
   const M = Map2D; if (!M.me) return; const me = Me.pos(); const X = sx2(toX(me.lng), toY(me.lat)), Y = sy2(toX(me.lng), toY(me.lat));
   const t = (now % 2000) / 2000; c.fillStyle = `rgba(123,47,247,${.35 * (1 - t)})`; c.beginPath(); c.arc(X, Y, 10 + t * 26, 0, 7); c.fill();
-  const h = Math.max(30, Math.min(96, M.s * .6)) * UIK; Me.draw(c, X, Y, h, now);
+  const h = Math.max(30, Math.min(96, M.s * .6)) * UIK; DQ.add(Y, () => Me.draw(c, X, Y, h, now));
   M.dynHits.push({ type: 'me', x: X, y: Y - h / 2, r: h / 3 });
 }
 function drawRoute(c, now) {
@@ -1385,8 +1392,9 @@ function spawnAround() {
   W.npcs = W.npcs.filter(n => inBB(n.x, n.y));
   const tn = Math.min(M.s > 200 ? 22 : 12, 30);
   if (W.npcs.length < tn) { const hot = M.visiblePOI.filter(p => ['beach', 'food', 'cafe', 'nightlife', 'sight', 'temple', 'market', 'shop', 'warung', 'surf'].includes(p.c));
-    if (hot.length) { const p = pick(hot); let x = p.X + rand(-.04, .04), y = p.Y + rand(-.04, .04); if (!isLand(x, y)) { x = p.X; y = p.Y; }
-      if (isLand(x, y)) { const a = avRandom(); if (p.c === 'beach' || p.c === 'surf') { a.top = pick(['tank', 'tshirt']); a.bottom = 'shorts'; } W.npcs.push({ x, y, hx: x, hy: y, av: Chars.random(a), ph: rand(0, 6), wait: rand(0, 3), face: 1, say: null }); } } }
+    if (hot.length) { const p = pick(hot); let x = p.X + rand(-.14, .14), y = p.Y + rand(-.14, .14); if (!isLand(x, y)) { x = p.X + rand(-.03, .03); y = p.Y + rand(-.03, .03); }
+      const busy = W.npcs.filter(o => o.poi === p.id).length >= 2 || W.npcs.some(o => Math.hypot(o.x - x, o.y - y) < .03);
+      if (!busy && isLand(x, y)) { const a = avRandom(); if (p.c === 'beach' || p.c === 'surf') { a.top = pick(['tank', 'tshirt']); a.bottom = 'shorts'; } W.npcs.push({ poi: p.id, x, y, hx: x, hy: y, av: Chars.random(a), ph: rand(0, 6), wait: rand(0, 3), face: 1, say: null }); } } }
 }
 const NPC_LINES = ['Где тут самый вкусный смузи-боул?', 'Опять пробка в Чангу…', 'Обезьяна украла мои очки!', 'Ещё один кокос, пожалуйста', 'Закат через 20 минут — бежим!', 'Я тут на неделю. Уже третий год.', 'Сегодня точно встану на доску', 'Кто-нибудь видел мой байк?', 'Терима касих!', 'Wi‑Fi есть? Работаю.', 'Пойдём на Батур к рассвету?', 'Ещё массаж — и домой', 'Кто на вечеринку в Улувату?', 'Бинтанг или кокос?'];
 
@@ -1432,17 +1440,20 @@ World.draw = function (c, now) {
       else { const left = b.f * L; if (rem < left) { b.f -= rem / L; rem = 0; } else { rem -= left; if (b.si > 0) { b.si--; b.f = 1; } else { b.dir = 1; b.f = 0; } } } }
     const x1 = a[b.si * 2], y1 = a[b.si * 2 + 1], x2 = a[b.si * 2 + 2], y2 = a[b.si * 2 + 3]; const x = x1 + (x2 - x1) * b.f, y = y1 + (y2 - y1) * b.f;
     const X = sx2(x, y), Y = sy2(x, y); if (!onScreen(X, Y, 30)) continue;
-    const ddx = (sx2(x2, y2) - sx2(x1, y1)) * b.dir; if (Math.abs(ddx) > .5) b.face = ddx >= 0 ? 1 : -1; const dir = b.face || 1;
-    const w = (b.kind === 'bus' ? 46 : b.kind === 'car' ? 32 : 28) * u;
-    Art.drawVehicle(c, b.kind, X, Y + 3, w, dir, b.v);
+    const ddx = (sx2(x2, y2) - sx2(x1, y1)) * b.dir, ddy = (sy2(x2, y2) - sy2(x1, y1)) * b.dir; if (Math.abs(ddx) > .5) b.face = ddx >= 0 ? 1 : -1; const dir = b.face || 1;
+    const ax = Math.abs(ddx), ay = Math.abs(ddy); if (!b.view) b.view = 'side';
+    if (b.view === 'side' ? ay > ax * 1.4 : ax > ay * 1.4) b.view = ay > ax ? (ddy > 0 ? 'front' : 'back') : 'side'; else if (b.view !== 'side') b.view = ddy > 0 ? 'front' : 'back';
+    const VH = 24 * u, bk = b.kind, bv = b.v, vw = b.view; DQ.add(Y + 3, () => Art.drawVehicle(c, bk, X, Y + 3, 0, dir, bv, vw, VH));
   }
   // пешеходы
+  if (s >= 45) { const N = W.npcs, SEP = Math.max(.012, 34 * UIK / s); for (let i = 0; i < N.length; i++) for (let j = i + 1; j < N.length; j++) { const A = N[i], B = N[j]; const dx = B.x - A.x, dy = B.y - A.y, d = Math.hypot(dx, dy);
+      if (d < SEP && d > 1e-6) { const k = (SEP - d) * .04 / d; const ax = A.x - dx * k, ay = A.y - dy * k, bx = B.x + dx * k, by = B.y + dy * k; if (isLand(ax, ay)) { A.x = ax; A.y = ay; } if (isLand(bx, by)) { B.x = bx; B.y = by; } } } }
   if (s >= 45) for (const n of W.npcs) {
-    wanderer(n, dt, true, .0011, .06); if (!n.moving && Math.random() < .0015) n.say = { txt: pick(NPC_LINES), until: now + 4500 };
+    wanderer(n, dt, true, .0011, .14); if (!n.moving && Math.random() < .0015) n.say = { txt: pick(NPC_LINES), until: now + 4500 };
     const X = sx2(n.x, n.y), Y = sy2(n.x, n.y); if (!onScreen(X, Y, 40)) continue;
-    const h = Math.max(30, Math.min(52, s * .16)) * UIK; Chars.draw(c, n.av, X, Y, h, n.moving ? 'walk' : 'idle', t + n.ph, n.face);
+    const h = Math.max(30, Math.min(52, s * .16)) * UIK, an = n.moving ? 'walk' : 'idle', fc = n.face; DQ.add(Y, () => Chars.draw(c, n.av, X, Y, h, an, t + n.ph, fc));
     M.dynHits.push({ type: 'npc', n, x: X, y: Y - h / 2, r: h / 3 });
-    if (n.say && now < n.say.until && s > 40) bubble(c, X, Y - h - 6, n.say.txt);
+    if (n.say && now < n.say.until && s > 40) { const tx = n.say.txt; DQ.top(() => bubble(c, X, Y - h - 6, tx)); }
   }
   // животные
   if (s >= 16) for (const a of W.animals) {
@@ -1451,7 +1462,7 @@ World.draw = function (c, now) {
     const X = sx2(a.x, a.y), Y = sy2(a.x, a.y); if (!onScreen(X, Y, 30)) continue;
     const spr = Art.animal(a.k, a.v); if (!spr) continue; const w = (a.k === 'cow' ? 34 : a.k === 'monkey' ? 24 : a.k === 'dog' ? 24 : 20) * u; const h = w * spr._h / spr._w;
     const bob = a.moving ? Math.abs(Math.sin(t * 9 + a.hx)) * 2 : 0; const flip = (spr._face === 'l' ? -1 : 1) * (a.face || 1);
-    c.save(); c.translate(X, Y - bob); c.scale(flip, 1); c.drawImage(spr, -w / 2, -h, w, h); c.restore();
+    DQ.add(Y, () => { c.save(); c.translate(X, Y - bob); c.scale(flip, 1); c.drawImage(spr, -w / 2, -h, w, h); c.restore(); });
     M.dynHits.push({ type: 'animal', k: a.k, x: X, y: Y - h / 2, r: w / 2 });
   }
 };
@@ -1490,7 +1501,6 @@ World.drawSky = function (c, now) {
     const dist = a.p * 240; const x = dpsX + Math.sin(a.br) * dist, y = dpsY - Math.cos(a.br) * dist; const X = sx2(x, y), Y = sy2(x, y); if (!onScreen(X, Y)) continue;
     const sz = Math.max(26, Math.min(64, 20 + a.p * 40 + Math.min(s, 30) * .6)) * UIK; const ang = (a.dep ? a.br : a.br + Math.PI) - (M.rot ? Math.PI / 2 : 0);
     const pl = Art.pickFrom('veh_plane', 0);
-    c.globalAlpha = .18; c.save(); c.translate(X + 18 + a.p * 30, Y + 26 + a.p * 40); c.rotate(ang); c.drawImage(pl && pl._top ? pl : SPR.plane, -sz / 2, -sz / 2, sz, sz); c.restore(); c.globalAlpha = 1;
     c.strokeStyle = 'rgba(255,255,255,.6)'; c.lineWidth = 2; c.setLineDash([6, 6]); c.beginPath(); c.moveTo(X, Y); c.lineTo(X - Math.sin(ang) * 70, Y + Math.cos(ang) * 70); c.stroke(); c.setLineDash([]);
     c.save(); c.translate(X, Y); c.rotate(ang); c.drawImage(SPR.plane, -sz / 2, -sz / 2, sz, sz); c.restore();
     if (s < 30) { c.font = '800 ' + 10.5 * UIK + 'px Nunito, sans-serif'; c.textAlign = 'center'; c.fillStyle = '#fff'; c.strokeStyle = 'rgba(21,60,120,.6)'; c.lineWidth = 3; const lb = a.f.flight + ' ' + (a.dep ? '→ ' : '← ') + a.f.city_ru; c.strokeText(lb, X, Y + sz / 2 + 12); c.fillText(lb, X, Y + sz / 2 + 12); }
@@ -2125,9 +2135,9 @@ App.drawPeople = function (c, now) {
     const X = sx2(p.sp.x, p.sp.y), Y = sy2(p.sp.x, p.sp.y); if (X < -40 || X > M.W + 40 || Y < -60 || Y > M.H + 40) continue;
     const h = Math.max(40, Math.min(80, M.s * .5)) * UIK; const anim = moving ? 'walk' : (ANIMS[p.an] ? p.an : 'idle');
     c.fillStyle = 'rgba(236,45,154,.25)'; c.beginPath(); c.ellipse(X, Y, h * .3, h * .1, 0, 0, 7); c.fill();
-    Chars.draw(c, p.av, X, Y, h, anim, t + X * .01, p.face || 1);
-    c.font = '800 ' + 11.5 * UIK + 'px Nunito, sans-serif'; c.textAlign = 'center'; c.lineWidth = 3.5; c.strokeStyle = '#fff'; c.fillStyle = '#7B2FF7'; c.strokeText(p.n, X, Y + 14 * UIK); c.fillText(p.n, X, Y + 14 * UIK);
-    if (p.say && p.say.t && Date.now() - p.say.ts < 30 * 60e3 && M.s > 18) bubble(c, X, Y - h - 6, p.say.t);
+    const fc = p.face || 1; DQ.add(Y, () => Chars.draw(c, p.av, X, Y, h, anim, t + X * .01, fc));
+    DQ.top(() => { c.font = '800 ' + 11.5 * UIK + 'px Nunito, sans-serif'; c.textAlign = 'center'; c.lineWidth = 3.5; c.strokeStyle = '#fff'; c.fillStyle = '#7B2FF7'; c.strokeText(p.n, X, Y + 14 * UIK); c.fillText(p.n, X, Y + 14 * UIK);
+      if (p.say && p.say.t && Date.now() - p.say.ts < 30 * 60e3 && M.s > 18) bubble(c, X, Y - h - 6, p.say.t); });
     M.dynHits.push({ type: 'person', p, x: X, y: Y - h / 2, r: h / 3 + 4 });
   }
 };
