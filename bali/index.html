@@ -1408,8 +1408,8 @@ function renderTile(L, i, j, quick) {
       if (s > 6 && s < 500 && App.showTraffic !== false) { g.lineCap = 'round'; for (const r of rs) { if (r.k > 4) continue; const a = r.a; for (let q = 2; q < a.length; q += 2) { const t = trafficLevel((a[q - 2] + a[q]) / 2, (a[q - 1] + a[q + 1]) / 2, r.k); const col = trafficColor(t); if (!col) continue; g.strokeStyle = col; g.lineWidth = Math.max(1.2, wOut(r.k) - 2.6); g.beginPath(); g.moveTo(X(a[q - 2], a[q - 1]), Y(a[q - 2], a[q - 1])); g.lineTo(X(a[q], a[q + 1]), Y(a[q], a[q + 1])); g.stroke(); } } }
     }
     // декор: деревья, дома, кусты — по биому (вблизи рисуется в общей очереди глубины вместе с людьми — см. drawDecorDyn)
-    if (s > 0 && s < DECOR_DYN_S && !quick) {
-      if (s >= FINE_S) { const C = FINE.cell, pd = .06; const items = [];
+    if (s > 0 && !quick) {
+      if (s >= FINE_S) { const C = FINE.cell, pd = Math.max(.06, 160 / s); const items = [];
         for (let gx = Math.floor((wb[0] - pd) / C); gx <= Math.floor((wb[2] + pd) / C); gx++) for (let gy = Math.floor((wb[1] - pd) / C); gy <= Math.floor((wb[3] + pd) / C); gy++) for (const d of fineCell(gx, gy)) items.push(d);
         const fr = Math.max(.2, Math.min(1, (s - FINE_S) / 900 + .2)); items.sort((a, b) => vv(a.x, a.y) - vv(b.x, b.y)); for (const d of items) { if ((d.v % 1000) / 1000 > fr) continue; Decor.draw(g, d, X(d.x, d.y), Y(d.x, d.y), s); }
       } else {
@@ -1417,11 +1417,11 @@ function renderTile(L, i, j, quick) {
       for (let gx = Math.floor((wb[0] - pad) / .5); gx <= Math.floor((wb[2] + pad) / .5); gx++) for (let gy = Math.floor((wb[1] - pad) / .5); gy <= Math.floor((wb[3] + pad) / .5); gy++) { const a = M.dgrid.get(gx + ',' + gy); if (a) for (const d of a) items.push(d); }
       const dens = s < 3 ? .03 : s < 4.5 ? .06 : s < 6 ? .12 : s < 10 ? .25 : s < 20 ? .5 : 1;
       items.sort((a, b) => vv(a.x, a.y) - vv(b.x, b.y));
-      for (const d of items) { if (d.r > dens) continue; Decor.draw(g, d, X(d.x, d.y), Y(d.x, d.y), s); }
+      const dyn = s >= DECOR_DYN_S; for (const d of items) { if (d.r > dens) continue; if (dyn && !coarseOk(d, s)) continue; Decor.draw(g, d, X(d.x, d.y), Y(d.x, d.y), s); }
       }
     }
     // вулканы
-    for (const p of M.peaks) { const big = p.e > 2500 ? 1 : p.e > 2000 ? .7 : .5; const w = Math.max(44 * big + 10, Math.min(200, s * 5 * big)); const Xp = X(p.x, p.y), Yp = Y(p.x, p.y); if (Xp < -w || Xp > TILE + w || Yp < -w || Yp > TILE + w) continue; drawVolcano(g, Xp, Yp, w, p, s); }
+    for (const p of M.peaks) { const big = p.e > 2500 ? 1 : p.e > 2000 ? .7 : .5; const w = Math.max(16, Math.min(900, s * 5 * big)); const Xp = X(p.x, p.y), Yp = Y(p.x, p.y); if (Xp < -w || Xp > TILE + w || Yp < -w || Yp > TILE + w) continue; drawVolcano(g, Xp, Yp, w, p, s); }
   }
   if (quick) c._stale = true;
   return c;
@@ -1469,13 +1469,16 @@ function layoutFor(L) {
     const U = vu(p.X, p.Y) * sL, V = vv(p.X, p.Y) * sL;
     const uniq = sL > 1.8 ? Art.landmark(p) : null; const pc = !uniq && sL > 3.5 ? picCard(p.id) : null; const lm = uniq || pc || (sL > 3.5 ? landmarkSprite(p) : null); const art = !lm && sL > 60 && p.r <= 4 ? Art.building(p) : null;
     const dot = p.r >= 5 && sL < 1500; const size = UIK * (p.r === 1 ? (sL < 5 ? 24 : 30) : p.r === 2 ? 26 : p.r === 3 ? 22 : dot ? 9 : 19);
-    const lmw = pc ? Math.max(30, Math.min(56, 22 + sL * .9)) * UIK : lm === SPR.umbrella ? Math.max(16, personPx(sL) * 1.3) : lm ? (uniq ? Math.max(p.r <= 1 ? 24 : 20, Math.min(p.r <= 1 ? 60 : 52, 16 + sL * 1.4)) : Math.max(22, Math.min(46, sL * 1.8))) : art ? Math.max(30, Math.min(50, sL * .2)) : 0; const lmh = lmw ? lmw * (lm || art)._h / (lm || art)._w : 0;
+    // размер картинки — в километрах на местности: масштабируется вместе с картой; слишком мелкую не рисуем (остаётся метка)
+    let lmKm = uniq ? (p.r <= 1 ? .3 : .22) : pc ? .14 : lm === SPR.umbrella ? .02 : lm ? .11 : art ? .08 : 0; let lmw = Math.min(700, lmKm * sL);
+    if (lmw < 18) { lmw = 0; } const lmImg = lmw ? (lm || art) : null; const pcOn = !!(pc && lmw);
+    const lmh = lmw ? lmw * lmImg._h / lmImg._w : 0;
     const r = first ? [U - lmw * .3, V - lmh * .55, U + lmw * .3, V + 2] : [U - Math.max(size, lmw) / 2 - gap, V - lmh - size - gap, U + Math.max(size, lmw) / 2 + gap, V + gap];
     if (!free(r)) continue; add(r);
     let label = null; const wantLabel = (p.r === 1 && sL > 4.5) || (p.r === 2 && sL > 9) || (p.r === 3 && sL > 30) || sL > 110;
     if (wantLabel) { const nm = (p.nr && p.r <= 2 ? p.nr : p.n); const t = nm.length > 24 ? nm.slice(0, 23) + '…' : nm; mctx.font = (p.r <= 2 ? '900 ' + 12.5 * UIK : '800 ' + 11.5 * UIK) + 'px Nunito, sans-serif'; const tw = mctx.measureText(t).width;
       const lr = [U - tw / 2 - 3, V + 2, U + tw / 2 + 3, V + 4 + 15 * UIK]; if (free(lr)) { add(lr); label = { t, f: mctx.font }; } }
-    out.pois.push({ p, lm: lm || art, lmw, lmh, size, label, pc: !!pc, dot, nopin: (!!uniq && sL < 14) || (!!(lm || art) && sL < 2500) });
+    out.pois.push({ p, lm: lmImg, lmw, lmh, size, label, pc: pcOn, dot, nopin: !!lmImg && sL < 2500 });
     if (out.pois.length > 6000) break;
   } };
   placePass(true);
@@ -1492,7 +1495,7 @@ function layoutFor(L) {
   }
   placePass(false);
   // подписи вулканов
-  for (const p of M.peaks) { if (!(sL > 6 && (p.e > 2000 || /Batur/i.test(p.n) || sL > 14))) continue; const big = p.e > 2500 ? 1 : p.e > 2000 ? .7 : .5; const w = Math.max(44 * big + 10, Math.min(200, sL * 5 * big)); const h = w * .62;
+  for (const p of M.peaks) { if (!(sL > 6 && (p.e > 2000 || /Batur/i.test(p.n) || sL > 14))) continue; const big = p.e > 2500 ? 1 : p.e > 2000 ? .7 : .5; const w = Math.max(16, Math.min(900, sL * 5 * big)); const h = w * .62;
     const n = p.n.replace('Gunung', 'Гунунг').replace(/ \/.*/, '').replace(/ south peak| north peak/, '') + (p.e ? ' · ' + p.e + ' м' : ''); mctx.font = '800 ' + Math.max(10, Math.min(14, w * .07)) * UIK + 'px Nunito, sans-serif'; const tw = mctx.measureText(n).width;
     const U = vu(p.x, p.y) * sL, V = vv(p.x, p.y) * sL + h * .35 + 14; const r = [U - tw / 2, V - 12, U + tw / 2, V + 4]; if (free(r)) { add(r); out.volcanoLabels.push({ p, n, f: mctx.font, dy: h * .35 + 14 }); } }
   Layout.m.set(key, out); if (Layout.m.size > 24) Layout.m.delete(Layout.m.keys().next().value);
@@ -1509,11 +1512,19 @@ function lmShift(it, L) {
   if (ok(0, 0)) return null;
   for (let r = 5; r <= 60; r += 5) for (let a = 0; a < 16; a++) { const an = a / 16 * 6.283 + (r % 12 ? .2 : 0); const ou = Math.cos(an) * r, ov = Math.sin(an) * r; if (ok(ou, ov)) { it._sh = [ou, ov]; return it._sh; } }
   return null; }
+// готовые картинки подписей (текст с обводкой рисуется один раз, а не каждый кадр)
+const TxtC = new Map();
+function txtSpr(t, font, fill, stroke, lw) { const k = t + '|' + font + fill + stroke + lw; let o = TxtC.get(k); if (o) return o;
+  const d = Math.min(2, Map2D.dpr || 1); const m = document.createElement('canvas').getContext('2d'); m.font = font; const w = Math.ceil(m.measureText(t).width + lw * 2 + 4), h = Math.ceil(parseFloat(font.match(/(\d+(\.\d+)?)px/)[1]) * 1.5 + lw * 2);
+  const c = document.createElement('canvas'); c.width = w * d; c.height = h * d; const g = c.getContext('2d'); g.scale(d, d); g.font = font; g.textAlign = 'center'; g.textBaseline = 'alphabetic'; g.lineJoin = 'round';
+  const by = h - lw - h * .28; if (lw) { g.lineWidth = lw; g.strokeStyle = stroke; g.strokeText(t, w / 2, by); } g.fillStyle = fill; g.fillText(t, w / 2, by);
+  o = { c, w, h, by }; if (TxtC.size > 3000) TxtC.clear(); TxtC.set(k, o); return o; }
+function drawTxt(c, t, font, fill, stroke, lw, X, Y) { const o = txtSpr(t, font, fill, stroke, lw); c.drawImage(o.c, X - o.w / 2, Y - o.by, o.w, o.h); }
 function drawOverlay(c, now) {
   const M = Map2D; const L = levelOf(M.s); const lay = layoutFor(L); const k = M.s / scaleOf(L);
   M.hitList = []; const vis = []; const W = M.W, H = M.H;
   // подписи вулканов
-  for (const v of lay.volcanoLabels) { const X = sx2(v.p.x, v.p.y), Y = sy2(v.p.x, v.p.y) + v.dy * k; if (X < -100 || X > W + 100 || Y < -20 || Y > H + 20) continue; c.font = v.f; c.textAlign = 'center'; c.lineWidth = 3; c.strokeStyle = 'rgba(34,22,58,.55)'; c.fillStyle = '#fff'; c.strokeText(v.n, X, Y); c.fillText(v.n, X, Y); }
+  for (const v of lay.volcanoLabels) { const X = sx2(v.p.x, v.p.y), Y = sy2(v.p.x, v.p.y) + v.dy * k; if (X < -100 || X > W + 100 || Y < -20 || Y > H + 20) continue; drawTxt(c, v.n, v.f, '#fff', 'rgba(34,22,58,.55)', 3, X, Y); }
   // места (снизу вверх)
   const items = [];
   for (const it of lay.pois) { const X0 = sx2(it.p.X, it.p.Y), Y0 = sy2(it.p.X, it.p.Y); if (X0 < -80 || X0 > W + 80 || Y0 < -40 || Y0 > H + 120) continue;
@@ -1523,12 +1534,12 @@ function drawOverlay(c, now) {
   for (const [Y, X, it] of items) {
     const p = it.p; const sel = M.selected && M.selected.id === p.id; vis.push(p);
     if (it.sh && it.lm) { c.strokeStyle = 'rgba(34,22,58,.45)'; c.lineWidth = 1.5; c.setLineDash([3, 3]); c.beginPath(); c.moveTo(it.X0, it.Y0); c.lineTo(X, Y); c.stroke(); c.setLineDash([]); c.fillStyle = '#fff'; c.beginPath(); c.arc(it.X0, it.Y0, 4.5, 0, 7); c.fill(); c.fillStyle = '#7B2FF7'; c.beginPath(); c.arc(it.X0, it.Y0, 2.6, 0, 7); c.fill(); }
-    if (it.lm) Art.drawSprite(c, it.lm, X - it.lmw / 2, Y - it.lmh, it.lmw, it.lmh);
-    const ic = Art.pin(p.c, sel ? it.size + 6 : it.size, sel); const S = it.pc || (it.nopin && !sel) || (it.dot && !sel) ? 0 : ic._s; const yy = Y - it.lmh - S + 4;
+    const lw = it.lmw * k, lh = it.lmh * k; if (it.lm) Art.drawSprite(c, it.lm, X - lw / 2, Y - lh, lw, lh);
+    const ic = Art.pin(p.c, sel ? it.size + 6 : it.size, sel); const S = it.pc || (it.nopin && !sel) || (it.dot && !sel) ? 0 : ic._s; const yy = Y - lh - S + 4;
     if (it.dot && !sel) { c.fillStyle = '#fff'; c.beginPath(); c.arc(X, Y - 3, 5 * UIK, 0, 7); c.fill(); c.fillStyle = CATS[p.c] ? CATS[p.c].col : '#888'; c.beginPath(); c.arc(X, Y - 3, 3.2 * UIK, 0, 7); c.fill(); }
-    if (S) c.drawImage(ic, X - S / 2, yy, S, S); else if (sel) { c.strokeStyle = '#7B2FF7'; c.lineWidth = 4; c.beginPath(); c.arc(X, Y - it.lmh + it.lmw / 2, it.lmw / 2, 0, 7); c.stroke(); }
-    M.hitList.push({ type: 'poi', p, x: X, y: (yy + S / 2 + Y) / 2, r: Math.max(S / 2, it.lmh / 2, it.dot ? 10 : 14) });
-    if (it.label) { c.font = it.label.f; c.textAlign = 'center'; c.lineWidth = 3.5; c.strokeStyle = 'rgba(255,255,255,.95)'; c.fillStyle = '#22163A'; const ly = Y + 3 + 12 * UIK; c.strokeText(it.label.t, X, ly); c.fillText(it.label.t, X, ly); }
+    if (S) c.drawImage(ic, X - S / 2, yy, S, S); else if (sel) { c.strokeStyle = '#7B2FF7'; c.lineWidth = 4; c.beginPath(); c.arc(X, Y - lh + lw / 2, lw / 2, 0, 7); c.stroke(); }
+    M.hitList.push({ type: 'poi', p, x: X, y: (yy + S / 2 + Y) / 2, r: Math.max(S / 2, lh / 2, it.dot ? 10 : 14) });
+    if (it.label) drawTxt(c, it.label.t, it.label.f, '#22163A', 'rgba(255,255,255,.95)', 3.5, X, Y + 3 + 12 * UIK);
   }
   M.visiblePOI = vis;
   // районы
@@ -1540,7 +1551,7 @@ function drawOverlay(c, now) {
   // события
   if (M.s > 7) for (const o of M.overlays) { const X = sx2(o.X, o.Y), Y = sy2(o.X, o.Y); if (X < -20 || X > W + 20 || Y < -20 || Y > H + 20) continue; const ic = eventIcon(o.type); c.drawImage(ic, X - ic._s / 2, Y - ic._s / 2 - 12, ic._s, ic._s); M.hitList.push({ type: 'event', e: o.e, x: X, y: Y - 12, r: 16 }); }
   // дым вулканов
-  for (const p of M.peaks) { if (!/^Gunung (Batur|Agung)\b/i.test(p.n)) continue; const big = p.e > 2500 ? 1 : .7; const w = Math.max(44 * big + 10, Math.min(200, M.s * 5 * big)), h = w * .62; const X = sx2(p.x, p.y), Y = sy2(p.x, p.y); if (X < -w || X > W + w || Y < -w || Y > H + w) continue;
+  for (const p of M.peaks) { if (!/^Gunung (Batur|Agung)\b/i.test(p.n)) continue; const big = p.e > 2500 ? 1 : .7; const w = Math.max(16, Math.min(900, M.s * 5 * big)), h = w * .62; const X = sx2(p.x, p.y), Y = sy2(p.x, p.y); if (X < -w || X > W + w || Y < -w || Y > H + w) continue;
     const t = (now - M.t0) / 1000; c.fillStyle = 'rgba(255,255,255,.85)'; for (let i = 0; i < 3; i++) { const q = ((t * .15 + i / 3) % 1); c.globalAlpha = (1 - q) * .8; c.beginPath(); c.arc(X + w * .04 + q * w * .12, Y - h * .7 - q * h * .5, w * (.05 + q * .08), 0, 7); c.fill(); } c.globalAlpha = 1; }
   if (M.s < 4.5 && !M.rot) { c.font = '900 ' + Math.round(Math.max(18, M.s * 9)) + 'px Nunito, sans-serif'; c.textAlign = 'center'; c.lineWidth = 6; c.strokeStyle = 'rgba(21,118,209,.6)'; c.fillStyle = '#fff'; const X = sx2(toX(114.75), toY(-8.82)), Y = sy2(toX(114.75), toY(-8.82)); c.strokeText('БАЛИ', X, Y); c.fillText('БАЛИ', X, Y); }
 }
@@ -1574,16 +1585,18 @@ function drawTiles(c, now) {
   const view = L => { const sL = scaleOf(L); return { L, sL, i0: Math.floor(u0 * sL / TILE), i1: Math.floor(u1 * sL / TILE), j0: Math.floor(v0 * sL / TILE), j1: Math.floor(v1 * sL / TILE) }; };
   const missing = V => { const out = []; for (let i = V.i0; i <= V.i1; i++) for (let j = V.j0; j <= V.j1; j++) if (!Tiles.get(V.L, i, j)) out.push([Math.hypot(i - (V.i0 + V.i1) / 2, j - (V.j0 + V.j1) / 2), i, j]); return out.sort((a, b) => a[0] - b[0]); };
   const L = levelOf(M.s); const T = view(L);
-  // дорисовываем нужный уровень в фоне, пока на экране целиком показан предыдущий
-  let miss = missing(T);
-  while (miss.length && (performance.now() - t0 < Tiles.budgetMs || !M.hadTiles)) { const [, i, j] = miss.shift(); Tiles.put(L, i, j, renderTile(L, i, j)); }
-  let D = T;
+  if (M.s !== M._ps) { M._ps = M.s; M._zt = now; }
+  const calm = now - (M._zt || 0) > 160;
+  let miss = missing(T); let D = T;
+  // во время зума ничего не перерисовываем — плавно масштабируем уже готовую картинку
+  if (miss.length && !calm && M.dispL !== undefined && M.hadTiles) { const V = view(M.dispL); if ((V.i1 - V.i0 + 1) * (V.j1 - V.j0 + 1) <= 90) { D = V; miss = []; M.dirty = true; } }
+  // остановились — сразу упрощённые плитки (земля, вода, дороги), детали следом
+  while (miss.length && (performance.now() - t0 < Tiles.budgetMs || !M.hadTiles)) { const [, i, j] = miss.shift(); Tiles.put(L, i, j, renderTile(L, i, j, M.hadTiles)); }
   if (miss.length) { M.dirty = true; let alt = null;
     // соседний готовый уровень — только если почти без растяжения (до 1.4×) или более мелкий
     for (const e of [-1, 1, 2, 3, 4]) { const V = view(L + e); if (V.L >= 0 && (V.i1 - V.i0 + 1) * (V.j1 - V.j0 + 1) <= 80 && !missing(V).length) { alt = V; break; } }
     if (alt) D = alt;
-    else { // упрощённые плитки (земля, вода, дороги) — быстро и без мыла; деревья и дома дорисуются следом
-      while (miss.length && performance.now() - t0 < 40) { const [, i, j] = miss.shift(); Tiles.put(L, i, j, renderTile(L, i, j, true)); } } }
+    else { while (miss.length && performance.now() - t0 < 30) { const [, i, j] = miss.shift(); Tiles.put(L, i, j, renderTile(L, i, j, true)); } } }
   c.fillStyle = SEA_COL; c.fillRect(0, 0, M.W, M.H);
   const size = TILE * M.s / D.sL; const stale = [];
   for (let i = D.i0; i <= D.i1; i++) for (let j = D.j0; j <= D.j1; j++) {
@@ -1591,10 +1604,8 @@ function drawTiles(c, now) {
     if (t) { c.drawImage(t, X, Y, size + .6, size + .6); if (t._stale) stale.push([i, j]); }
     else if (!drawBase(c, i, j, D.L, X, Y, size)) M.missT = (M.missT || 0) + 1;
   }
-  if (D === T || !miss.length) M.dispL = D.L;
+  if (D === T) M.dispL = D.L;
   // устаревшие плитки обновляем понемногу — старая картинка остаётся на экране
-  if (M.s !== M._ps) { M._ps = M.s; M._zt = now; }
-  const calm = now - (M._zt || 0) > 180; // во время зума не дорисовываем детали — без рывков
   if (stale.length) M.dirty = true;
   if (calm) for (const [i, j] of stale) { if (performance.now() - t0 > Tiles.budgetMs) break; Tiles.put(D.L, i, j, renderTile(D.L, i, j)); }
   M.hadTiles = true;
@@ -1614,9 +1625,9 @@ function frame(now) {
   M.lights = [];
   drawRoute(c, now);
   World.draw(c, now);
-  drawDecorDyn(c);
   App.drawPeople && App.drawPeople(c, now);
   drawMe(c, now);
+  drawDecorDyn(c);
   DQ.flush();
   drawNight(c, now);
   drawOverlay(c, now);
@@ -1632,14 +1643,20 @@ function coarseOk(d, s) { // крупный декор не стоит на ви
   const L = levelOf(s), ck = L + ':' + HiR.ver; if (d._ck === ck) return d._ok; d._ck = ck; const isB = (d.k || (d.k = Decor.kind(d))).startsWith('bld_');
   const w = Math.max(isB ? 12 : 8, (isB ? bldKm(d.k) : treeKm(d.k)) * s); d._ok = isLandF(d.x, d.y) && roadClear(d.x, d.y, scaleOf(L), w * .4 / scaleOf(L)); return d._ok; }
 function drawDecorDyn(c) {
-  const M = Map2D; if (!decorDynOn()) return; const s = M.s; const wb = viewBBox(.06 + 60 / s);
-  if (s >= FINE_S) { const C = FINE.cell; const fr = Math.max(.2, Math.min(1, (s - FINE_S) / 900 + .2));
-    for (let gx = Math.floor(wb[0] / C); gx <= Math.floor(wb[2] / C); gx++) for (let gy = Math.floor(wb[1] / C); gy <= Math.floor(wb[3] / C); gy++) for (const d of fineCell(gx, gy)) {
-      if ((d.v % 1000) / 1000 > fr) continue; const X = sx2(d.x, d.y), Y = sy2(d.x, d.y); if (X < -80 || X > M.W + 80 || Y < -20 || Y > M.H + 160) continue; DQ.add(Y, () => Decor.draw(c, d, X, Y, s));
-      if (World.night > .05 && d.k.startsWith('bld_') && d.v % 3 === 0) { const w = Math.max(12, bldKm(d.k) * s); M.lights.push({ X, Y: Y - w * .3, r: w * .75, k: 'win', v: d.v }); } }
-  } else { const dens = s < 6 ? .12 : s < 10 ? .25 : s < 20 ? .5 : 1;
+  // деревья и дома нарисованы в плитках; здесь поверх людей/машин перерисовываем только те, что стоят перед ними (ближе к зрителю)
+  const M = Map2D; if (!decorDynOn()) return; const L = levelOf(M.s), sL = scaleOf(L), k = M.s / sL;
+  const dyn = DQ.a.filter(e => e[2] !== undefined); if (!dyn.length) return;
+  const hp = personPx(M.s) * 1.6; let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9; for (const e of dyn) { const w = (e[3] || hp) / 2; x0 = Math.min(x0, e[2] - w); x1 = Math.max(x1, e[2] + w); y0 = Math.min(y0, e[0] - (e[4] || hp)); y1 = Math.max(y1, e[0]); }
+  const hit = (X, Y, w, h) => { for (const e of dyn) { if (e[0] >= Y) continue; const ew = (e[3] || hp) / 2, eh = e[4] || hp; if (e[2] + ew < X - w / 2 || e[2] - ew > X + w / 2 || e[0] < Y - h || e[0] - eh > Y) continue; return true; } return false; };
+  const put = (d, X, Y) => { const kd = d.k || (d.k = Decor.kind(d)); const w = Math.max(12, (kd.startsWith('bld_') ? bldKm(kd) : treeKm(kd)) * M.s) * 1.25; const h = w * 1.5;
+    if (X + w / 2 < x0 || X - w / 2 > x1 || Y < y0 || Y - h > y1) return; if (!hit(X, Y, w, h)) return;
+    DQ.add(Y, () => { if (k === 1) Decor.draw(c, d, X, Y, sL); else { c.save(); c.translate(X, Y); c.scale(k, k); Decor.draw(c, d, 0, 0, sL); c.restore(); } }); };
+  const wb = viewBBox(.06 + 60 / M.s);
+  if (sL >= FINE_S) { const C = FINE.cell; const fr = Math.max(.2, Math.min(1, (sL - FINE_S) / 900 + .2));
+    for (let gx = Math.floor(wb[0] / C); gx <= Math.floor(wb[2] / C); gx++) for (let gy = Math.floor(wb[1] / C); gy <= Math.floor(wb[3] / C); gy++) for (const d of fineCell(gx, gy)) { if ((d.v % 1000) / 1000 > fr) continue; put(d, sx2(d.x, d.y), sy2(d.x, d.y)); }
+  } else { const dens = sL < 6 ? .12 : sL < 10 ? .25 : sL < 20 ? .5 : 1;
     for (let gx = Math.floor(wb[0] / .5); gx <= Math.floor(wb[2] / .5); gx++) for (let gy = Math.floor(wb[1] / .5); gy <= Math.floor(wb[3] / .5); gy++) { const a = M.dgrid.get(gx + ',' + gy); if (!a) continue;
-      for (const d of a) { if (d.r > dens) continue; const X = sx2(d.x, d.y), Y = sy2(d.x, d.y); if (X < -60 || X > M.W + 60 || Y < -10 || Y > M.H + 120) continue; if (!coarseOk(d, s)) continue; DQ.add(Y, () => Decor.draw(c, d, X, Y, s)); if (World.night > .05 && d.k.startsWith('bld_') && d.v % 3 === 0) { const w = Math.max(12, bldKm(d.k) * s); M.lights.push({ X, Y: Y - w * .3, r: w * .8, k: 'win', v: d.v }); } } } }
+      for (const d of a) { if (d.r > dens) continue; if (!coarseOk(d, sL)) continue; put(d, sx2(d.x, d.y), sy2(d.x, d.y)); } } }
 }
 // ===== Ночь и сумерки: цветокоррекция (умножение на сине-фиолетовый / тёплый закатный), а не чёрная плёнка; свет окон, фар, заведений и городов =====
 // огни городов издалека — чёткие точки (как огни с высоты), плотность по числу мест в квадрате 1 км
@@ -1658,12 +1675,12 @@ function drawNight(c, now) {
   const M = Map2D, s = M.s, k = Night.t(); if (k < .5 || s >= 45) return; const a = cityDots(), fa = Math.min(1, (45 - s) / 20) * (k - .5) * 2, r = Math.max(1, Math.min(3, s * .15));
   c.save(); c.fillStyle = '#FFD45A'; c.globalAlpha = fa; c.beginPath(); for (let q = 0; q < a.length; q += 3) { const X = sx2(a[q], a[q + 1]), Y = sy2(a[q], a[q + 1]); if (X < -4 || X > M.W + 4 || Y < -4 || Y > M.H + 4) continue; const rr = r * (.7 + .5 * a[q + 2]); c.moveTo(X + rr, Y); c.arc(X, Y, rr, 0, 6.2832); } c.fill(); c.restore();
 }
-const DQ = { a: [], b: [], add(y, f) { this.a.push([y, f]); }, top(f) { this.b.push(f); },
+const DQ = { a: [], b: [], add(y, f, x, w, h) { this.a.push([y, f, x, w, h]); }, top(f) { this.b.push(f); },
   flush() { this.a.sort((p, q) => p[0] - q[0]); for (const e of this.a) e[1](); for (const f of this.b) f(); this.a.length = 0; this.b.length = 0; } };
 function drawMe(c, now) {
   const M = Map2D; if (!M.me) return; const me = Me.pos(); const X = sx2(toX(me.lng), toY(me.lat)), Y = sy2(toX(me.lng), toY(me.lat));
   const t = (now % 2000) / 2000; c.fillStyle = `rgba(123,47,247,${.35 * (1 - t)})`; c.beginPath(); c.arc(X, Y, 10 + t * 26, 0, 7); c.fill();
-  const h = personPx(M.s) * 1.15; DQ.add(Y, () => Me.draw(c, X, Y, h, now));
+  const h = personPx(M.s) * 1.15; DQ.add(Y, () => Me.draw(c, X, Y, h, now), X, h * .8, h);
   M.dynHits.push({ type: 'me', x: X, y: Y - h / 2, r: h / 3 });
 }
 function drawRoute(c, now) {
@@ -1844,7 +1861,7 @@ World.draw = function (c, now) {
     const ddx = (sx2(x2, y2) - sx2(x1, y1)) * b.dir, ddy = (sy2(x2, y2) - sy2(x1, y1)) * b.dir; if (Math.abs(ddx) > .5) b.face = ddx >= 0 ? 1 : -1; const dir = b.face || 1;
     const ax = Math.abs(ddx), ay = Math.abs(ddy); if (!b.view) b.view = 'side';
     if (b.view === 'side' ? ay > ax * 1.4 : ax > ay * 1.4) b.view = ay > ax ? (ddy > 0 ? 'front' : 'back') : 'side'; else if (b.view !== 'side') b.view = ddy > 0 ? 'front' : 'back';
-    const VH = personPx(s) * (b.kind === "bus" ? 1.25 : .95), bk = b.kind, bv = b.v, vw = b.view, al = fadeA(b, now); if (W.night > .3) M.lights.push({ X: X + (vw === 'side' ? dir * VH * .7 : 0), Y: Y + (vw === 'front' ? 4 : vw === 'back' ? -4 : 0), r: VH * .5, k: 'head' }); DQ.add(Y + 3, () => { c.globalAlpha = al; Art.drawVehicle(c, bk, X, Y + 3, 0, dir, bv, vw, VH); c.globalAlpha = 1; });
+    const VH = personPx(s) * (b.kind === "bus" ? 1.25 : .95), bk = b.kind, bv = b.v, vw = b.view, al = fadeA(b, now); if (W.night > .3) M.lights.push({ X: X + (vw === 'side' ? dir * VH * .7 : 0), Y: Y + (vw === 'front' ? 4 : vw === 'back' ? -4 : 0), r: VH * .5, k: 'head' }); DQ.add(Y + 3, () => { c.globalAlpha = al; Art.drawVehicle(c, bk, X, Y + 3, 0, dir, bv, vw, VH); c.globalAlpha = 1; }, X, VH * 1.6, VH);
   }
   // пешеходы
   if (s >= 45) { const N = W.npcs, SEP = Math.max(.012, 34 * UIK / s); for (let i = 0; i < N.length; i++) for (let j = i + 1; j < N.length; j++) { const A = N[i], B = N[j]; const dx = B.x - A.x, dy = B.y - A.y, d = Math.hypot(dx, dy);
@@ -1852,7 +1869,7 @@ World.draw = function (c, now) {
   if (s >= 45) for (const n of W.npcs) {
     wanderer(n, dt, true, .0011, Math.min(.25, M.W / M.s * .35)); if (!n.moving && Math.random() < .0005) n.say = { txt: pick(NPC_LINES), until: now + 4500 };
     const X = sx2(n.x, n.y), Y = sy2(n.x, n.y); if (!onScreen(X, Y, 40)) continue;
-    const h = personPx(s), an = n.moving ? 'walk' : 'idle', fc = n.face, al = fadeA(n, now); DQ.add(Y, () => { c.globalAlpha = al; Chars.draw(c, n.av, X, Y, h, an, t + n.ph, fc); c.globalAlpha = 1; });
+    const h = personPx(s), an = n.moving ? 'walk' : 'idle', fc = n.face, al = fadeA(n, now); DQ.add(Y, () => { c.globalAlpha = al; Chars.draw(c, n.av, X, Y, h, an, t + n.ph, fc); c.globalAlpha = 1; }, X, h * .8, h);
     M.dynHits.push({ type: 'npc', n, x: X, y: Y - h / 2, r: h / 3 });
     if (n.say && now < n.say.until && s > 40) { const tx = n.say.txt; DQ.top(() => bubble(c, X, Y - h - 6, tx)); }
   }
@@ -1863,7 +1880,7 @@ World.draw = function (c, now) {
     const X = sx2(a.x, a.y), Y = sy2(a.x, a.y); if (!onScreen(X, Y, 30)) continue;
     const spr = Art.animal(a.k, a.v); if (!spr) continue; const w = Math.max(8, personPx(s) * (a.k === 'cow' || a.k === 'buffalo' ? 1.3 : a.k === 'monkey' ? .6 : a.k === 'dog' ? .6 : a.k === 'duck' || a.k === 'rooster' ? .4 : .45)); const h = w * spr._h / spr._w;
     const bob = a.moving ? Math.abs(Math.sin(t * 9 + a.hx)) * 2 : 0; const flip = (spr._face === 'l' ? -1 : 1) * (a.face || 1);
-    const al = fadeA(a, now); DQ.add(Y, () => { c.save(); c.globalAlpha = al; c.translate(X, Y - bob); c.scale(flip, 1); c.drawImage(spr, -w / 2, -h, w, h); c.restore(); });
+    const al = fadeA(a, now); DQ.add(Y, () => { c.save(); c.globalAlpha = al; c.translate(X, Y - bob); c.scale(flip, 1); c.drawImage(spr, -w / 2, -h, w, h); c.restore(); }, X, w, w);
     M.dynHits.push({ type: 'animal', k: a.k, x: X, y: Y - h / 2, r: w / 2 });
   }
 };
@@ -2592,7 +2609,7 @@ App.drawPeople = function (c, now) {
     const X = sx2(p.sp.x, p.sp.y), Y = sy2(p.sp.x, p.sp.y); if (X < -40 || X > M.W + 40 || Y < -60 || Y > M.H + 40) continue;
     const h = personPx(M.s) * 1.1; const anim = moving ? 'walk' : (ANIMS[p.an] ? p.an : 'idle');
     c.fillStyle = 'rgba(236,45,154,.25)'; c.beginPath(); c.ellipse(X, Y, h * .3, h * .1, 0, 0, 7); c.fill();
-    const fc = p.face || 1, al = p.born ? Math.min(1, (now - p.born) / 700) : 1; DQ.add(Y, () => { c.globalAlpha = al; Chars.draw(c, p.av, X, Y, h, anim, t + X * .01, fc); c.globalAlpha = 1; });
+    const fc = p.face || 1, al = p.born ? Math.min(1, (now - p.born) / 700) : 1; DQ.add(Y, () => { c.globalAlpha = al; Chars.draw(c, p.av, X, Y, h, anim, t + X * .01, fc); c.globalAlpha = 1; }, X, h * .8, h);
     DQ.top(() => { c.font = '800 ' + 11.5 * UIK + 'px Nunito, sans-serif'; c.textAlign = 'center'; c.lineWidth = 3.5; c.strokeStyle = '#fff'; c.fillStyle = '#7B2FF7'; c.strokeText(p.n, X, Y + 14 * UIK); c.fillText(p.n, X, Y + 14 * UIK);
       if (p.say && p.say.t && Date.now() - p.say.ts < 30 * 60e3 && M.s > 18) bubble(c, X, Y - h - 6, p.say.t); });
     M.dynHits.push({ type: 'person', p, x: X, y: Y - h / 2, r: h / 3 + 4 });
