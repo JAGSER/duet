@@ -1340,7 +1340,8 @@ function onLongPress(cx, cy) { const [x, y] = w2(cx, cy); App.onLongPress(toLat(
 const LITE = /lite/.test(location.pathname + location.search); // тестовый облегчённый режим
 const TILE = 256; const SEA_COL = '#1E88E0';
 const Tiles = { m: new Map(), max: 160, budgetMs: 9,
-  clear() { for (const t of this.m.values()) t._stale = true; },
+  jobs: new Map(),
+  clear() { for (const t of this.m.values()) t._stale = true; this.jobs.clear(); },
   hard() { this.m.clear(); },
   key(L, i, j) { const b = Math.floor(baliNow().min / 10); const b2 = b + '/' + Night.step; if (b2 !== this.bk) { if (this.bk !== undefined) this.clear(); this.bk = b2; } return L + ':' + i + ':' + j; },
   get(L, i, j) { const k = this.key(L, i, j); const t = this.m.get(k); if (t) { this.m.delete(k); this.m.set(k, t); } return t; },
@@ -1359,7 +1360,9 @@ function drawBase(c, i, j, L, X, Y, size) {
   c.drawImage(t2, (u - ib * TILE) * dpr, (v - jb * TILE) * dpr, TILE * f * dpr, TILE * f * dpr, X, Y, size + .6, size + .6); return true; }
 const scaleOf = L => Math.pow(2, L / 2);
 
-function renderTile(L, i, j, quick) {
+// отрисовка плитки по частям: генератор отдаёт управление между этапами и каждые ~80 деревьев/домов, чтобы кадр не замирал
+function renderTile(L, i, j, quick) { const it = renderTileGen(L, i, j, quick); let r; while (!(r = it.next()).done); return r.value; }
+function* renderTileGen(L, i, j, quick) {
   const M = Map2D; const sL = scaleOf(L); const dpr = Math.min(M.dpr, 2);
   const c = document.createElement('canvas'); c.width = c.height = TILE * dpr; const g = Night.hookTile(c.getContext('2d')); g.scale(dpr, dpr);
   const u0 = i * TILE / sL, v0 = j * TILE / sL, u1 = u0 + TILE / sL, v1 = v0 + TILE / sL;
@@ -1408,6 +1411,7 @@ function renderTile(L, i, j, quick) {
         g.drawImage(im, x0, y0, x1 - x0, y1 - y0); } }
     g.restore();
     for (const l of M.lakes) { if (!inB(l.bb, 1)) continue; g.fillStyle = '#3BA7EE'; g.strokeStyle = '#BDEBFF'; g.lineWidth = Math.max(1.5, s * .05); g.beginPath(); poly(l.a); g.fill(); g.stroke(); }
+    yield;
     // дороги
     if (s > 0) {
       let lv = 1; for (let k = 2; k <= 7; k++) if (roadFade(k, s) > 0) lv = k; let rs;
@@ -1427,16 +1431,17 @@ function renderTile(L, i, j, quick) {
       for (const [key, L] of P) { const [col, k] = key.split('|'); g.strokeStyle = col; g.lineWidth = Math.max(1.2, wOut(+k) - 2.6); g.beginPath(); for (let q = 0; q < L.length; q += 4) { g.moveTo(X(L[q], L[q + 1]), Y(L[q], L[q + 1])); g.lineTo(X(L[q + 2], L[q + 3]), Y(L[q + 2], L[q + 3])); } g.stroke(); } }
     }
     // декор: деревья, дома, кусты — по биому (вблизи рисуется в общей очереди глубины вместе с людьми — см. drawDecorDyn)
+    yield;
     if (s > 0 && !quick && !LITE) {
       if (s >= FINE_S) { const C = FINE.cell, pd = Math.max(.06, 160 / s); const items = [];
         for (let gx = Math.floor((wb[0] - pd) / C); gx <= Math.floor((wb[2] + pd) / C); gx++) for (let gy = Math.floor((wb[1] - pd) / C); gy <= Math.floor((wb[3] + pd) / C); gy++) for (const d of fineCell(gx, gy)) items.push(d);
-        const fr = Math.max(.2, Math.min(1, (s - FINE_S) / 900 + .2)); items.sort((a, b) => vv(a.x, a.y) - vv(b.x, b.y)); for (const d of items) { if ((d.v % 1000) / 1000 > fr) continue; Decor.draw(g, d, X(d.x, d.y), Y(d.x, d.y), s); }
+        const fr = Math.max(.2, Math.min(1, (s - FINE_S) / 900 + .2)); items.sort((a, b) => vv(a.x, a.y) - vv(b.x, b.y)); let nn = 0; for (const d of items) { if ((d.v % 1000) / 1000 > fr) continue; Decor.draw(g, d, X(d.x, d.y), Y(d.x, d.y), s); if (++nn % 80 === 0) yield; }
       } else {
       const items = []; const pad = 1.5;
       for (let gx = Math.floor((wb[0] - pad) / .5); gx <= Math.floor((wb[2] + pad) / .5); gx++) for (let gy = Math.floor((wb[1] - pad) / .5); gy <= Math.floor((wb[3] + pad) / .5); gy++) { const a = M.dgrid.get(gx + ',' + gy); if (a) for (const d of a) items.push(d); }
       const dens = s < 3 ? .03 : s < 4.5 ? .06 : s < 6 ? .12 : s < 10 ? .25 : s < 20 ? .5 : 1;
       items.sort((a, b) => vv(a.x, a.y) - vv(b.x, b.y));
-      const dyn = s >= DECOR_DYN_S; for (const d of items) { if (d.r > dens) continue; if (dyn && !coarseOk(d, s)) continue; Decor.draw(g, d, X(d.x, d.y), Y(d.x, d.y), s); }
+      const dyn = s >= DECOR_DYN_S; let nn = 0; for (const d of items) { if (d.r > dens) continue; if (dyn && !coarseOk(d, s)) continue; Decor.draw(g, d, X(d.x, d.y), Y(d.x, d.y), s); if (++nn % 80 === 0) yield; }
       }
     }
     // вулканы
@@ -1634,7 +1639,10 @@ function drawTiles(c, now) {
   if (D === T) M.dispL = D.L;
   // устаревшие плитки обновляем понемногу — старая картинка остаётся на экране
   if (stale.length) M.dirty = true;
-  if (calm) for (const [i, j] of stale) { if (performance.now() - t0 > Tiles.budgetMs) break; Tiles.put(D.L, i, j, renderTile(D.L, i, j)); }
+  // детали дорисовываются по частям в фоне (не дольше ~6 мс за кадр), готовая плитка подменяет упрощённую
+  for (const [k, jb] of Tiles.jobs) if (jb.L !== D.L) Tiles.jobs.delete(k);
+  if (calm) { for (const [i, j] of stale) { const k = D.L + ':' + i + ':' + j; if (!Tiles.jobs.has(k)) Tiles.jobs.set(k, { L: D.L, i, j, gen: renderTileGen(D.L, i, j) }); }
+    const t1 = performance.now(); for (const [k, jb] of Tiles.jobs) { let r; while (performance.now() - t1 < 6 && !(r = jb.gen.next()).done); if (r && r.done) { Tiles.put(jb.L, jb.i, jb.j, r.value); Tiles.jobs.delete(k); } if (performance.now() - t1 >= 6) { M.dirty = true; break; } } }
   M.hadTiles = true;
 }
 
