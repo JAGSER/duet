@@ -2677,6 +2677,7 @@ function picOf(p) { const c = p._pic; if (c && (c.img || performance.now() - c.t
 function queuePics(c) {
   const M = Map2D; const W = M.W, H = M.H; const bb = viewBBox(80);
   if (!M.poiGrid) { M.poiGrid = new Map(); for (const p of M.pois) { const k = Math.floor(p.X / 2) + ',' + Math.floor(p.Y / 2); let a = M.poiGrid.get(k); if (!a) M.poiGrid.set(k, a = []); a.push(p); } }
+  if (GL.on && M.s < 60) return; // издалека картинки мест крошечные — перерисовывать их поверх людей незачем
   const dyn = GL.on ? DQ.a.filter(e => e[2] !== undefined) : []; if (GL.on && !dyn.length) return;
   const list = []; for (let cx = Math.floor(bb[0] / 2); cx <= Math.floor(bb[2] / 2); cx++) for (let cy = Math.floor(bb[1] / 2); cy <= Math.floor(bb[3] / 2); cy++) { const a = M.poiGrid.get(cx + ',' + cy); if (a) for (const p of a) list.push(p); }
   for (const p of list) { if (p.X < bb[0] || p.X > bb[2] || p.Y < bb[1] || p.Y > bb[3]) continue; if (!poiVisible(p)) continue; const o = picOf(p); if (!o.img || !o.km) continue;
@@ -2961,7 +2962,7 @@ GL.build = function () {
     const sp = new PIXI.Sprite(PIXI.Texture.from(c)); sp.anchor.set(.5, (W * .62 * .62 + 2) / H); sp.position.set(p.x, p.y); sp._p = p; GL.L.volc.addChild(sp); return sp; });
   // дороги
   GL.buildRoads(); GL.buildTraffic();
-  if (GL.L.pics) { GL.L.pics.removeChildren().forEach(c => c.destroy({ children: true })); GLP.sp.clear(); GLP.ch.clear(); }
+  if (GL.L.pics) { GL.L.pics.removeChildren().forEach(c => c.destroy({ children: true })); GLP.sp.clear(); GLP.ch.clear(); GLP._pb = 0; }
   GL.L.decor.removeChildren(); GLB.pc.forEach(pc => pc.destroy({ children: true })); GLB.pc.clear(); GLB.frames = null; if (GLB.ready) GLB.prebuild(); GL.decor.chunks.forEach(ch => ch.destroy({ children: true })); GL.decor.chunks.clear(); GL.decor.fine.forEach(ch => ch.destroy({ children: true })); GL.decor.fine.clear(); GL.texC = new Map(); GL.decor.lastLv = null;
   GL.lastCam = ''; if (GL._warmT) { GL._warmT = 0; GL.prewarm(); }
 };
@@ -3126,19 +3127,26 @@ GLB.update = function (bb) { if (!GLB.ready) { GLB.load(); return; } if (GLS.ok)
 
 // ===== Картинки мест на видеокарте: постоянное место и настоящий размер =====
 const GLP = { sp: new Map(), ch: new Map(), key: '' };
+GLP.mk = function (key, a, cy) { let c = GLP.ch.get(key); if (!c || c.destroyed) { c = new PIXI.Container(); c.sortableChildren = true; c.zIndex = cy * 2; c._pend = a.slice(); c._pt = 0; c.visible = false; GLP.ch.set(key, c); GL.L.pics.addChild(c); } return c; };
+// заранее, в фоне — все картинки острова (чтобы при отдалении не появлялись постепенно)
+GLP.prebuild = function () { if (GLP._pb) return; GLP._pb = 1; const keys = [...Map2D.poiGrid.keys()];
+  const step = () => { const t0 = performance.now(); while (keys.length && performance.now() - t0 < 6) { const key = keys.pop(); const cy = +key.split(',')[1]; const c = GLP.mk(key, Map2D.poiGrid.get(key), cy); if (c._pt === 0) { c._pt = performance.now(); const rest = [];
+      for (const p of c._pend) { const o = picOf(p); if (!o.img || !o.km) { rest.push(p); continue; } const sp = GLP.add(c, p, o); try { GL.app.renderer.prepare.upload(sp.texture); } catch (e) {} } c._pend = rest; c._fk = null; c._s = null; } } if (keys.length) glIdle(step); };
+  glIdle(step); };
+GLP.add = function (c, p, o) { const sp = new PIXI.Sprite(glTexFor(o.img)); const t = sp.texture; sp.anchor.set(.5, 1); const sh = lmShift({ p, km: o.km }); const dx = sh && sh !== 'wait' ? sh[0] : 0, dy = sh && sh !== 'wait' ? sh[1] : 0;
+  sp.position.set(p.X + dx, p.Y + dy); sp.scale.set(o.km / (256 * t._fw)); sp.zIndex = p.Y + dy; sp._p = p; GLP.sp.set(p.id, sp); c.addChild(sp); return sp; };
 // картинки мест — кусками по 2 км: вне экрана не рисуются, пересчёт только при смене масштаба/фильтров
 GLP.update = function () { const M = Map2D; if (!GL.L.pics) { GL.L.pics = new PIXI.Container(); GL.L.pics.sortableChildren = true; GL.world.addChildAt(GL.L.pics, GL.world.getChildIndex(GL.L.decor) + 1); }
-  if (!M.poiGrid) return; const fk = [...M.enabled].join(',') + M.openOnly + M.favOnly + (M.focusIds ? M.focusIds.size : '') + (M.openOnly ? Math.floor(Date.now() / 6e5) : '');
-  const s = M.s, bb = viewBBox(80), C = 2, now = performance.now();
+  if (!M.poiGrid) return; if (Art.loaded) GLP.prebuild(); const fk = [...M.enabled].join(',') + M.openOnly + M.favOnly + (M.focusIds ? M.focusIds.size : '') + (M.openOnly ? Math.floor(Date.now() / 6e5) : '');
+  const s = M.s, bb = viewBBox(80), C = 2, now = performance.now(); let retry = 2;
   for (const c of GLP.ch.values()) c.visible = false;
   for (let cx = Math.floor(bb[0] / C); cx <= Math.floor(bb[2] / C); cx++) for (let cy = Math.floor(bb[1] / C); cy <= Math.floor((bb[3] + .5) / C); cy++) { const key = cx + ',' + cy; const a = M.poiGrid.get(key); if (!a) continue;
-    let c = GLP.ch.get(key); if (!c || c.destroyed) { c = new PIXI.Container(); c.sortableChildren = true; c.zIndex = cy * C; c._pend = a.slice(); c._pt = 0; GLP.ch.set(key, c); GL.L.pics.addChild(c); }
+    const c = GLP.mk(key, a, cy);
     c.visible = true;
-    if (c._pend.length && now - c._pt > 800) { c._pt = now; const rest = [];
+    if (c._pend.length && (c._pt === 0 || (now - c._pt > 4000 && retry-- > 0))) { c._pt = now; const rest = [];
       for (const p of c._pend) { const o = picOf(p); if (!o.img || !o.km) { rest.push(p); continue; }
-        const sp = new PIXI.Sprite(glTexFor(o.img)); const t = sp.texture; sp.anchor.set(.5, 1); const sh = lmShift({ p, km: o.km }); const dx = sh && sh !== 'wait' ? sh[0] : 0, dy = sh && sh !== 'wait' ? sh[1] : 0;
-        sp.position.set(p.X + dx, p.Y + dy); sp.scale.set(o.km / (256 * t._fw)); sp.zIndex = p.Y + dy; sp._p = p; GLP.sp.set(p.id, sp); c.addChild(sp); }
-      if (rest.length !== c._pend.length) { c._fk = null; c._s = null; } c._pend = rest; if (rest.length) GL.pend = true; }
+        GLP.add(c, p, o); }
+      if (rest.length !== c._pend.length) { c._fk = null; c._s = null; } c._pend = rest; }
     if (c._step !== Night.step) { c._step = Night.step; for (const sp of c.children) { const o = picOf(sp._p); if (o.img) sp.texture = glTexFor(o.img); } }
     if (c._fk !== fk) { c._fk = fk; for (const sp of c.children) sp.visible = poiVisible(sp._p); }
     // слишком мелкие (меньше ~1.5 пикселя) — плавно прозрачные, а не выскакивают
