@@ -2961,7 +2961,7 @@ GL.build = function () {
     const sp = new PIXI.Sprite(PIXI.Texture.from(c)); sp.anchor.set(.5, (W * .62 * .62 + 2) / H); sp.position.set(p.x, p.y); sp._p = p; GL.L.volc.addChild(sp); return sp; });
   // дороги
   GL.buildRoads(); GL.buildTraffic();
-  if (GL.L.pics) { GL.L.pics.removeChildren().forEach(c => c.destroy()); GLP.sp.clear(); }
+  if (GL.L.pics) { GL.L.pics.removeChildren().forEach(c => c.destroy({ children: true })); GLP.sp.clear(); GLP.ch.clear(); }
   GL.L.decor.removeChildren(); GLB.pc.forEach(pc => pc.destroy({ children: true })); GLB.pc.clear(); GLB.frames = null; if (GLB.ready) GLB.prebuild(); GL.decor.chunks.forEach(ch => ch.destroy({ children: true })); GL.decor.chunks.clear(); GL.decor.fine.forEach(ch => ch.destroy({ children: true })); GL.decor.fine.clear(); GL.texC = new Map(); GL.decor.lastLv = null;
   GL.lastCam = ''; if (GL._warmT) { GL._warmT = 0; GL.prewarm(); }
 };
@@ -3033,7 +3033,7 @@ GL.updateDecor = function (bb) {
   const M = Map2D, s = M.s, lv = levelOf(s); const fine = s >= FINE_S;
   // крупный декор
   for (const ch of GL.decor.chunks.values()) ch.visible = false;
-  let made = 0; if (!fine) { if (!GL.ckeys) { GL.ckeys = new Set(); for (const d of Map2D.decor) GL.ckeys.add(Math.floor(d.x / GL_CH) + ',' + Math.floor(d.y / GL_CH)); }
+  let made = 0; if (!fine && !GLS.ok) { if (!GL.ckeys) { GL.ckeys = new Set(); for (const d of Map2D.decor) GL.ckeys.add(Math.floor(d.x / GL_CH) + ',' + Math.floor(d.y / GL_CH)); }
     const pad = 1, x0 = Math.floor((bb[0] - pad) / GL_CH), x1 = Math.floor((bb[2] + pad) / GL_CH), y0 = Math.floor((bb[1] - pad) / GL_CH), y1 = Math.floor((bb[3] + pad) / GL_CH);
     for (let cx = x0; cx <= x1; cx++) for (let cy = y0; cy <= y1; cy++) { const key = cx + ',' + cy; if (!GL.ckeys.has(key)) continue; if (!GL.decor.chunks.has(key)) { if (made > 30) { GL.pend = true; continue; } made++; } const ch = glChunk(cx, cy); ch.visible = true; glUpdateChunk(ch, s, lv, false); } }
   for (const ch of GL.decor.fine.values()) ch.visible = false;
@@ -3064,7 +3064,7 @@ GL.render = function (now) {
   // вулканы
   for (const sp of GL.volc) { const p = sp._p, big = p.e > 2500 ? 1 : p.e > 2000 ? .7 : .5; const w = Math.max(16, Math.min(900, s * 5 * big)); const k = (w / s) / sp.texture.width; sp.scale.set(k); }
   // деревья и дома
-  GL.updateDecor(viewBBox(60)); GLB.update(viewBBox(60)); GLP.update();
+  const vb = viewBBox(60); GLS.init(); if (GLS.ok) GLS.update(vb); GL.updateDecor(vb); GLB.update(vb); GLP.update();
   GL.app.renderer.render(GL.app.stage);
 };
 
@@ -3072,7 +3072,7 @@ GL.render = function (now) {
 GL.prewarm = function () { if (!GL.on || GL._warmT) return; GL._warmT = 1;
   const keys = () => { if (!GL.ckeys) { GL.ckeys = new Set(); for (const d of Map2D.decor) GL.ckeys.add(Math.floor(d.x / GL_CH) + ',' + Math.floor(d.y / GL_CH)); } return [...GL.ckeys].filter(k => !GL.decor.chunks.has(k)); };
   let texQ = Map2D.decor.filter((d, i) => i % 7 === 0); const texStep = () => { const t0 = performance.now(); while (texQ.length && performance.now() - t0 < 6) { const o = glDecorTex(texQ.pop()); try { GL.app.renderer.prepare.upload(o.tex); } catch (e) {} } if (texQ.length) glIdle(texStep); }; glIdle(texStep);
-  let q = null; const step = (dl) => { if (!Map2D.calm) return glIdle(step);
+  let q = null; const step = (dl) => { if (GLS.ok) return; if (!Map2D.calm) return glIdle(step);
     q = q || keys(); const t0 = performance.now(); const lim = () => performance.now() - t0 < 6;
     let n = 0; while (q.length && lim() && n++ < 2) { const [cx, cy] = q.pop().split(',').map(Number); const ch = glChunk(cx, cy); glTier(ch, .25); ch.visible = false; }
     if (q.length) glIdle(step); else GL._warmDone = 1; };
@@ -3113,31 +3113,112 @@ GLB.chunk = function (key) { let pc = GLB.pc.get(key); if (pc) return pc; const 
   pc = new PIXI.ParticleContainer(a.length, { vertices: false, position: false, rotation: false, uvs: false, tint: false }); pc.zIndex = +key.split(',')[1] * GLB.C + GLB.C - .001;
   for (const i of a) pc.addChild(GLB.sprite(i)); GLB.pc.set(key, pc); GL.L.decor.addChild(pc); return pc; };
 // все кусочки зданий готовим заранее в фоне — при приближении они уже на месте
-GLB.prebuild = function () { if (!Art.loaded) return setTimeout(GLB.prebuild, 500); const keys = [...GLB.ch.keys()];
+GLB.prebuild = function () { if (GLS.ok) return; if (!Art.loaded) return setTimeout(GLB.prebuild, 500); const keys = [...GLB.ch.keys()];
   const R = GL.app.renderer; GLB.rt = GLB.rt || PIXI.RenderTexture.create({ width: 4, height: 4 });
   // кусок сразу загружаем в видеокарту (невидимым рендером в крошечную текстуру), чтобы при первом показе не было рывка
-  const step = () => { const t0 = performance.now(); while (keys.length && performance.now() - t0 < 6) { const pc = GLB.chunk(keys.pop()); if (!pc) continue; const v = pc.visible; pc.visible = true; try { R.render(pc, { renderTexture: GLB.rt, clear: false, skipUpdateTransform: false }); } catch (e) {} pc.visible = v; } if (keys.length) glIdle(step); else { GLB.all = 1; GL.lastCam = ''; } };
+  const step = () => { if (GLS.ok) return; const t0 = performance.now(); while (keys.length && performance.now() - t0 < 6) { const pc = GLB.chunk(keys.pop()); if (!pc) continue; const v = pc.visible; pc.visible = true; try { R.render(pc, { renderTexture: GLB.rt, clear: false, skipUpdateTransform: false }); } catch (e) {} pc.visible = v; } if (keys.length) glIdle(step); else { GLB.all = 1; GL.lastCam = ''; } };
   glIdle(step); };
-GLB.update = function (bb) { if (!GLB.ready) { GLB.load(); return; } const s = Map2D.s, on = s >= GLB.minS && s < FINE_S;
+GLB.update = function (bb) { if (!GLB.ready) { GLB.load(); return; } if (GLS.ok) return; const s = Map2D.s, on = s >= GLB.minS && s < FINE_S;
   if (GLB.step !== Night.step && GLB.frames) { for (const pc of GLB.pc.values()) { GL.L.decor.removeChild(pc); pc.destroy({ children: true }); } GLB.pc.clear(); GLB.frames = null; GLB.prebuild(); }
   for (const pc of GLB.pc.values()) pc.visible = false; if (!on) return; const C = GLB.C; let made = 0; const fa = Math.min(1, (s - GLB.minS) / 15 + .15); // дома меньше пикселя плавно проявляются, а не выскакивают
   for (let cx = Math.floor((bb[0] - .2) / C); cx <= Math.floor((bb[2] + .2) / C); cx++) for (let cy = Math.floor((bb[1] - .2) / C); cy <= Math.floor((bb[3] + .4) / C); cy++) { const key = cx + ',' + cy; if (!GLB.ch.has(key)) continue;
     let pc = GLB.pc.get(key); if (!pc) { if (made++ > 40) { GL.pend = true; continue; } pc = GLB.chunk(key); } pc.visible = true; pc.alpha = fa; } };
 
 // ===== Картинки мест на видеокарте: постоянное место и настоящий размер =====
-const GLP = { sp: new Map(), key: '' };
+const GLP = { sp: new Map(), ch: new Map(), key: '' };
+// картинки мест — кусками по 2 км: вне экрана не рисуются, пересчёт только при смене масштаба/фильтров
 GLP.update = function () { const M = Map2D; if (!GL.L.pics) { GL.L.pics = new PIXI.Container(); GL.L.pics.sortableChildren = true; GL.world.addChildAt(GL.L.pics, GL.world.getChildIndex(GL.L.decor) + 1); }
-  const fk = [...M.enabled].join(',') + M.openOnly + M.favOnly + (M.focusIds ? M.focusIds.size : '') + Night.step + (M.openOnly ? Math.floor(Date.now() / 6e5) : '');
-  const bb = viewBBox(80); if (!M.poiGrid) return;
-  const C = 2; for (let cx = Math.floor(bb[0] / C); cx <= Math.floor(bb[2] / C); cx++) for (let cy = Math.floor(bb[1] / C); cy <= Math.floor(bb[3] / C); cy++) { const a = M.poiGrid.get(cx + ',' + cy); if (!a) continue;
-    for (const p of a) { let sp = GLP.sp.get(p.id); const o = picOf(p);
-      if (!sp) { if (!o.img || !o.km) continue; sp = new PIXI.Sprite(glTexFor(o.img)); const t = sp.texture; sp.anchor.set(.5, 1); const sh = lmShift({ p, km: o.km }); const dx = sh && sh !== 'wait' ? sh[0] : 0, dy = sh && sh !== 'wait' ? sh[1] : 0;
-        sp.position.set(p.X + dx, p.Y + dy); sp.scale.set(o.km / (256 * t._fw)); sp.zIndex = p.Y + dy; sp._p = p; sp._fk = null; sp._step = Night.step; GLP.sp.set(p.id, sp); GL.L.pics.addChild(sp); }
-      if (sp._step !== Night.step) { sp.texture = glTexFor(o.img); sp._step = Night.step; }
-      if (sp._fk !== fk) { sp._fk = fk; sp.visible = poiVisible(p); } } }
-  // слишком мелкие (меньше ~1.5 пикселя) — плавно прозрачные, а не выскакивают
-  for (const sp of GL.L.pics.children) { const lw = sp.scale.x * 256 * sp.texture._fw * M.s; sp.alpha = Math.max(0, Math.min(1, (lw - 1.5) / 3)); sp.renderable = sp.alpha > 0; }
+  if (!M.poiGrid) return; const fk = [...M.enabled].join(',') + M.openOnly + M.favOnly + (M.focusIds ? M.focusIds.size : '') + (M.openOnly ? Math.floor(Date.now() / 6e5) : '');
+  const s = M.s, bb = viewBBox(80), C = 2, now = performance.now();
+  for (const c of GLP.ch.values()) c.visible = false;
+  for (let cx = Math.floor(bb[0] / C); cx <= Math.floor(bb[2] / C); cx++) for (let cy = Math.floor(bb[1] / C); cy <= Math.floor((bb[3] + .5) / C); cy++) { const key = cx + ',' + cy; const a = M.poiGrid.get(key); if (!a) continue;
+    let c = GLP.ch.get(key); if (!c || c.destroyed) { c = new PIXI.Container(); c.sortableChildren = true; c.zIndex = cy * C; c._pend = a.slice(); c._pt = 0; GLP.ch.set(key, c); GL.L.pics.addChild(c); }
+    c.visible = true;
+    if (c._pend.length && now - c._pt > 800) { c._pt = now; const rest = [];
+      for (const p of c._pend) { const o = picOf(p); if (!o.img || !o.km) { rest.push(p); continue; }
+        const sp = new PIXI.Sprite(glTexFor(o.img)); const t = sp.texture; sp.anchor.set(.5, 1); const sh = lmShift({ p, km: o.km }); const dx = sh && sh !== 'wait' ? sh[0] : 0, dy = sh && sh !== 'wait' ? sh[1] : 0;
+        sp.position.set(p.X + dx, p.Y + dy); sp.scale.set(o.km / (256 * t._fw)); sp.zIndex = p.Y + dy; sp._p = p; GLP.sp.set(p.id, sp); c.addChild(sp); }
+      if (rest.length !== c._pend.length) { c._fk = null; c._s = null; } c._pend = rest; if (rest.length) GL.pend = true; }
+    if (c._step !== Night.step) { c._step = Night.step; for (const sp of c.children) { const o = picOf(sp._p); if (o.img) sp.texture = glTexFor(o.img); } }
+    if (c._fk !== fk) { c._fk = fk; for (const sp of c.children) sp.visible = poiVisible(sp._p); }
+    // слишком мелкие (меньше ~1.5 пикселя) — плавно прозрачные, а не выскакивают
+    if (c._s !== s) { c._s = s; for (const sp of c.children) { const lw = sp.scale.x * 256 * sp.texture._fw * s; sp.alpha = Math.max(0, Math.min(1, (lw - 1.5) / 3)); sp.renderable = sp.alpha > 0; } } }
 };
+
+// ===== Деревья и дома дальнего/среднего плана — как в играх: неподвижные сетки в видеокарте =====
+// Всё загружается в видеокарту один раз; размер, густота и проявление считаются в шейдере — процессор при движении карты почти не работает.
+const GLS_VS = `precision highp float;
+attribute vec2 aC; attribute vec2 aQ; attribute vec2 aUV; attribute vec3 aS; attribute float aV;
+uniform mat3 projectionMatrix; uniform mat3 translationMatrix; uniform float uScale; uniform float uMin; uniform float uDens; uniform float uBA;
+varying vec2 vUV; varying float vA;
+void main() {
+  bool isB = aS.y < 0.001;
+  float W = max(uMin * aS.y, aS.x * uScale) / uScale;
+  bool vis = aV > 0.5 && (isB ? uBA > 0.003 : aS.z <= uDens);
+  vUV = aUV; vA = isB ? uBA : 1.0;
+  vec2 p = aC + aQ * W;
+  gl_Position = vis ? vec4((projectionMatrix * translationMatrix * vec3(p, 1.0)).xy, 0.0, 1.0) : vec4(4.0, 4.0, 4.0, 1.0);
+}`;
+const GLS_FS = `precision mediump float; varying vec2 vUV; varying float vA; uniform sampler2D uSampler;
+void main() { vec4 c = texture2D(uSampler, vUV) * vA; if (c.a < 0.004) discard; gl_FragColor = c; }`;
+const GLS = { C: 4, ok: false, ch: new Map(), keys: null, slot: new Map(), list: [], step: -1, AW: 2048, AH: 1024, cell: 128 };
+GLS.treeImg = function (d) { const k = d.k || (d.k = Decor.kind(d)); let spr = Art.pickFrom(k, d.v); if (!(spr && /_f/.test(spr._name || ''))) spr = flatTree(k, d.v); const fb = SPR[FALLBACK[k] || 'tree']; if (!spr) spr = fb; return [spr, spr === fb ? .85 : .92]; };
+GLS.houseFb = function () { return GL.house || (GL.house = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; drawHouse(c.getContext('2d'), 32, 62, 60, .3); c._w = 64; c._h = 64; c._name = 'bld_house_fb'; return c; })()); };
+GLS.bldImgs = function (k) { const a = (Art.set[k] || []).filter(Boolean); return a.length ? a : [GLS.houseFb()]; };
+GLS.addImg = function (im) { let o = GLS.slot.get(im); if (o) return o; const n = GLS.list.length; if (n >= (GLS.AW / GLS.cell) * (GLS.AH / GLS.cell)) return GLS.list[0].o;
+  const C = GLS.cell, ox = (n % (GLS.AW / C)) * C, oy = Math.floor(n / (GLS.AW / C)) * C, kk = Math.min((C - 4) / im.width, (C - 4) / im.height), w = Math.max(1, Math.round(im.width * kk)), h = Math.max(1, Math.round(im.height * kk));
+  const x = ox + Math.floor((C - w) / 2), y = oy + C - 2 - h; o = { x, y, w, h, u0: x / GLS.AW, u1: (x + w) / GLS.AW, v0: y / GLS.AH, v1: (y + h) / GLS.AH, asp: h / w }; GLS.slot.set(im, o); GLS.list.push({ im, o }); return o; };
+GLS.draw = function () { // атлас (ночью — перекрашенные картинки)
+  const c = GLS.cv || (GLS.cv = document.createElement('canvas')); c.width = GLS.AW; c.height = GLS.AH; const g = c.getContext('2d'); g.clearRect(0, 0, c.width, c.height); g.imageSmoothingQuality = 'high';
+  for (const { im: im0, o } of GLS.list) { const im = Night.step && im0._name && !im0._noNight ? Night.img(im0, Night.kindOf(im0._name)) : im0; g.drawImage(im, o.x, o.y, o.w, o.h); }
+  if (!GLS.base) { GLS.base = PIXI.BaseTexture.from(c, { mipmap: PIXI.MIPMAP_MODES.ON, scaleMode: PIXI.SCALE_MODES.LINEAR }); GLS.tex = new PIXI.Texture(GLS.base); } else GLS.base.update();
+  GLS.step = Night.step; };
+GLS.init = function () { if (GLS.ok) return true; if (!GL.on || !Art.loaded || !GLB.ready || !Map2D.decor || !Map2D.decor.length) return false;
+  const C = GLS.C; GLS.keys = new Set();
+  for (const d of Map2D.decor) { const k = d.k || (d.k = Decor.kind(d)); if (k.startsWith('bld_')) continue; GLS.addImg(GLS.treeImg(d)[0]); GLS.keys.add(Math.floor(d.x / C) + ',' + Math.floor(d.y / C)); }
+  for (const k of GLB.kinds) for (const im of GLS.bldImgs(k)) GLS.addImg(im);
+  for (const key of GLB.ch.keys()) { const [x, y] = key.split(',').map(Number); GLS.keys.add(Math.floor(x * GLB.C / C) + ',' + Math.floor(y * GLB.C / C)); }
+  GLS.draw();
+  GLS.sh = PIXI.Shader.from(GLS_VS, GLS_FS, { uScale: 1, uMin: 8, uDens: 1, uBA: 1, uSampler: GLS.tex });
+  GLS.layer = new PIXI.Container(); GLS.layer.sortableChildren = true; GL.world.addChildAt(GLS.layer, GL.world.getChildIndex(GL.L.decor));
+  // прежние куски больше не нужны
+  for (const ch of GL.decor.chunks.values()) { GL.L.decor.removeChild(ch); ch.destroy({ children: true }); } GL.decor.chunks.clear();
+  for (const pc of GLB.pc.values()) { GL.L.decor.removeChild(pc); pc.destroy({ children: true }); } GLB.pc.clear();
+  GLS.ok = true; GLS.prebuild(); return true; };
+GLS.chunk = function (key) { let m = GLS.ch.get(key); if (m !== undefined) return m; const [cx, cy] = key.split(',').map(Number), C = GLS.C, M = Map2D;
+  const items = []; // [y, тип, объект]
+  for (let gx = cx * 8; gx < cx * 8 + 8; gx++) for (let gy = cy * 8; gy < cy * 8 + 8; gy++) { const a = M.dgrid.get(gx + ',' + gy); if (a) for (const d of a) { if ((d.k || (d.k = Decor.kind(d))).startsWith('bld_')) continue; items.push([d.y, 0, d]); } }
+  const r = C / GLB.C; for (let bx = cx * r; bx < cx * r + r; bx++) for (let by = cy * r; by < cy * r + r; by++) { const a = GLB.ch.get(bx + ',' + by); if (a) for (const i of a) items.push([GLB.y[i], 1, i]); }
+  if (!items.length) { GLS.ch.set(key, null); return null; }
+  items.sort((a, b) => a[0] - b[0]); const n = items.length;
+  const A = new Float32Array(n * 4 * 9), V = new Float32Array(n * 4).fill(1), I = new Uint32Array(n * 6); const trees = [];
+  for (let q = 0; q < n; q++) { const [, t, d] = items[q]; let x, y, o, ay, sx, sy, sz, flip = false;
+    if (t) { const k = GLB.kind(d), fr = GLS.bldImgs(k), im = fr[GLB.v[d] % fr.length]; o = GLS.addImg(im); ay = .92; x = GLB.x[d]; y = GLB.y[d]; sx = GLB.km(d); sy = 0; sz = 0; }
+    else { const [im, a] = GLS.treeImg(d); o = GLS.addImg(im); ay = a; x = d.x; y = d.y; const vr = .9 + (d.v % 97) / 480; sx = treeKm(d.k) * vr; sy = vr; sz = d.r; flip = !!(d.v % 2); trees.push([q, d]); }
+    const qs = [[-.5, -ay * o.asp, flip ? o.u1 : o.u0, o.v0], [.5, -ay * o.asp, flip ? o.u0 : o.u1, o.v0], [.5, (1 - ay) * o.asp, flip ? o.u0 : o.u1, o.v1], [-.5, (1 - ay) * o.asp, flip ? o.u1 : o.u0, o.v1]];
+    for (let v = 0; v < 4; v++) { const b = (q * 4 + v) * 9, c = qs[v]; A[b] = x; A[b + 1] = y; A[b + 2] = c[0]; A[b + 3] = c[1]; A[b + 4] = c[2]; A[b + 5] = c[3]; A[b + 6] = sx; A[b + 7] = sy; A[b + 8] = sz; }
+    const b = q * 4; I[q * 6] = b; I[q * 6 + 1] = b + 1; I[q * 6 + 2] = b + 2; I[q * 6 + 3] = b; I[q * 6 + 4] = b + 2; I[q * 6 + 5] = b + 3; }
+  const buf = new PIXI.Buffer(A, true, false), vb = new PIXI.Buffer(V, false, false); const F = PIXI.TYPES.FLOAT;
+  const g = new PIXI.Geometry().addAttribute('aC', buf, 2, false, F, 36, 0).addAttribute('aQ', buf, 2, false, F, 36, 8).addAttribute('aUV', buf, 2, false, F, 36, 16).addAttribute('aS', buf, 3, false, F, 36, 24).addAttribute('aV', vb, 1).addIndex(I);
+  m = new PIXI.Mesh(g, GLS.sh); m.state.blendMode = PIXI.BLEND_MODES.NORMAL; m.zIndex = cy * C; m._trees = trees; m._V = V; m._vb = vb; m._vk = ''; m._vi = 0; m._all1 = true;
+  GLS.ch.set(key, m); GLS.layer.addChild(m); return m; };
+// все куски — заранее в фоне, сразу в видеокарту
+GLS.prebuild = function () { const keys = [...GLS.keys].filter(k => !GLS.ch.has(k)); const R = GL.app.renderer; GLB.rt = GLB.rt || PIXI.RenderTexture.create({ width: 4, height: 4 });
+  const step = () => { const t0 = performance.now(); while (keys.length && performance.now() - t0 < 6) { const m = GLS.chunk(keys.pop()); if (!m) continue; const v = m.visible; m.visible = true; try { R.render(m, { renderTexture: GLS.rtt || GLB.rt, clear: false, skipUpdateTransform: false }); } catch (e) {} m.visible = v; } if (keys.length) glIdle(step); else { GLS.all = 1; GLB.all = 1; GL.lastCam = ''; } };
+  glIdle(step); };
+// деревья не стоят на видимых дорогах — пересчёт после остановки карты, понемногу
+GLS.vis = function (m, s, lv, budget) { if (s < DECOR_DYN_S) { if (!m._all1) { m._V.fill(1); m._vb.update(); m._all1 = true; m._vk = ''; } return true; }
+  const key = lv + '/' + HiR.ver; if (m._vk === key) return true; if (!Map2D.calm) return false; if (m._vkPend !== key) { m._vkPend = key; m._vi = 0; }
+  const V = m._V, T = m._trees; while (m._vi < T.length) { if (performance.now() > budget) return false; const [q, d] = T[m._vi++]; const v = coarseOk(d, s) ? 1 : 0; const b = q * 4; V[b] = V[b + 1] = V[b + 2] = V[b + 3] = v; }
+  m._vb.update(); m._vk = key; m._all1 = false; return true; };
+GLS.update = function (bb) { const M = Map2D, s = M.s, on = s < FINE_S; GLS.layer.visible = on; if (!on) return;
+  if (GLS.step !== Night.step) GLS.draw();
+  const u = GLS.sh.uniforms; u.uScale = s; u.uMin = s < 4 ? 5 : s < 8 ? 6.5 : 8; u.uDens = glDens(s); u.uBA = s >= GLB.minS ? Math.min(1, (s - GLB.minS) / 15 + .15) : 0;
+  for (const m of GLS.layer.children) m.visible = false;
+  const C = GLS.C, lv = levelOf(s), budget = performance.now() + 4; let made = 0;
+  for (let cx = Math.floor((bb[0] - .3) / C); cx <= Math.floor((bb[2] + .3) / C); cx++) for (let cy = Math.floor((bb[1] - .3) / C); cy <= Math.floor((bb[3] + .5) / C); cy++) { const key = cx + ',' + cy; if (!GLS.keys.has(key)) continue;
+    let m = GLS.ch.get(key); if (m === undefined) { if (made++ > 6) { GL.pend = true; continue; } m = GLS.chunk(key); } if (!m) continue; m.visible = true;
+    if (!GLS.vis(m, s, lv, budget)) GL.pend = true; } };
 
 // ===== Живой остров =====
 const World = { clouds: [], birds: [], bikes: [], npcs: [], animals: [], boats: [], sea: [], surfers: [], flights: [], weather: null, night: 0, lastT: 0, lastSpawnKey: '' };
