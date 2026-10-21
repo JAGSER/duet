@@ -3072,7 +3072,7 @@ GL.prewarm = function () { if (!GL.on || GL._warmT) return; GL._warmT = 1;
   glIdle(step); };
 
 // ===== Постоянные здания всего острова: одно и то же место и настоящий размер на любом приближении =====
-const GLB = { ready: false, n: 0, x: null, y: null, k: null, v: null, ch: new Map(), C: 2, kinds: window.BLDK || [], pc: new Map(), frames: null, step: -1 };
+const GLB = { minS: 100, ready: false, n: 0, x: null, y: null, k: null, v: null, ch: new Map(), C: 2, kinds: window.BLDK || [], pc: new Map(), frames: null, step: -1 };
 GLB.load = function () { if (GLB._ld) return; GLB._ld = 1;
   const B = /duetplay\.app$/.test(location.hostname) && location.hostname !== 'bali.duetplay.app' ? 'https://bali.duetplay.app/' : '';
   fetch(B + 'bld.bin?v=' + (window.BLDV || '')).then(r => r.arrayBuffer()).then(buf => { const dv = new DataView(buf); const n = dv.getUint32(0, true); const X = new Float32Array(n), Y = new Float32Array(n), K = new Uint8Array(n), V = new Uint16Array(n);
@@ -3105,7 +3105,7 @@ GLB.chunk = function (key) { let pc = GLB.pc.get(key); if (pc) return pc; const 
 GLB.prebuild = function () { if (!Art.loaded) return setTimeout(GLB.prebuild, 500); const keys = [...GLB.ch.keys()];
   const step = () => { const t0 = performance.now(); while (keys.length && performance.now() - t0 < 8) { const pc = GLB.chunk(keys.pop()); if (pc && !pc.visible) pc.visible = false; } if (keys.length) glIdle(step); else { GLB.all = 1; GL.lastCam = ''; } };
   glIdle(step); };
-GLB.update = function (bb) { if (!GLB.ready) { GLB.load(); return; } const s = Map2D.s, on = s >= 8 && s < FINE_S;
+GLB.update = function (bb) { if (!GLB.ready) { GLB.load(); return; } const s = Map2D.s, on = s >= GLB.minS && s < FINE_S;
   if (GLB.step !== Night.step && GLB.frames) { for (const pc of GLB.pc.values()) { GL.L.decor.removeChild(pc); pc.destroy({ children: true }); } GLB.pc.clear(); GLB.frames = null; GLB.prebuild(); }
   for (const pc of GLB.pc.values()) pc.visible = false; if (!on) return; const C = GLB.C; let made = 0;
   for (let cx = Math.floor((bb[0] - .2) / C); cx <= Math.floor((bb[2] + .2) / C); cx++) for (let cy = Math.floor((bb[1] - .2) / C); cy <= Math.floor((bb[3] + .4) / C); cy++) { const key = cx + ',' + cy; if (!GLB.ch.has(key)) continue;
