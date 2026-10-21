@@ -1270,28 +1270,33 @@ Net.start = async function (me) {
     }
   } catch (e) { /* нет комнаты — не страшно */ }
   setInterval(() => { Net.publish(); Net.prune(); }, 25000);
-  window.addEventListener('beforeunload', () => { try { if (Net.mq) Net.mq.publish(Net.topicBase + '/p/' + Net.me.id, '', { retain: true, qos: 0 }); } catch (e) {} });
+  window.addEventListener('beforeunload', () => { for (const cl of Net.mqs) try { cl.publish(Net.topicBase + '/p/' + Net.me.id, '', { retain: true, qos: 0 }); } catch (e) {} });
 };
+Net.mqs = [];
+Net.BROKERS = ['wss://broker.hivemq.com:8884/mqtt', 'wss://broker.emqx.io:8084/mqtt'];
 Net.startMqtt = function () {
   const go = () => {
-    try {
-      const id = Net.me.id;
-      const cl = window.mqtt.connect('wss://broker.hivemq.com:8884/mqtt', { clientId: 'bali_' + id + '_' + Math.random().toString(36).slice(2, 6), clean: true, keepalive: 30, reconnectPeriod: 4000, connectTimeout: 8000,
-        will: { topic: Net.topicBase + '/p/' + id, payload: '', retain: true, qos: 0 } });
-      Net.mq = cl;
-      cl.on('connect', () => {
-        Net.status = 'online'; Net.onStatus();
-        cl.subscribe([Net.topicBase + '/p/+', Net.topicBase + '/dm/' + id, Net.topicBase + '/chat', Net.topicBase + '/wave/' + id]);
-        Net.publish();
-      });
-      cl.on('close', () => { if (!Net.room) { Net.status = 'offline'; Net.onStatus(); } });
-      cl.on('message', (topic, buf) => {
-        const s = buf.toString(); const parts = topic.split('/'); const kind = parts[3];
-        if (kind === 'p') { const pid = parts[4]; if (pid === id) return; if (!s) { const cur = Net.peers.get(pid); if (cur && cur.src === 'mqtt') Net.peers.delete(pid); Net.onPeers(); return; }
-          try { const u = JSON.parse(s); if (!u || u.id !== pid) return; if (Date.now() - (u.ts || 0) > 120000) return; Net.peers.set(pid, { ...sanitizePeer(u), src: 'mqtt', ts: u.ts }); Net.onPeers(); } catch (e) {} return; }
-        try { const d = JSON.parse(s); Net.gotMsg(kind === 'dm' ? 'dm' : kind === 'wave' ? 'wave' : 'chat', d); } catch (e) {}
-      });
-    } catch (e) {}
+    const id = Net.me.id;
+    for (const url of Net.BROKERS) {
+      try {
+        const cl = window.mqtt.connect(url, { clientId: 'bali_' + id + '_' + Math.random().toString(36).slice(2, 6), clean: true, keepalive: 60, reconnectPeriod: 3000, connectTimeout: 10000,
+          will: { topic: Net.topicBase + '/p/' + id, payload: '', retain: true, qos: 0 } });
+        Net.mqs.push(cl); if (!Net.mq) Net.mq = cl;
+        cl.on('connect', () => {
+          Net.status = 'online'; Net.onStatus();
+          cl.subscribe([Net.topicBase + '/p/+', Net.topicBase + '/dm/' + id, Net.topicBase + '/chat', Net.topicBase + '/wave/' + id]);
+          Net.publish();
+        });
+        cl.on('close', () => { if (!Net.room && !Net.mqs.some(c => c.connected)) { Net.status = 'offline'; Net.onStatus(); } });
+        cl.on('error', () => {});
+        cl.on('message', (topic, buf) => {
+          const s = buf.toString(); const parts = topic.split('/'); const kind = parts[3];
+          if (kind === 'p') { const pid = parts[4]; if (pid === id) return; if (!s) { const cur = Net.peers.get(pid); if (cur && cur.src === 'mqtt' && Date.now() - cur.ts > 5000) Net.peers.delete(pid); Net.onPeers(); return; }
+            try { const u = JSON.parse(s); if (!u || u.id !== pid) return; if (Date.now() - (u.ts || 0) > 150000) return; const cur = Net.peers.get(pid); if (cur && cur.ts > u.ts) return; Net.peers.set(pid, { ...sanitizePeer(u), src: 'mqtt', ts: u.ts }); Net.onPeers(); } catch (e) {} return; }
+          try { const d = JSON.parse(s); Net.gotMsg(kind === 'dm' ? 'dm' : kind === 'wave' ? 'wave' : 'chat', d); } catch (e) {}
+        });
+      } catch (e) {}
+    }
   };
   if (window.mqtt) go(); else { const sc = document.createElement('script'); sc.src = 'https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js'; sc.onload = go; sc.onerror = () => {}; document.head.appendChild(sc); }
 };
@@ -1306,13 +1311,13 @@ function sanitizePeer(u) {
 Net.publish = function () {
   const p = Net.payload(); if (!p) return;
   try { if (Net.room) Net.room.presence({ u: p }).catch(() => {}); } catch (e) {}
-  try { if (Net.mq && Net.mq.connected) Net.mq.publish(Net.topicBase + '/p/' + p.id, JSON.stringify(p), { retain: true, qos: 0 }); } catch (e) {}
+  for (const cl of Net.mqs) try { if (cl.connected) cl.publish(Net.topicBase + '/p/' + p.id, JSON.stringify(p), { retain: true, qos: 0 }); } catch (e) {}
 };
-Net.prune = function () { const now = Date.now(); for (const [k, v] of Net.peers) if (v.src === 'mqtt' && now - v.ts > 90000) Net.peers.delete(k); Net.onPeers(); };
+Net.prune = function () { const now = Date.now(); for (const [k, v] of Net.peers) if (v.src === 'mqtt' && now - v.ts > 150000) Net.peers.delete(k); Net.onPeers(); };
 Net.send = function (kind, to, text, extra = {}) {
   const d = { from: Net.me.id, fn: Net.me.name, to, text: String(text).slice(0, 500), ts: Date.now(), ...extra };
   try { if (Net.room) Net.room.emit(kind, d).catch(() => {}); } catch (e) {}
-  try { if (Net.mq && Net.mq.connected) Net.mq.publish(Net.topicBase + '/' + kind + (kind === 'chat' ? '' : '/' + to), JSON.stringify(d), { qos: 0 }); } catch (e) {}
+  for (const cl of Net.mqs) try { if (cl.connected) cl.publish(Net.topicBase + '/' + kind + (kind === 'chat' ? '' : '/' + to), JSON.stringify(d), { qos: 0 }); } catch (e) {}
   return d;
 };
 Net.seen = new Set();
@@ -1324,7 +1329,7 @@ Net.gotMsg = function (kind, d) {
   Net.onMessage(kind, { from: d.from.slice(0, 40), fn: String(d.fn || 'Гость').slice(0, 30), text: d.text.slice(0, 500), ts: +d.ts || Date.now(), pos: Array.isArray(d.pos) ? d.pos : null });
 };
 Net.online = function () { return Net.peers.size + 1; };
-Net.mode = function () { return [Net.room ? 'room' : null, Net.mq && Net.mq.connected ? 'mqtt' : null].filter(Boolean); };
+Net.mode = function () { return [Net.room ? 'room' : null, Net.mqs.some(c => c.connected) ? 'mqtt' : null].filter(Boolean); };
 
 // ===== Интерфейс =====
 const $ = s => document.querySelector(s);
@@ -1787,7 +1792,7 @@ function openChat(id) {
 }
 function renderChat(id) {
   const pub = id === '__pub'; const c = pub ? { msgs: App.publicChat, name: 'Общий чат острова' } : chatFor(id); const p = Net.peers.get(id);
-  $('#sheetBody').innerHTML = `<div class="sh-h"><h3>${esc(pub ? 'Общий чат острова' : (c.name || 'Гость'))}</h3><p class="mut">${pub ? 'Видят все, кто сейчас на карте' : p ? 'онлайн' + (p.pos ? ' · ' + esc(districtOf(p.pos[0], p.pos[1])) : '') : 'не в сети — сообщение дойдёт, когда появится'}</p></div>
+  $('#sheetBody').innerHTML = `<div class="sh-h"><h3>${esc(pub ? 'Общий чат острова' : (c.name || 'Гость'))}</h3><p class="mut">${pub ? 'Видят все, кто сейчас на карте' : p ? 'онлайн' + (p.pos ? ' · ' + esc(districtOf(p.pos[0], p.pos[1])) : '') : 'не в сети — сообщение получит, только если сейчас на карте'}</p></div>
     <div class="msgs" id="msgs">${c.msgs.map(m => `<div class="msg ${m.me ? 'me' : ''}">${pub && !m.me ? `<b>${esc(m.fn || 'Гость')}</b>` : ''}${linkify(esc(m.text))}<i>${msgTime(m.ts)}</i></div>`).join('') || '<p class="mut">Сообщений пока нет. Начните первым!</p>'}</div>
     <div class="composer"><input id="msgIn" class="inp" maxlength="500" placeholder="Сообщение…" autocomplete="off"><button class="btn primary" data-act="send" aria-label="Отправить">➤</button></div>
     ${pub ? '' : '<div class="row-btns"><button class="btn sm ghost" data-act="sendpos">Отправить мою геопозицию</button></div>'}`;
