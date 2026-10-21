@@ -191,6 +191,7 @@ h4{margin:16px 0 6px;font-size:15px;font-weight:900}
 #hideMenu button:hover{background:#F3EEFA}#hideMenu button span{font-weight:600;font-size:12px;color:#7a6f8e}
 #app.compact .pills,#app.compact #chips,#app.compact #btnHome,#app.compact #btnRot,#app.compact #btnWalk{display:none!important}
 #app.compact .nav button:not(.fab){font-size:0;gap:0}#app.compact .nav{height:52px;width:min(330px,calc(100% - 24px))}#app.compact .nav .fab{width:52px;height:52px;min-width:52px;margin-top:-22px}
+#q::-webkit-search-cancel-button,#q::-webkit-search-decoration{-webkit-appearance:none;display:none}
 </style>
 <div id="app">
 <canvas id="map" aria-label="Иллюстрированная карта Бали"></canvas>
@@ -1037,8 +1038,8 @@ function roadIdxAdd(r) { const G = RoadIdx.g, C = RoadIdx.C; const a = r.a; for 
   for (let i = 0; i <= n; i++) { const t = i / n, k = Math.floor((x1 + (x2 - x1) * t) / C) + ',' + Math.floor((y1 + (y2 - y1) * t) / C); if (k === last) continue; last = k; let c = G.get(k); if (!c) G.set(k, c = []); c.push(x1, y1, x2, y2, r.k); } } }
 // ширина дорог: на дальнем плане — в пикселях, вблизи — географическая (м), чтобы дома и люди стояли рядом, а не на дороге
 const RW_KM = [0, .02, .016, .012, .01, .007, .005, .003], RW_MIN = [0, 3, 3, 2.5, 2, 1.6, 1.3, 1];
-const ROAD_MIN_S = [0, 0, 0, 0, 0, 70, 160, 300];
-function roadWOld(k, s) { if (k >= 5) return Math.max(1, Math.min(6, (k === 5 ? .016 : k === 6 ? .012 : .008) * s)) + (k === 7 ? 0 : 1.2); return Math.max(1.6, Math.min(s > 1000 ? 34 : 16, (k === 1 ? .1 : k === 2 ? .075 : k === 3 ? .05 : .035) * s * (s > 60 ? .55 : 1)) + 2); }
+const ROAD_MIN_S = [0, 0, 0, 0, 0, 150, 320, 600];
+function roadWOld(k, s) { if (k >= 5) return Math.max(1, Math.min(6, (k === 5 ? .012 : k === 6 ? .009 : .006) * s)) + (k === 7 ? 0 : .8); return Math.max(1.6, Math.min(s > 1000 ? 34 : 16, (k === 1 ? .1 : k === 2 ? .075 : k === 3 ? .05 : .035) * s * (s > 60 ? .55 : 1)) + 2); }
 function roadWpx(k, s) { const old = roadWOld(k, s); if (s < FINE_S * .6) return old; const geo = Math.max(RW_MIN[k], RW_KM[k] * s); const t = Math.max(0, Math.min(1, (FINE_S - s) / (FINE_S * .4))); return Math.max(geo, old * t); }
 const roadGeoHalf = k => Math.max(RW_KM[k], RW_MIN[k] / FINE_S) / 2;
 // расстояние до края ближайшей дороги (вблизи, географически)
@@ -1390,7 +1391,7 @@ function renderTile(L, i, j) {
 }
 
 // ===== Раскладка значков (стабильная для уровня зума — без «прыжков» при движении) =====
-const RANK_MIN_S = { 1: 0, 2: 4.2, 3: 11, 4: 30, 5: 85 };
+const RANK_MIN_S = { 1: 0, 2: 5.5, 3: 16, 4: 42, 5: 110 };
 function poiVisible(p) {
   const M = Map2D;
   if (M.focusIds) return M.focusIds.has(p.id);
@@ -1420,36 +1421,39 @@ function layoutFor(L) {
   const occ = new Map(); const Z = 48;
   const free = r => { for (let x = Math.floor(r[0] / Z); x <= Math.floor(r[2] / Z); x++) for (let y = Math.floor(r[1] / Z); y <= Math.floor(r[3] / Z); y++) { const a = occ.get(x + ',' + y); if (a) for (const q of a) if (!(r[2] < q[0] || r[0] > q[2] || r[3] < q[1] || r[1] > q[3])) return false; } return true; };
   const add = r => { for (let x = Math.floor(r[0] / Z); x <= Math.floor(r[2] / Z); x++) for (let y = Math.floor(r[1] / Z); y <= Math.floor(r[3] / Z); y++) { const k = x + ',' + y; let a = occ.get(k); if (!a) occ.set(k, a = []); a.push(r); } };
+  const occD = []; const freeD = r => !occD.some(q => !(r[2] < q[0] || r[0] > q[2] || r[3] < q[1] || r[1] > q[3])); const addD = r => occD.push(r);
   const out = { pois: [], districts: [], volcanoLabels: [] };
   const mctx = document.createElement('canvas').getContext('2d');
+  // места: сначала уникальные достопримечательности (чтобы подписи районов их не вытесняли), потом районы, потом остальные
+  const placePass = first => { const cand = []; for (const p of M.pois) { if (sL < RANK_MIN_S[p.r] * (few ? .35 : 1) && !(M.focusIds && M.focusIds.has(p.id))) continue; if (!poiVisible(p)) continue; const isLm = p.r <= 2 && sL > 1.8 && !!Art.landmark(p); if (isLm !== first) continue; cand.push(p); }
+  cand.sort((a, b) => a.r - b.r || (b.d ? 1 : 0) - (a.d ? 1 : 0));
+  const gap = sL < 5 ? 16 : sL < 15 ? 12 : sL < 40 ? 7 : 3;
+  for (const p of cand) {
+    const U = vu(p.X, p.Y) * sL, V = vv(p.X, p.Y) * sL;
+    const uniq = sL > 1.8 ? Art.landmark(p) : null; const pc = !uniq && sL > 3.5 ? picCard(p.id) : null; const lm = uniq || pc || (sL > 3.5 ? landmarkSprite(p) : null); const art = !lm && sL > 60 && p.r <= 4 ? Art.building(p) : null;
+    const size = UIK * (p.r === 1 ? (sL < 5 ? 24 : 30) : p.r === 2 ? 26 : p.r === 3 ? 22 : 19);
+    const lmw = pc ? Math.max(40, Math.min(96, sL * 2)) * UIK : lm === SPR.umbrella ? Math.max(16, personPx(sL) * 1.3) : lm ? (uniq ? Math.max(p.r <= 1 ? 58 : 46, Math.min(96, 40 + sL * 2.2)) : Math.max(30, Math.min(70, sL * 3))) * (Art.ok(lm) ? 1.25 : 1) * (uniq ? 1 : 1) : art ? Math.max(34, Math.min(64, sL * .22)) : 0; const lmh = lmw ? lmw * (lm || art)._h / (lm || art)._w : 0;
+    const r = first ? [U - lmw * .3, V - lmh * .55, U + lmw * .3, V + 2] : [U - Math.max(size, lmw) / 2 - gap, V - lmh - size - gap, U + Math.max(size, lmw) / 2 + gap, V + gap];
+    if (!free(r)) continue; add(r);
+    let label = null; const wantLabel = (p.r === 1 && sL > 4.5) || (p.r === 2 && sL > 9) || (p.r === 3 && sL > 30) || sL > 110;
+    if (wantLabel) { const nm = (p.nr && p.r <= 2 ? p.nr : p.n); const t = nm.length > 24 ? nm.slice(0, 23) + '…' : nm; mctx.font = (p.r <= 2 ? '900 ' + 12.5 * UIK : '800 ' + 11.5 * UIK) + 'px Nunito, sans-serif'; const tw = mctx.measureText(t).width;
+      const lr = [U - tw / 2 - 3, V + 2, U + tw / 2 + 3, V + 4 + 15 * UIK]; if (free(lr)) { add(lr); label = { t, f: mctx.font }; } }
+    out.pois.push({ p, lm: lm || art, lmw, lmh, size, label, pc: !!pc, nopin: !!uniq && sL < 14 });
+    if (out.pois.length > 6000) break;
+  } };
+  placePass(true);
   // районы
   if (sL >= 3.6 && sL <= 70) for (const d of App.districts) {
     const U = vu(d.X, d.Y) * sL, V = vv(d.X, d.Y) * sL; const fs = Math.round(UIK * Math.max(12, Math.min(20, sL * .9)));
     mctx.font = '900 ' + fs + 'px Nunito, sans-serif'; const tw = mctx.measureText(d.name_ru).width; const r = [U - tw / 2 - 12, V - fs * .8 - 2, U + tw / 2 + 12, V + fs * .7 + 2];
-    if (!free(r)) continue; add(r); const it = { d, fs, tw, joke: null };
-    if (sL > 7 && sL < 45 && App.showJokes) { mctx.font = '700 ' + 11 * UIK + 'px Nunito, sans-serif'; const words = d.joke.split(' '); const lines = []; let line = '';
+    if (!freeD(r)) continue; addD(r); add(r); const it = { d, fs, tw, joke: null }; // подписи районов не перекрывают друг друга; значки их обходят
+    if (sL > 14 && sL < 45 && App.showJokes && out.districts.filter(x => x.joke).length < 2) { mctx.font = '700 ' + 11 * UIK + 'px Nunito, sans-serif'; const words = d.joke.split(' '); const lines = []; let line = '';
       for (const w of words) { const t = line ? line + ' ' + w : w; if (mctx.measureText(t).width > 170 * UIK) { lines.push(line); line = w; } else line = t; } if (line) lines.push(line);
       const bw = Math.min(190 * UIK, Math.max(...lines.map(l => mctx.measureText(l).width)) + 18), bh = lines.length * 14 * UIK + 10; const jr = [U - bw / 2, V + fs + 4 - 6, U + bw / 2, V + fs + 4 + bh];
       if (free(jr)) { add(jr); it.joke = { lines, bw, bh }; } }
     out.districts.push(it);
   }
-  // места
-  const cand = []; for (const p of M.pois) { if (sL < RANK_MIN_S[p.r] * (few ? .35 : 1) && !(M.focusIds && M.focusIds.has(p.id))) continue; if (!poiVisible(p)) continue; cand.push(p); }
-  cand.sort((a, b) => a.r - b.r || (b.d ? 1 : 0) - (a.d ? 1 : 0));
-  const gap = sL < 5 ? 14 : sL < 15 ? 8 : 3;
-  for (const p of cand) {
-    const U = vu(p.X, p.Y) * sL, V = vv(p.X, p.Y) * sL;
-    const uniq = sL > 3.5 ? Art.landmark(p) : null; const pc = !uniq && sL > 3.5 ? picCard(p.id) : null; const lm = uniq || pc || (sL > 3.5 ? landmarkSprite(p) : null); const art = !lm && sL > 60 && p.r <= 4 ? Art.building(p) : null;
-    const size = UIK * (p.r === 1 ? (sL < 5 ? 24 : 30) : p.r === 2 ? 26 : p.r === 3 ? 22 : 19);
-    const lmw = pc ? Math.max(40, Math.min(96, sL * 2)) * UIK : lm === SPR.umbrella ? Math.max(16, personPx(sL) * 1.3) : lm ? Math.max(30, Math.min(70, sL * 3)) * (Art.ok(lm) ? 1.25 : 1) : art ? Math.max(34, Math.min(64, sL * .22)) : 0; const lmh = lmw ? lmw * (lm || art)._h / (lm || art)._w : 0;
-    const r = [U - Math.max(size, lmw) / 2 - gap, V - lmh - size - gap, U + Math.max(size, lmw) / 2 + gap, V + gap];
-    if (!free(r)) continue; add(r);
-    let label = null; const wantLabel = (p.r === 1 && sL > 4.5) || (p.r === 2 && sL > 9) || (p.r === 3 && sL > 30) || sL > 110;
-    if (wantLabel) { const nm = (p.nr && p.r <= 2 ? p.nr : p.n); const t = nm.length > 24 ? nm.slice(0, 23) + '…' : nm; mctx.font = (p.r <= 2 ? '900 ' + 12.5 * UIK : '800 ' + 11.5 * UIK) + 'px Nunito, sans-serif'; const tw = mctx.measureText(t).width;
-      const lr = [U - tw / 2 - 3, V + 2, U + tw / 2 + 3, V + 4 + 15 * UIK]; if (free(lr)) { add(lr); label = { t, f: mctx.font }; } }
-    out.pois.push({ p, lm: lm || art, lmw, lmh, size, label, pc: !!pc });
-    if (out.pois.length > 6000) break;
-  }
+  placePass(false);
   // подписи вулканов
   for (const p of M.peaks) { if (!(sL > 6 && (p.e > 2000 || /Batur/i.test(p.n) || sL > 14))) continue; const big = p.e > 2500 ? 1 : p.e > 2000 ? .7 : .5; const w = Math.max(44 * big + 10, Math.min(520, sL * 12 * big)); const h = w * .62;
     const n = p.n.replace('Gunung', 'Гунунг').replace(/ \/.*/, '').replace(/ south peak| north peak/, '') + (p.e ? ' · ' + p.e + ' м' : ''); mctx.font = '800 ' + Math.max(10, Math.min(14, w * .07)) * UIK + 'px Nunito, sans-serif'; const tw = mctx.measureText(n).width;
@@ -1471,12 +1475,6 @@ function lmShift(it, L) {
 function drawOverlay(c, now) {
   const M = Map2D; const L = levelOf(M.s); const lay = layoutFor(L); const k = M.s / scaleOf(L);
   M.hitList = []; const vis = []; const W = M.W, H = M.H;
-  // районы
-  for (const it of lay.districts) { const X = sx2(it.d.X, it.d.Y), Y = sy2(it.d.X, it.d.Y); if (X < -150 || X > W + 150 || Y < -60 || Y > H + 80) continue; const fs = it.fs;
-    c.font = '900 ' + fs + 'px Nunito, sans-serif'; c.textAlign = 'center'; c.fillStyle = 'rgba(34,22,58,.78)'; c.beginPath(); c.roundRect(X - it.tw / 2 - 10, Y - fs * .8, it.tw + 20, fs * 1.5, fs * .75); c.fill(); c.fillStyle = '#fff'; c.fillText(it.d.name_ru, X, Y + fs * .3);
-    M.hitList.push({ type: 'district', d: it.d, x: X, y: Y, r: Math.min(26, it.tw / 3) });
-    if (it.joke) { const { lines, bw, bh } = it.joke; const bx = X - bw / 2, by = Y + fs + 4; c.fillStyle = 'rgba(255,255,255,.95)'; c.beginPath(); c.roundRect(bx, by, bw, bh, 10); c.fill(); c.beginPath(); c.moveTo(X - 6, by); c.lineTo(X, by - 6); c.lineTo(X + 6, by); c.fill();
-      c.font = '700 ' + 11 * UIK + 'px Nunito, sans-serif'; c.fillStyle = '#5B4F73'; lines.forEach((l, i) => c.fillText(l, X, by + 17 * UIK + i * 14 * UIK)); } }
   // подписи вулканов
   for (const v of lay.volcanoLabels) { const X = sx2(v.p.x, v.p.y), Y = sy2(v.p.x, v.p.y) + v.dy * k; if (X < -100 || X > W + 100 || Y < -20 || Y > H + 20) continue; c.font = v.f; c.textAlign = 'center'; c.lineWidth = 3; c.strokeStyle = 'rgba(34,22,58,.55)'; c.fillStyle = '#fff'; c.strokeText(v.n, X, Y); c.fillText(v.n, X, Y); }
   // места (снизу вверх)
@@ -1489,12 +1487,18 @@ function drawOverlay(c, now) {
     const p = it.p; const sel = M.selected && M.selected.id === p.id; vis.push(p);
     if (it.sh && it.lm) { c.strokeStyle = 'rgba(34,22,58,.45)'; c.lineWidth = 1.5; c.setLineDash([3, 3]); c.beginPath(); c.moveTo(it.X0, it.Y0); c.lineTo(X, Y); c.stroke(); c.setLineDash([]); c.fillStyle = '#fff'; c.beginPath(); c.arc(it.X0, it.Y0, 4.5, 0, 7); c.fill(); c.fillStyle = '#7B2FF7'; c.beginPath(); c.arc(it.X0, it.Y0, 2.6, 0, 7); c.fill(); }
     if (it.lm) Art.drawSprite(c, it.lm, X - it.lmw / 2, Y - it.lmh, it.lmw, it.lmh);
-    const ic = Art.pin(p.c, sel ? it.size + 6 : it.size, sel); const S = it.pc ? 0 : ic._s; const yy = Y - it.lmh - S + 4;
-    if (!it.pc) c.drawImage(ic, X - S / 2, yy, S, S); else if (sel) { c.strokeStyle = '#7B2FF7'; c.lineWidth = 4; c.beginPath(); c.arc(X, Y - it.lmh + it.lmw / 2, it.lmw / 2, 0, 7); c.stroke(); }
+    const ic = Art.pin(p.c, sel ? it.size + 6 : it.size, sel); const S = it.pc || (it.nopin && !sel) ? 0 : ic._s; const yy = Y - it.lmh - S + 4;
+    if (S) c.drawImage(ic, X - S / 2, yy, S, S); else if (sel) { c.strokeStyle = '#7B2FF7'; c.lineWidth = 4; c.beginPath(); c.arc(X, Y - it.lmh + it.lmw / 2, it.lmw / 2, 0, 7); c.stroke(); }
     M.hitList.push({ type: 'poi', p, x: X, y: (yy + S / 2 + Y) / 2, r: Math.max(S / 2, it.lmh / 2, 14) });
     if (it.label) { c.font = it.label.f; c.textAlign = 'center'; c.lineWidth = 3.5; c.strokeStyle = 'rgba(255,255,255,.95)'; c.fillStyle = '#22163A'; const ly = Y + 3 + 12 * UIK; c.strokeText(it.label.t, X, ly); c.fillText(it.label.t, X, ly); }
   }
   M.visiblePOI = vis;
+  // районы
+  for (const it of lay.districts) { const X = sx2(it.d.X, it.d.Y), Y = sy2(it.d.X, it.d.Y); if (X < -150 || X > W + 150 || Y < -60 || Y > H + 80) continue; const fs = it.fs;
+    c.font = '900 ' + fs + 'px Nunito, sans-serif'; c.textAlign = 'center'; c.fillStyle = 'rgba(34,22,58,.78)'; c.beginPath(); c.roundRect(X - it.tw / 2 - 10, Y - fs * .8, it.tw + 20, fs * 1.5, fs * .75); c.fill(); c.fillStyle = '#fff'; c.fillText(it.d.name_ru, X, Y + fs * .3);
+    M.hitList.push({ type: 'district', d: it.d, x: X, y: Y, r: Math.min(26, it.tw / 3) });
+    if (it.joke) { const { lines, bw, bh } = it.joke; const bx = X - bw / 2, by = Y + fs + 4; c.fillStyle = '#fff'; c.beginPath(); c.roundRect(bx, by, bw, bh, 10); c.fill(); c.beginPath(); c.moveTo(X - 6, by); c.lineTo(X, by - 6); c.lineTo(X + 6, by); c.fill();
+      c.font = '700 ' + 11 * UIK + 'px Nunito, sans-serif'; c.fillStyle = '#5B4F73'; lines.forEach((l, i) => c.fillText(l, X, by + 17 * UIK + i * 14 * UIK)); } }
   // события
   if (M.s > 7) for (const o of M.overlays) { const X = sx2(o.X, o.Y), Y = sy2(o.X, o.Y); if (X < -20 || X > W + 20 || Y < -20 || Y > H + 20) continue; const ic = eventIcon(o.type); c.drawImage(ic, X - ic._s / 2, Y - ic._s / 2 - 12, ic._s, ic._s); M.hitList.push({ type: 'event', e: o.e, x: X, y: Y - 12, r: 16 }); }
   // дым вулканов
@@ -2109,7 +2113,7 @@ async function loadWeather() {
   applyWeather(App.weather);
   const k = App.weather.points[0]; $('#wx').innerHTML = `<b>${Math.round(k.temp)}°</b> ${wxIcon(k)}`;
 }
-function wxIcon(p) { return p.precip > .05 ? 'дождь' : p.cloud > 70 ? 'облачно' : p.cloud > 30 ? 'переменно' : 'солнце'; }
+function wxIcon(p) { const night = typeof nightFactor === 'function' && nightFactor() > .6; return p.precip > .05 ? 'дождь' : p.cloud > 70 ? 'облачно' : p.cloud > 30 ? 'переменно' : night ? 'ясно' : 'солнце'; }
 function updateOnline() {
   const n = Net.online(); $('#online').innerHTML = `<i class="dot ${Net.status === 'online' ? 'on' : ''}"></i>${n} онлайн`;
   const b = $('#badgePeople'); const u = Object.values(App.chats).reduce((a, c) => a + (c.unread || 0), 0); b.hidden = !u; b.textContent = u;
@@ -2237,7 +2241,7 @@ function placePic(p) {
   const n = (window.GAL || {})[p.id];
   if (!n) { const fs = (window.PH2 || {})[p.id]; if (!fs) return ''; const L = Array.isArray(fs) ? fs : [fs]; return `<div class="pgal">${L.map(f => `<img src="${cfile(f)}" alt="${esc(p.n)}" loading="lazy" onerror="this.remove()">`).join('')}</div>`; }
   const v = window.ART_VER || ''; const B = /duetplay\.app$/.test(location.hostname) && location.hostname !== 'bali.duetplay.app' ? 'https://bali.duetplay.app/' : '';
-  let h = ''; for (let k = 0; k < n; k++) h += `<img src="${B}photos/${p.id}_${k}.webp?v=${v}" alt="${esc(p.n)}" loading="lazy">`;
+  let h = ''; for (let k = 0; k < n; k++) h += `<img src="${B}photos/${p.id}_${k}.webp?v=${v}" alt="" loading="lazy" onerror="this.remove()">`;
   return `<div class="pgal">${h}</div>`;
 }
 // рейтинг и число отзывов Google — живой запрос Places API (нужен ключ window.GMAPS_KEY), хранится только на время сессии
