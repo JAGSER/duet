@@ -759,8 +759,10 @@ const Decor = {
     if (isB && s < 18) return; // дома видны ближе
     const spr = Art.pickFrom(k, d.v);
     // размер в км: дерево ~25 м, дом ~20–40 м; на мелком масштабе — минимальный экранный размер
-    const km = isB ? (k === 'bld_apartment' || k === 'bld_resortsmall' ? .06 : .035) : (k === 'tree_banyan' ? .045 : k === 'tree_bush' ? .015 : .028);
-    let w = Math.max(isB ? 16 : 9, Math.min(isB ? 90 : 60, km * s * (s > 200 ? 1 : 1.6))) * (.8 + (d.v % 97) / 240);
+    // размер привязан к росту людей на карте: дерево ≈ 2 роста, дом ≈ 2.5 роста
+    const ph = Math.max(6, Math.min(52, s * .16)) * (typeof UIK !== 'undefined' ? UIK : 1);
+    const mult = isB ? (k === 'bld_apartment' || k === 'bld_resortsmall' || k === 'bld_hotel' || k === 'bld_resort' ? 3.4 : 2.6) : (k === 'tree_banyan' ? 2.6 : k === 'tree_bush' ? 1.0 : k.startsWith('tree_palm') ? 2.2 : 1.9);
+    let w = Math.max(isB ? 14 : 9, ph * mult) * (.85 + (d.v % 97) / 320);
     if (spr) { const h = w * spr._h / spr._w; if ((d.v % 2) && !isB) { g.save(); g.translate(X, 0); g.scale(-1, 1); g.drawImage(spr, -w / 2, Y - h * .92, w, h); g.restore(); } else g.drawImage(spr, X - w / 2, Y - h * .92, w, h); return; }
     if (isB) { if (s > 60) drawHouse(g, X, Y, w, (d.v % 100) / 100); return; }
     const f = SPR[FALLBACK[k] || 'tree']; const h = w * f._h / f._w; g.drawImage(f, X - w / 2, Y - h * .85, w, h);
@@ -1506,7 +1508,7 @@ World.draw = function (c, now) {
     const ddx = (sx2(x2, y2) - sx2(x1, y1)) * b.dir, ddy = (sy2(x2, y2) - sy2(x1, y1)) * b.dir; if (Math.abs(ddx) > .5) b.face = ddx >= 0 ? 1 : -1; const dir = b.face || 1;
     const ax = Math.abs(ddx), ay = Math.abs(ddy); if (!b.view) b.view = 'side';
     if (b.view === 'side' ? ay > ax * 1.4 : ax > ay * 1.4) b.view = ay > ax ? (ddy > 0 ? 'front' : 'back') : 'side'; else if (b.view !== 'side') b.view = ddy > 0 ? 'front' : 'back';
-    const VH = 24 * u, bk = b.kind, bv = b.v, vw = b.view; DQ.add(Y + 3, () => Art.drawVehicle(c, bk, X, Y + 3, 0, dir, bv, vw, VH));
+    const VH = Math.max(14, Math.min(52, s * .16)) * UIK * (b.kind === "bus" ? 1.25 : .95), bk = b.kind, bv = b.v, vw = b.view; DQ.add(Y + 3, () => Art.drawVehicle(c, bk, X, Y + 3, 0, dir, bv, vw, VH));
   }
   // пешеходы
   if (s >= 45) { const N = W.npcs, SEP = Math.max(.012, 34 * UIK / s); for (let i = 0; i < N.length; i++) for (let j = i + 1; j < N.length; j++) { const A = N[i], B = N[j]; const dx = B.x - A.x, dy = B.y - A.y, d = Math.hypot(dx, dy);
