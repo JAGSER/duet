@@ -1827,13 +1827,15 @@ const Art = {
       const sheets = {}; const sheetOf = i => sheets[i] || (sheets[i] = B + 'a' + i + '.webp?v=' + (window.ART_VER || ''));
       await Art.load(list.map(it => rr[it.n] ? { ...it, rr: rr[it.n], src: sheetOf(rr[it.n][0]) } : ({ ...it, src: 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(it.svg) }))); } catch (e) {}
   },
-  pickFrom(g, v) { const a = Art.set[g]; if (!a || !a.length) return null; return a[Math.abs(v | 0) % a.length]; },
+  // выбор картинок для вида вручную (редактор): SELK[вид] = [имена картинок]
+  chosen(g) { const s = window.SELK && SELK[g]; if (!s || !s.length) return null; const a = s.map(n => Art.byName[n]).filter(Boolean); return a.length ? a : null; },
+  pickFrom(g, v) { const ch = Art.chosen(g); if (ch) return ch[Math.abs(v | 0) % ch.length]; const a = Art.set[g]; if (!a || !a.length) return null; return a[Math.abs(v | 0) % a.length]; },
   drawSprite(c, s, x, y, w, h) { if (s) c.drawImage(mip(s, w * Math.min(2, Map2D.dpr || 1)), x, y, w, h); },
   // уникальные иллюстрации известных мест
   landmark(p) {
     if (p._lm !== undefined) return p._lm;
     const n = (p.n + ' ' + (p.nr || '')).toLowerCase(); let hit = null;
-    for (const [key, words] of LANDMARK_KEYS) if (words.some(w => n.includes(w))) { hit = Art.byName['lm_' + key]; if (hit) break; }
+    for (const [key, words] of LANDMARK_KEYS) if (words.some(w => n.includes(w))) { hit = Art.byName['lm_' + key]; if (hit) { const ch = Art.chosen('lm_' + key); if (ch) hit = ch[0]; break; } }
     if (!Art.loaded) return null; p._lm = hit; return hit;
   },
   // здание по типу заведения
@@ -1850,7 +1852,7 @@ const Art = {
     if (p.c === 'transport' && /fuel|pertamina|spbu|shell/.test(n)) g = 'bld_fuel';
     if (p.c === 'temple' && /church|gereja/.test(n)) g = 'bld_church'; if (p.c === 'temple' && /masjid|mosque/.test(n)) g = 'bld_mosque';
     const h = [...p.id].reduce((a, ch) => a * 31 + ch.charCodeAt(0) | 0, 7);
-    p._b = Art.pickFrom(g, h) || null; if (!Art.loaded) p._b = undefined; return p._b || null;
+    p._bg = g; p._b = Art.pickFrom(g, h) || null; if (!Art.loaded) p._b = undefined; return p._b || null;
   },
   pin(cat, size, sel) { const s = Art.byName['pin_' + cat]; if (!s) return poiIcon(cat, size, sel); const key = 'P' + cat + size + (sel ? 1 : 0); let c = _iconCache.get(key); if (c) return c;
     const pad = 4, S = size + pad * 2, dpr = 2; c = document.createElement('canvas'); c.width = c.height = S * dpr; const x = c.getContext('2d'); x.scale(dpr, dpr);
@@ -2680,7 +2682,7 @@ function drawTxt(c, t, font, fill, stroke, lw, X, Y) { const o = txtSpr(t, font,
 // картинка места и её размер на местности (км) — постоянные, не зависят от приближения и раскладки меток
 function picOf(p) { const c = p._pic; if (c && (c.img || performance.now() - c.t < 3000)) return c; const uniq = Art.landmark(p); const pc = !uniq ? picCard(p.id) : null; const lm = uniq || pc || landmarkSprite(p); const art = !lm && p.r <= 4 ? Art.building(p) : null;
   const img = lm || art; let km = uniq ? (p.r <= 1 ? .3 : .22) : pc ? .14 : lm === SPR.umbrella ? .02 : lm ? .11 : art ? .08 : 0;
-  const key = !img ? '' : uniq ? (uniq._name || 'lm') : pc ? 'card' : art ? 'poi:' + (art._g || 'bld') : 'sym:' + (img._name || 'x'); if (key && window.SZK && SZK[key]) km = SZK[key];
+  const key = !img ? '' : uniq ? (uniq._name || 'lm') : pc ? 'card' : art ? 'poi:' + (p._bg || art._g || 'bld') : 'sym:' + (img._name || 'x'); if (key && window.SZK && SZK[key]) km = SZK[key];
   return p._pic = { img, km, pc: !!pc, key, t: performance.now() }; }
 // картинки мест стоят в общей очереди глубины: ближние деревья, люди и машины их перекрывают, а они — дальние
 function queuePics(c) {
@@ -3188,10 +3190,10 @@ void main() { vec4 c = texture2D(uSampler, vUV, -0.5) * vA; if (c.a < 0.004) dis
 const GLS = { C: 4, ok: false, ch: new Map(), keys: null, slot: new Map(), list: [], step: -1, AW: 4096, AH: 2048, cell: 256 };
 GLS.treeImg = function (d) { const k = d.k || (d.k = Decor.kind(d)); let spr = Art.pickFrom(k, d.v); if (!(spr && /_f/.test(spr._name || ''))) spr = flatTree(k, d.v); const fb = SPR[FALLBACK[k] || 'tree']; if (!spr) spr = fb; return [spr, spr === fb ? .85 : .92]; };
 GLS.houseFb = function () { return GL.house || (GL.house = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; drawHouse(c.getContext('2d'), 32, 62, 60, .3); c._w = 64; c._h = 64; c._name = 'bld_house_fb'; return c; })()); };
-GLS.bldImgs = function (k) { const a = (Art.set[k] || []).filter(Boolean); return a.length ? a : [GLS.houseFb()]; };
+GLS.bldImgs = function (k) { const ch = Art.chosen(k); if (ch) return ch; const a = (Art.set[k] || []).filter(Boolean); return a.length ? a : [GLS.houseFb()]; };
 GLS.addImg = function (im) { let o = GLS.slot.get(im); if (o) return o; const n = GLS.list.length; if (n >= (GLS.AW / GLS.cell) * (GLS.AH / GLS.cell)) return GLS.list[0].o;
   const C = GLS.cell, ox = (n % (GLS.AW / C)) * C, oy = Math.floor(n / (GLS.AW / C)) * C, kk = Math.min((C - 4) / im.width, (C - 4) / im.height), w = Math.max(1, Math.round(im.width * kk)), h = Math.max(1, Math.round(im.height * kk));
-  const x = ox + Math.floor((C - w) / 2), y = oy + C - 2 - h; o = { x, y, w, h, u0: x / GLS.AW, u1: (x + w) / GLS.AW, v0: y / GLS.AH, v1: (y + h) / GLS.AH, asp: h / w }; GLS.slot.set(im, o); GLS.list.push({ im, o }); return o; };
+  const x = ox + Math.floor((C - w) / 2), y = oy + C - 2 - h; o = { x, y, w, h, u0: x / GLS.AW, u1: (x + w) / GLS.AW, v0: y / GLS.AH, v1: (y + h) / GLS.AH, asp: h / w }; GLS.slot.set(im, o); GLS.list.push({ im, o }); if (GLS.base) GLS.redraw = true; return o; };
 GLS.draw = function () { // атлас (ночью — перекрашенные картинки)
   const c = GLS.cv || (GLS.cv = document.createElement('canvas')); c.width = GLS.AW; c.height = GLS.AH; const g = c.getContext('2d'); g.clearRect(0, 0, c.width, c.height); g.imageSmoothingQuality = 'high';
   for (const { im: im0, o } of GLS.list) { const im = Night.step && im0._name && !im0._noNight ? Night.img(im0, Night.kindOf(im0._name)) : im0; g.drawImage(im, o.x, o.y, o.w, o.h); }
@@ -3238,7 +3240,7 @@ GLS.vis = function (m, s, lv, budget) { if (s < DECOR_DYN_S) { if (!m._all1) { m
 // последний этап: подробная карта плавно проявляется поверх общей (FINE_S … FINE_S·1.35), дома — только перед ним
 const FINE_X = 1.6; GLS.t = s => Math.max(0, Math.min(1, (s - FINE_S) / (FINE_S * (FINE_X - 1))));
 GLS.update = function (bb) { const M = Map2D, s = M.s, t = GLS.t(s), on = t < 1; GL.L.decor.alpha = t; GLS.layer.visible = on; if (!on) return;
-  if (GLS.step !== Night.step) GLS.draw();
+  if (GLS.step !== Night.step || GLS.redraw) { GLS.redraw = false; GLS.draw(); }
   const u = GLS.sh.uniforms; u.uScale = s; u.uMin = s < 4 ? 5 : s < 8 ? 6.5 : 8; u.uDens = glDens(s); u.uBA = s >= GLB.minS ? Math.min(1, (s - GLB.minS) / (FINE_S - GLB.minS)) : 0; u.uTA = 1 - t;
   for (const m of GLS.layer.children) m.visible = false;
   const C = GLS.C, lv = levelOf(s), budget = performance.now() + 4; let made = 0;
@@ -3246,11 +3248,13 @@ GLS.update = function (bb) { const M = Map2D, s = M.s, t = GLS.t(s), on = t < 1;
     let m = GLS.ch.get(key); if (m === undefined) { if (made++ > 6) { GL.pend = true; continue; } m = GLS.chunk(key); } if (!m) continue; m.visible = true;
     if (!GLS.vis(m, s, lv, budget)) GL.pend = true; } };
 
-// ===== Размеры объектов: свой размер для каждого вида. Редактор — адрес с ?sizes =====
-// window.SZB — утверждённые размеры (вшиваются в сборку), поверх — правки из этого браузера
-const SZ = { on: /[?&]sizes/.test(location.search), o: {}, sel: null, _t: 0, _keys: '' };
+// ===== Редактор карты: адрес с ?sizes (или ?edit). Вкладки добавляются в SZ.tabs =====
+// Вшитые настройки: window.SZB (размеры), window.SELB (выбор картинок); поверх — правки из этого браузера
+const SZ = { on: /[?&](sizes|edit)/.test(location.search), o: {}, p: {}, sel: null, tab: 'size', pick: null, _t: 0, _keys: '', thumbs: {} };
 try { SZ.o = JSON.parse(localStorage.getItem('bali_sizes') || '{}') || {}; } catch (e) {}
+try { SZ.p = JSON.parse(localStorage.getItem('bali_pick') || '{}') || {}; } catch (e) {}
 window.SZK = Object.assign({}, window.SZB || {}, SZ.o);
+window.SELK = Object.assign({}, window.SELB || {}, SZ.p);
 SZ.names = {
   bld_house: 'Дом', bld_compound: 'Балийский двор', bld_villa: 'Вилла', bld_ricehut: 'Хижина на рисовом поле', bld_resortsmall: 'Мини-отель', bld_shophouse: 'Дом с лавкой', bld_apartment: 'Апартаменты',
   bld_warung: 'Варунг', bld_cafe: 'Кафе', bld_restaurant: 'Ресторан', bld_beachclub: 'Пляжный клуб', bld_night: 'Бар / клуб', bld_bakery: 'Пекарня', bld_icecream: 'Мороженое', bld_juice: 'Соки', bld_grill: 'Гриль / морепродукты', bld_pizza: 'Пиццерия', bld_sushi: 'Суши',
@@ -3259,20 +3263,34 @@ SZ.names = {
   tree_palm: 'Пальма', tree_palm3: 'Три пальмы', tree_banyan: 'Баньян', tree_frangipani: 'Франжипани', tree_bamboo: 'Бамбук', tree_pine: 'Хвойное дерево', tree_round: 'Круглое дерево', tree_banana: 'Банан', tree_bougain: 'Бугенвиллея', tree_mango: 'Манго', tree_bush: 'Куст',
   card: 'Карточка-фото места'
 };
-SZ.label = (key, p) => { if (key.startsWith('poi:')) return (SZ.names[key.slice(4)] || key.slice(4)) + ' (место)'; if (key.startsWith('lm_')) return p ? (p.nr || p.n) : key; if (key.startsWith('sym:')) return 'Значок ' + key.slice(4); return SZ.names[key] || key; };
+SZ.label = (key, p) => { if (key.startsWith('poi:')) return (SZ.names[key.slice(4)] || key.slice(4)) + ' (место)'; if (key.startsWith('lm_')) return p ? (p.nr || p.n) : (SZ.lmNames[key] || key); if (key.startsWith('sym:')) return 'Значок ' + key.slice(4); return SZ.names[key] || key; };
+SZ.lmNames = {};
 SZ.km = key => key.startsWith('tree_') ? treeKm(key) : key.startsWith('bld_') ? bldKm(key) : (window.SZK[key] || 0);
-SZ.save = () => { try { localStorage.setItem('bali_sizes', JSON.stringify(SZ.o)); } catch (e) {} window.SZK = Object.assign({}, window.SZB || {}, SZ.o); clearTimeout(SZ._ap); SZ._ap = setTimeout(SZ.apply, 250); };
-// пересобрать всё, что зависит от размеров
-SZ.apply = function () { const M = Map2D; for (const p of M.pois || []) p._pic = null;
+SZ.store = () => { try { localStorage.setItem('bali_sizes', JSON.stringify(SZ.o)); localStorage.setItem('bali_pick', JSON.stringify(SZ.p)); } catch (e) {}
+  window.SZK = Object.assign({}, window.SZB || {}, SZ.o); window.SELK = Object.assign({}, window.SELB || {}, SZ.p); clearTimeout(SZ._ap); SZ._ap = setTimeout(SZ.apply, 250); };
+SZ.save = SZ.store;
+// пересобрать всё, что зависит от размеров и выбора картинок
+SZ.apply = function () { const M = Map2D; for (const p of M.pois || []) { p._pic = null; p._lm = undefined; p._b = undefined; }
   if (typeof GLS !== 'undefined' && GLS.ok) { GLS.layer.removeChildren().forEach(m => m.destroy()); GLS.ch.clear(); GLS.all = 0; GLS.prebuild(); }
-  if (GL.on) GL.build(); M.dirty = true; GL.lastCam = ''; SZ._keys = ''; };
-SZ.set = (key, km, base) => { km = Math.max(.002, Math.min(3, km)); SZ.o[key] = +km.toFixed(4); if (base) SZ.base[key] = base; SZ.save(); SZ.panel(true); };
+  if (typeof Layout !== 'undefined') Layout.clear(); if (GL.on) GL.build(); M.dirty = true; GL.lastCam = ''; SZ._keys = ''; };
+SZ.set = (key, km) => { km = Math.max(.002, Math.min(3, km)); SZ.o[key] = +km.toFixed(4); SZ.store(); SZ.panel(true); };
+
+// какой «вид» картинок у категории (для вкладки «Объекты»)
+SZ.cat = key => key.startsWith('poi:') ? key.slice(4) : (key.startsWith('bld_') || key.startsWith('tree_') || key.startsWith('lm_')) ? key : null;
+SZ.defaults = g => g.startsWith('lm_') ? [g] : (Art.set[g] || []).map(c => c._name);
+SZ.current = g => (window.SELK[g] && window.SELK[g].length) ? window.SELK[g] : SZ.defaults(g);
+SZ.thumb = n => { if (SZ.thumbs[n]) return SZ.thumbs[n]; const im = Art.byName[n]; if (!im) return ''; const S = 64, c = document.createElement('canvas'); c.width = c.height = S; const g = c.getContext('2d'); const k = Math.min((S - 4) / im.width, (S - 4) / im.height); g.imageSmoothingQuality = 'high'; g.drawImage(im, (S - im.width * k) / 2, S - 2 - im.height * k, im.width * k, im.height * k); return SZ.thumbs[n] = c.toDataURL(); };
+// все картинки, из которых можно выбирать
+SZ.pool = () => { const sec = [['Жильё', []], ['Заведения и здания', []], ['Достопримечательности', []], ['Деревья', []]]; const home = new Set(window.BLDK || []);
+  for (const g of Object.keys(Art.set).sort()) { if (g.startsWith('bld_')) sec[home.has(g) ? 0 : 1][1].push(...Art.set[g].map(c => c._name)); else if (g.startsWith('tree_')) sec[3][1].push(...Art.set[g].map(c => c._name)); }
+  for (const n of Object.keys(Art.byName).sort()) if (n.startsWith('lm_')) sec[2][1].push(n); return sec; };
+SZ.nameOfImg = n => { const im = Art.byName[n]; const g = im && im._g; if (n.startsWith('lm_')) return SZ.lmNames[n.replace(/_b$/, '')] || n; return (SZ.names[g] || g || n); };
 
 // объекты на экране: здания, деревья, картинки мест
 SZ.collect = function () { const M = Map2D, s = M.s, out = []; const bb = viewBBox(0);
   if (s >= 120 && GLB.ready) GLB.near(bb[0], bb[1], bb[2], bb[3], i => { if (out.length < 400) out.push({ x: GLB.x[i], y: GLB.y[i], key: GLB.kind(i) }); });
   if (s >= FINE_S) for (const ch of GL.decor.fine.values()) { if (!ch.visible) continue; for (const sp of ch._sp) { const d = sp._d; if (!sp.visible || !d || d.gb || sp._o.isB) continue; if (d.x < bb[0] || d.x > bb[2] || d.y < bb[1] || d.y > bb[3]) continue; if (out.length < 600) out.push({ x: d.x, y: d.y, key: d.k }); } }
-  for (const c of (typeof GLP !== 'undefined' ? GLP.ch.values() : [])) { if (!c.visible) continue; for (const sp of c.children) { if (!sp.visible || !sp.renderable) continue; const p = sp._p, o = p._pic; if (!o || !o.key) continue; if (sp.x < bb[0] || sp.x > bb[2] || sp.y < bb[1] || sp.y > bb[3]) continue; out.push({ x: sp.x, y: sp.y, key: o.key, p, km: o.km }); } }
+  for (const c of (typeof GLP !== 'undefined' ? GLP.ch.values() : [])) { if (!c.visible) continue; for (const sp of c.children) { if (!sp.visible || !sp.renderable) continue; const p = sp._p, o = p._pic; if (!o || !o.key) continue; if (sp.x < bb[0] || sp.x > bb[2] || sp.y < bb[1] || sp.y > bb[3]) continue; if (o.key.startsWith('lm_')) SZ.lmNames[o.key] = p.nr || p.n; out.push({ x: sp.x, y: sp.y, key: o.key, p, km: o.km }); } }
   return out; };
 SZ.draw = function (c) { const M = Map2D; SZ.panel(); if (M.s < 120) { SZ.hint(c, 'Приблизьте карту, чтобы увидеть подписи объектов'); return; }
   const list = SZ.collect(); SZ.vis = list; c.save(); c.font = '600 11px Nunito, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'bottom';
@@ -3283,26 +3301,59 @@ SZ.draw = function (c) { const M = Map2D; SZ.panel(); if (M.s < 120) { SZ.hint(c
     c.fillStyle = hl ? '#7B2FF7' : '#fff'; c.beginPath(); c.arc(X, Y, 2.5, 0, 7); c.fill(); }
   c.restore(); };
 SZ.hint = (c, t) => { c.save(); c.font = '700 13px Nunito, sans-serif'; const w = c.measureText(t).width + 20; c.fillStyle = 'rgba(20,14,40,.8)'; c.fillRect(Map2D.W / 2 - w / 2, 70, w, 26); c.fillStyle = '#fff'; c.textAlign = 'center'; c.fillText(t, Map2D.W / 2, 88); c.restore(); };
-SZ.base = {};
-// панель: виды объектов на экране, размер в метрах, кнопки − / +
+
+// ----- вкладки -----
+const BTN = 'border:0;border-radius:7px;background:#eee;font-weight:900;cursor:pointer';
+SZ.rowHead = (k, it, cnt) => `<div data-k="${k}" data-a="sel" style="flex:1;cursor:pointer;line-height:1.2;min-width:0">${(SZ.o[k] || (SZ.cat(k) && SZ.p[SZ.cat(k)])) ? '<span style="color:#7B2FF7">●</span> ' : ''}${SZ.label(k, it && it.p)}<br><span style="color:#999;font-size:11px">${cnt ? cnt + ' на экране' : 'не на экране'}</span></div>`;
+SZ.tabs = [
+  { id: 'size', title: 'Размеры', hint: 'Нажмите на название — подписи останутся только у этого вида',
+    row(k, it, cnt) { const km = (it && it.km && !SZ.o[k]) ? it.km : SZ.km(k) || (it && it.km) || .05; SZ.cur[k] = km;
+      return SZ.rowHead(k, it, cnt) + `<button data-k="${k}" data-a="-" style="width:26px;height:26px;${BTN}">−</button><input data-k="${k}" value="${Math.round(km * 1000)}" style="width:44px;text-align:center;border:1px solid #ddd;border-radius:7px;padding:3px"> м<button data-k="${k}" data-a="+" style="width:26px;height:26px;${BTN}">+</button>`; } },
+  { id: 'pick', title: 'Объекты', hint: 'Какие картинки рисуются для каждой категории. Нажмите «Выбрать»',
+    row(k, it, cnt) { const g = SZ.cat(k); if (!g) return SZ.rowHead(k, it, cnt) + '<span style="color:#bbb;font-size:11px">—</span>';
+      const cur = SZ.current(g).slice(0, 3).map(n => `<img src="${SZ.thumb(n)}" style="width:30px;height:30px">`).join('');
+      return SZ.rowHead(k, it, cnt) + cur + `<button data-k="${k}" data-a="pick" style="padding:5px 8px;${BTN};font-weight:800">Выбрать</button>`; } },
+];
+// экран выбора картинок для одной категории
+SZ.pickView = function () { const k = SZ.pick, g = SZ.cat(k), cur = new Set(SZ.current(g)), single = g.startsWith('lm_');
+  const tile = n => `<div data-img="${n}" title="${SZ.nameOfImg(n)}" style="position:relative;width:64px;height:64px;border-radius:9px;cursor:pointer;background:${cur.has(n) ? '#EBDDFF' : '#f6f6f6'};outline:${cur.has(n) ? '2px solid #7B2FF7' : 'none'}"><img src="${SZ.thumb(n)}" style="width:64px;height:64px">${cur.has(n) ? '<span style="position:absolute;right:3px;top:1px;color:#7B2FF7;font-weight:900">✓</span>' : ''}</div>`;
+  let h = `<div style="padding:6px 2px"><button data-a="back" style="padding:5px 9px;${BTN};font-weight:800">← Назад</button> <b>${SZ.label(k)}</b></div>`
+    + `<div style="color:#888;font-size:11px;margin:0 2px 6px">${single ? 'Нажмите на картинку, чтобы заменить.' : 'Нажмите на картинки, чтобы включить или выключить. На карте они чередуются.'}</div>`
+    + `<div style="font-weight:800;margin:6px 2px">Сейчас (${cur.size})</div><div style="display:flex;flex-wrap:wrap;gap:5px">${[...cur].map(tile).join('')}</div>`
+    + `<div style="margin:8px 2px"><button data-a="def" style="padding:5px 9px;${BTN};font-weight:700">Как было</button></div>`;
+  for (const [t, arr] of SZ.pool()) if (arr.length) h += `<div style="font-weight:800;margin:10px 2px 5px">${t}</div><div style="display:flex;flex-wrap:wrap;gap:5px">${arr.map(tile).join('')}</div>`;
+  return h; };
+SZ.toggleImg = function (n) { const k = SZ.pick, g = SZ.cat(k); let cur = SZ.current(g).slice();
+  if (g.startsWith('lm_')) cur = [n]; else if (cur.includes(n)) { if (cur.length > 1) cur = cur.filter(x => x !== n); } else cur.push(n);
+  const def = SZ.defaults(g); if (cur.length === def.length && cur.every((x, i) => x === def[i])) delete SZ.p[g]; else SZ.p[g] = cur; SZ.store(); SZ.panel(true); };
+
+// панель
 SZ.panel = function (force) { const now = performance.now(); if (!force && now - SZ._t < 600) return; SZ._t = now;
   let el = document.getElementById('szPanel');
   if (!el) { el = document.createElement('div'); el.id = 'szPanel';
-    el.style.cssText = 'position:fixed;right:10px;top:120px;bottom:90px;width:300px;z-index:9999;background:rgba(255,255,255,.97);border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.25);font:13px Nunito,sans-serif;color:#22163A;display:flex;flex-direction:column;overflow:hidden';
-    el.innerHTML = '<div style="padding:10px 12px;font-weight:800;border-bottom:1px solid #eee">Размеры объектов <span style="font-weight:600;color:#888">(на экране)</span><div style="font-weight:600;color:#888;font-size:11px;margin-top:3px">Нажмите на название — подписи останутся только у этого вида</div></div><div id="szList" style="flex:1;overflow:auto;padding:4px 8px"></div>'
-      + '<div style="padding:8px;border-top:1px solid #eee;display:flex;gap:6px;flex-wrap:wrap"><button id="szCopy" style="flex:1;padding:8px;border:0;border-radius:9px;background:#7B2FF7;color:#fff;font-weight:800;cursor:pointer">Скопировать размеры</button><button id="szReset" style="padding:8px;border:0;border-radius:9px;background:#eee;font-weight:700;cursor:pointer">Сбросить</button><textarea id="szOut" readonly style="display:none;width:100%;height:70px;font:11px monospace"></textarea></div>';
+    el.style.cssText = 'position:fixed;right:10px;top:120px;bottom:90px;width:340px;z-index:9999;background:rgba(255,255,255,.97);border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.25);font:13px Nunito,sans-serif;color:#22163A;display:flex;flex-direction:column;overflow:hidden';
+    el.innerHTML = '<div style="padding:10px 12px 6px;border-bottom:1px solid #eee"><div style="font-weight:800;margin-bottom:6px">Редактор карты</div><div id="szTabs" style="display:flex;gap:6px"></div><div id="szHint" style="font-weight:600;color:#888;font-size:11px;margin-top:5px"></div></div><div id="szList" style="flex:1;overflow:auto;padding:4px 8px"></div>'
+      + '<div style="padding:8px;border-top:1px solid #eee;display:flex;gap:6px;flex-wrap:wrap"><button id="szCopy" style="flex:1;padding:8px;border:0;border-radius:9px;background:#7B2FF7;color:#fff;font-weight:800;cursor:pointer">Скопировать настройки</button><button id="szReset" style="padding:8px;border:0;border-radius:9px;background:#eee;font-weight:700;cursor:pointer">Сбросить</button><textarea id="szOut" readonly style="display:none;width:100%;height:70px;font:11px monospace"></textarea></div>';
     document.body.appendChild(el);
     el.addEventListener('pointerdown', e => e.stopPropagation()); el.addEventListener('wheel', e => e.stopPropagation(), { passive: true });
-    el.querySelector('#szCopy').onclick = () => { const t = JSON.stringify(Object.fromEntries(Object.entries(SZ.o).map(([k, v]) => [k, Math.round(v * 1000) + ' м']))); const ta = el.querySelector('#szOut'); ta.style.display = 'block'; ta.value = t; ta.select(); try { navigator.clipboard.writeText(t); } catch (e) {} el.querySelector('#szCopy').textContent = 'Скопировано — пришлите мне'; };
-    el.querySelector('#szReset').onclick = () => { if (!confirm('Вернуть все размеры как было?')) return; SZ.o = {}; SZ.save(); SZ.panel(true); };
-    el.addEventListener('click', e => { const b = e.target.closest('[data-k]'); if (!b) return; const k = b.dataset.k, cur = SZ.cur[k] || .05; if (b.dataset.a === '-') SZ.set(k, cur / 1.1); else if (b.dataset.a === '+') SZ.set(k, cur * 1.1); else if (b.dataset.a === 'sel') { SZ.sel = SZ.sel === k ? null : k; SZ.panel(true); } });
+    el.querySelector('#szCopy').onclick = () => { const t = JSON.stringify({ sizes: Object.fromEntries(Object.entries(SZ.o).map(([k, v]) => [k, Math.round(v * 1000) + ' м'])), objects: SZ.p }); const ta = el.querySelector('#szOut'); ta.style.display = 'block'; ta.value = t; ta.select(); try { navigator.clipboard.writeText(t); } catch (e) {} el.querySelector('#szCopy').textContent = 'Скопировано — пришлите мне'; };
+    el.querySelector('#szReset').onclick = () => { if (!confirm('Вернуть все настройки как было?')) return; SZ.o = {}; SZ.p = {}; SZ.store(); SZ.panel(true); };
+    el.addEventListener('click', e => { const t = e.target.closest('[data-tab]'); if (t) { SZ.tab = t.dataset.tab; SZ.pick = null; SZ.panel(true); return; }
+      const im = e.target.closest('[data-img]'); if (im) { SZ.toggleImg(im.dataset.img); return; }
+      const b = e.target.closest('[data-a]'); if (!b) return; const a = b.dataset.a, k = b.dataset.k;
+      if (a === 'back') { SZ.pick = null; SZ.panel(true); } else if (a === 'def') { delete SZ.p[SZ.cat(SZ.pick)]; SZ.store(); SZ.panel(true); }
+      else if (a === 'pick') { SZ.pick = k; SZ.sel = k; SZ.panel(true); el.querySelector('#szList').scrollTop = 0; }
+      else if (a === '-') SZ.set(k, (SZ.cur[k] || .05) / 1.1); else if (a === '+') SZ.set(k, (SZ.cur[k] || .05) * 1.1);
+      else if (a === 'sel') { SZ.sel = SZ.sel === k ? null : k; SZ.panel(true); } });
     el.addEventListener('change', e => { const i = e.target.closest('input[data-k]'); if (!i) return; const m = parseFloat(String(i.value).replace(',', '.')); if (m > 0) SZ.set(i.dataset.k, m / 1000); }); }
+  const tab = SZ.tabs.find(t => t.id === SZ.tab) || SZ.tabs[0];
+  el.querySelector('#szTabs').innerHTML = SZ.tabs.map(t => `<button data-tab="${t.id}" style="padding:5px 10px;border:0;border-radius:8px;cursor:pointer;font-weight:800;background:${t === tab ? '#7B2FF7' : '#eee'};color:${t === tab ? '#fff' : '#22163A'}">${t.title}</button>`).join('');
+  el.querySelector('#szHint').textContent = tab.hint || '';
+  if (SZ.pick) { if (force) el.querySelector('#szList').innerHTML = SZ.pickView(); return; } // экран выбора не перерисовываем, пока его не трогают
   const vis = SZ.vis || [], cnt = {}, ex = {}; for (const it of vis) { cnt[it.key] = (cnt[it.key] || 0) + 1; if (!ex[it.key]) ex[it.key] = it; }
-  for (const k in SZ.o) if (!cnt[k]) { cnt[k] = 0; }
-  const keys = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a]); const sig = keys.map(k => k + cnt[k] + (SZ.o[k] || '')).join('|') + SZ.sel; if (!force && sig === SZ._keys) return; SZ._keys = sig;
-  SZ.cur = {}; const rows = keys.map(k => { const it = ex[k]; const km = (it && it.km && !SZ.o[k]) ? it.km : SZ.km(k) || (it && it.km) || .05; SZ.cur[k] = km; const ed = SZ.o[k] ? '<span style="color:#7B2FF7">●</span> ' : '';
-    return `<div style="display:flex;align-items:center;gap:6px;padding:5px 2px;border-bottom:1px solid #f2f2f2;${SZ.sel === k ? 'background:#F1E8FF;' : ''}"><div data-k="${k}" data-a="sel" style="flex:1;cursor:pointer;line-height:1.2">${ed}${SZ.label(k, it && it.p)}<br><span style="color:#999;font-size:11px">${cnt[k] ? cnt[k] + ' на экране' : 'не на экране'}</span></div>`
-      + `<button data-k="${k}" data-a="-" style="width:26px;height:26px;border:0;border-radius:7px;background:#eee;font-weight:900;cursor:pointer">−</button><input data-k="${k}" value="${Math.round(km * 1000)}" style="width:44px;text-align:center;border:1px solid #ddd;border-radius:7px;padding:3px"> м<button data-k="${k}" data-a="+" style="width:26px;height:26px;border:0;border-radius:7px;background:#eee;font-weight:900;cursor:pointer">+</button></div>`; });
+  for (const k in SZ.o) if (!cnt[k]) cnt[k] = 0;
+  const keys = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a]); const sig = tab.id + keys.map(k => k + cnt[k] + (SZ.o[k] || '')).join('|') + SZ.sel + JSON.stringify(SZ.p).length; if (!force && sig === SZ._keys) return; SZ._keys = sig;
+  SZ.cur = {}; const rows = keys.map(k => `<div style="display:flex;align-items:center;gap:6px;padding:5px 2px;border-bottom:1px solid #f2f2f2;${SZ.sel === k ? 'background:#F1E8FF;' : ''}">${tab.row(k, ex[k], cnt[k])}</div>`);
   el.querySelector('#szList').innerHTML = rows.join('') || '<div style="padding:10px;color:#888">Приблизьте карту — здесь появятся объекты, которые видно на экране</div>'; };
 
 // ===== Живой остров =====
