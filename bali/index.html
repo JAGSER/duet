@@ -1803,7 +1803,7 @@ const Art = {
   // загрузка манифеста: [{n:'tree_palm_1', g:'tree_palm', src:'data:image/svg+xml...' или 'art/x.svg', w, h, f:'r'|'l' (куда смотрит)}]
   async load(list, base = '') {
     const sh = {}; const sheet = src => sh[src] || (sh[src] = new Promise(r => { const im = new Image(); im.crossOrigin = 'anonymous'; im.decoding = 'async'; im.onload = () => r(im); im.onerror = () => r(null); im.src = src; }));
-    const put = (it, i, c) => { c._w = it.w; c._h = it.h; c._art = 1; c._face = it.f || 'r'; c._name = it.n; c._i = i; (Art.set[it.g] = Art.set[it.g] || []).push(c); Art.byName[it.n] = c; };
+    const put = (it, i, c) => { c._w = it.w; c._h = it.h; c._art = 1; c._face = it.f || 'r'; c._name = it.n; c._g = it.g; c._i = i; (Art.set[it.g] = Art.set[it.g] || []).push(c); Art.byName[it.n] = c; };
     const jobs = list.map((it, i) => it.rr ? sheet(it.src).then(im => { // исходный растр (без трассировки в вектор): вырезаем из листа в родном разрешении
         if (!im) return; const [, x, y, w, h] = it.rr, c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(im, x, y, w, h, 0, 0, w, h); c._src = c; put(it, i, c); })
       : new Promise(res => {
@@ -2217,8 +2217,8 @@ function roadDist(x, y, maxd) {
 // ===== Подробный декор вблизи: дома и деревья фиксированного размера, не на дорогах =====
 const FINE_N = { city: [14, 5], beachtown: [9, 9], resort: [7, 12], town: [8, 10], village: [4, 13], rice: [1, 6], jungle: [0, 20], highland: [1, 10], mount: [0, 5], dry: [2, 6], coast: [1, 8] };
 const FINE = { cell: .25, cache: new Map(), empty: [] };
-function bldKm(k) { return k === 'bld_apartment' || k === 'bld_resortsmall' || k === 'bld_hotel' || k === 'bld_resort' ? .075 : k === 'bld_ricehut' ? .034 : .058; }
-function treeKm(k) { return k === 'tree_banyan' ? .046 : k === 'tree_bush' ? .014 : k.startsWith('tree_palm') ? .036 : .03; }
+function bldKm(k) { const o = window.SZK && SZK[k]; if (o) return o; return k === 'bld_apartment' || k === 'bld_resortsmall' || k === 'bld_hotel' || k === 'bld_resort' ? .075 : k === 'bld_ricehut' ? .034 : .058; }
+function treeKm(k) { const o = window.SZK && SZK[k]; if (o) return o; return k === 'tree_banyan' ? .046 : k === 'tree_bush' ? .014 : k.startsWith('tree_palm') ? .036 : .03; }
 function fineCell(gx, gy) {
   const key = gx + ',' + gy; let a = FINE.cache.get(key); if (a) return a;
   if (!HiR.ready(gx * FINE.cell - .06, gy * FINE.cell - .06, (gx + 1) * FINE.cell + .06, (gy + 1) * FINE.cell + .06)) return FINE.empty; a = [];
@@ -2679,8 +2679,9 @@ function drawTxt(c, t, font, fill, stroke, lw, X, Y) { const o = txtSpr(t, font,
 // картинки мест стоят в общей очереди глубины: ближние деревья, люди и машины их перекрывают, а они — дальние
 // картинка места и её размер на местности (км) — постоянные, не зависят от приближения и раскладки меток
 function picOf(p) { const c = p._pic; if (c && (c.img || performance.now() - c.t < 3000)) return c; const uniq = Art.landmark(p); const pc = !uniq ? picCard(p.id) : null; const lm = uniq || pc || landmarkSprite(p); const art = !lm && p.r <= 4 ? Art.building(p) : null;
-  const img = lm || art; const km = uniq ? (p.r <= 1 ? .3 : .22) : pc ? .14 : lm === SPR.umbrella ? .02 : lm ? .11 : art ? .08 : 0;
-  return p._pic = { img, km, pc: !!pc, t: performance.now() }; }
+  const img = lm || art; let km = uniq ? (p.r <= 1 ? .3 : .22) : pc ? .14 : lm === SPR.umbrella ? .02 : lm ? .11 : art ? .08 : 0;
+  const key = !img ? '' : uniq ? (uniq._name || 'lm') : pc ? 'card' : art ? 'poi:' + (art._g || 'bld') : 'sym:' + (img._name || 'x'); if (key && window.SZK && SZK[key]) km = SZK[key];
+  return p._pic = { img, km, pc: !!pc, key, t: performance.now() }; }
 // картинки мест стоят в общей очереди глубины: ближние деревья, люди и машины их перекрывают, а они — дальние
 function queuePics(c) {
   const M = Map2D; const W = M.W, H = M.H; const bb = viewBBox(80);
@@ -2806,6 +2807,7 @@ function frame(now) {
   DQ.flush();
   drawNight(c, now);
   drawOverlay(c, now);
+  if (typeof SZ !== 'undefined' && SZ.on) SZ.draw(c);
   if (!LITE) World.drawSky(c, now);
   if (App.onViewChange) App.onViewChange();
   requestAnimationFrame(frame);
@@ -3243,6 +3245,65 @@ GLS.update = function (bb) { const M = Map2D, s = M.s, t = GLS.t(s), on = t < 1;
   for (let cx = Math.floor((bb[0] - .3) / C); cx <= Math.floor((bb[2] + .3) / C); cx++) for (let cy = Math.floor((bb[1] - .3) / C); cy <= Math.floor((bb[3] + .5) / C); cy++) { const key = cx + ',' + cy; if (!GLS.keys.has(key)) continue;
     let m = GLS.ch.get(key); if (m === undefined) { if (made++ > 6) { GL.pend = true; continue; } m = GLS.chunk(key); } if (!m) continue; m.visible = true;
     if (!GLS.vis(m, s, lv, budget)) GL.pend = true; } };
+
+// ===== Размеры объектов: свой размер для каждого вида. Редактор — адрес с ?sizes =====
+// window.SZB — утверждённые размеры (вшиваются в сборку), поверх — правки из этого браузера
+const SZ = { on: /[?&]sizes/.test(location.search), o: {}, sel: null, _t: 0, _keys: '' };
+try { SZ.o = JSON.parse(localStorage.getItem('bali_sizes') || '{}') || {}; } catch (e) {}
+window.SZK = Object.assign({}, window.SZB || {}, SZ.o);
+SZ.names = {
+  bld_house: 'Дом', bld_compound: 'Балийский двор', bld_villa: 'Вилла', bld_ricehut: 'Хижина на рисовом поле', bld_resortsmall: 'Мини-отель', bld_shophouse: 'Дом с лавкой', bld_apartment: 'Апартаменты',
+  bld_warung: 'Варунг', bld_cafe: 'Кафе', bld_restaurant: 'Ресторан', bld_beachclub: 'Пляжный клуб', bld_night: 'Бар / клуб', bld_bakery: 'Пекарня', bld_icecream: 'Мороженое', bld_juice: 'Соки', bld_grill: 'Гриль / морепродукты', bld_pizza: 'Пиццерия', bld_sushi: 'Суши',
+  bld_hotel: 'Отель', bld_resort: 'Курорт', bld_hostel: 'Хостел', bld_spa: 'Спа', bld_yoga: 'Йога', bld_sport: 'Спортзал', bld_surfshop: 'Сёрф-шоп', bld_mini: 'Минимаркет', bld_supermarket: 'Супермаркет', bld_mall: 'Торговый центр', bld_market: 'Рынок', bld_shop: 'Магазин',
+  bld_health: 'Клиника', bld_pharmacy: 'Аптека', bld_atm: 'Банкомат', bld_money: 'Обмен / банк', bld_fuel: 'Заправка', bld_official: 'Учреждение', bld_work: 'Коворкинг', bld_transport: 'Транспорт', bld_temple: 'Храм', bld_church: 'Церковь', bld_mosque: 'Мечеть', bld_sight: 'Достопримечательность',
+  tree_palm: 'Пальма', tree_palm3: 'Три пальмы', tree_banyan: 'Баньян', tree_frangipani: 'Франжипани', tree_bamboo: 'Бамбук', tree_pine: 'Хвойное дерево', tree_round: 'Круглое дерево', tree_banana: 'Банан', tree_bougain: 'Бугенвиллея', tree_mango: 'Манго', tree_bush: 'Куст',
+  card: 'Карточка-фото места'
+};
+SZ.label = (key, p) => { if (key.startsWith('poi:')) return (SZ.names[key.slice(4)] || key.slice(4)) + ' (место)'; if (key.startsWith('lm_')) return p ? (p.nr || p.n) : key; if (key.startsWith('sym:')) return 'Значок ' + key.slice(4); return SZ.names[key] || key; };
+SZ.km = key => key.startsWith('tree_') ? treeKm(key) : key.startsWith('bld_') ? bldKm(key) : (window.SZK[key] || 0);
+SZ.save = () => { try { localStorage.setItem('bali_sizes', JSON.stringify(SZ.o)); } catch (e) {} window.SZK = Object.assign({}, window.SZB || {}, SZ.o); clearTimeout(SZ._ap); SZ._ap = setTimeout(SZ.apply, 250); };
+// пересобрать всё, что зависит от размеров
+SZ.apply = function () { const M = Map2D; for (const p of M.pois || []) p._pic = null;
+  if (typeof GLS !== 'undefined' && GLS.ok) { GLS.layer.removeChildren().forEach(m => m.destroy()); GLS.ch.clear(); GLS.all = 0; GLS.prebuild(); }
+  if (GL.on) GL.build(); M.dirty = true; GL.lastCam = ''; SZ._keys = ''; };
+SZ.set = (key, km, base) => { km = Math.max(.002, Math.min(3, km)); SZ.o[key] = +km.toFixed(4); if (base) SZ.base[key] = base; SZ.save(); SZ.panel(true); };
+
+// объекты на экране: здания, деревья, картинки мест
+SZ.collect = function () { const M = Map2D, s = M.s, out = []; const bb = viewBBox(0);
+  if (s >= 120 && GLB.ready) GLB.near(bb[0], bb[1], bb[2], bb[3], i => { if (out.length < 400) out.push({ x: GLB.x[i], y: GLB.y[i], key: GLB.kind(i) }); });
+  if (s >= FINE_S) for (const ch of GL.decor.fine.values()) { if (!ch.visible) continue; for (const sp of ch._sp) { const d = sp._d; if (!sp.visible || !d || d.gb || sp._o.isB) continue; if (d.x < bb[0] || d.x > bb[2] || d.y < bb[1] || d.y > bb[3]) continue; if (out.length < 600) out.push({ x: d.x, y: d.y, key: d.k }); } }
+  for (const c of (typeof GLP !== 'undefined' ? GLP.ch.values() : [])) { if (!c.visible) continue; for (const sp of c.children) { if (!sp.visible || !sp.renderable) continue; const p = sp._p, o = p._pic; if (!o || !o.key) continue; if (sp.x < bb[0] || sp.x > bb[2] || sp.y < bb[1] || sp.y > bb[3]) continue; out.push({ x: sp.x, y: sp.y, key: o.key, p, km: o.km }); } }
+  return out; };
+SZ.draw = function (c) { const M = Map2D; SZ.panel(); if (M.s < 120) { SZ.hint(c, 'Приблизьте карту, чтобы увидеть подписи объектов'); return; }
+  const list = SZ.collect(); SZ.vis = list; c.save(); c.font = '600 11px Nunito, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'bottom';
+  // выбранный вид — подписи только у него; иначе подписи не налезают друг на друга
+  const taken = []; const W = Map2D.W, H = Map2D.H; list.sort((a, b) => (SZ.sel === b.key) - (SZ.sel === a.key));
+  for (const it of list) { if (SZ.sel && it.key !== SZ.sel) continue; const X = sx2(it.x, it.y), Y = sy2(it.x, it.y); if (X < 0 || X > W || Y < 0 || Y > H) continue; const km = it.km || SZ.km(it.key); const t = SZ.label(it.key, it.p) + ' · ' + Math.round(km * 1000) + ' м';
+    const hl = SZ.sel === it.key; const w = c.measureText(t).width + 8; const r = [X - w / 2, Y - 17, X + w / 2, Y]; if (taken.some(q => r[0] < q[2] && r[2] > q[0] && r[1] < q[3] && r[3] > q[1])) { c.fillStyle = hl ? '#7B2FF7' : 'rgba(255,255,255,.9)'; c.beginPath(); c.arc(X, Y, 2, 0, 7); c.fill(); continue; } taken.push(r); c.fillStyle = hl ? 'rgba(123,47,247,.95)' : 'rgba(20,14,40,.78)'; c.fillRect(X - w / 2, Y - 16, w, 15); c.fillStyle = '#fff'; c.fillText(t, X, Y - 3);
+    c.fillStyle = hl ? '#7B2FF7' : '#fff'; c.beginPath(); c.arc(X, Y, 2.5, 0, 7); c.fill(); }
+  c.restore(); };
+SZ.hint = (c, t) => { c.save(); c.font = '700 13px Nunito, sans-serif'; const w = c.measureText(t).width + 20; c.fillStyle = 'rgba(20,14,40,.8)'; c.fillRect(Map2D.W / 2 - w / 2, 70, w, 26); c.fillStyle = '#fff'; c.textAlign = 'center'; c.fillText(t, Map2D.W / 2, 88); c.restore(); };
+SZ.base = {};
+// панель: виды объектов на экране, размер в метрах, кнопки − / +
+SZ.panel = function (force) { const now = performance.now(); if (!force && now - SZ._t < 600) return; SZ._t = now;
+  let el = document.getElementById('szPanel');
+  if (!el) { el = document.createElement('div'); el.id = 'szPanel';
+    el.style.cssText = 'position:fixed;right:10px;top:120px;bottom:90px;width:300px;z-index:9999;background:rgba(255,255,255,.97);border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.25);font:13px Nunito,sans-serif;color:#22163A;display:flex;flex-direction:column;overflow:hidden';
+    el.innerHTML = '<div style="padding:10px 12px;font-weight:800;border-bottom:1px solid #eee">Размеры объектов <span style="font-weight:600;color:#888">(на экране)</span><div style="font-weight:600;color:#888;font-size:11px;margin-top:3px">Нажмите на название — подписи останутся только у этого вида</div></div><div id="szList" style="flex:1;overflow:auto;padding:4px 8px"></div>'
+      + '<div style="padding:8px;border-top:1px solid #eee;display:flex;gap:6px;flex-wrap:wrap"><button id="szCopy" style="flex:1;padding:8px;border:0;border-radius:9px;background:#7B2FF7;color:#fff;font-weight:800;cursor:pointer">Скопировать размеры</button><button id="szReset" style="padding:8px;border:0;border-radius:9px;background:#eee;font-weight:700;cursor:pointer">Сбросить</button><textarea id="szOut" readonly style="display:none;width:100%;height:70px;font:11px monospace"></textarea></div>';
+    document.body.appendChild(el);
+    el.addEventListener('pointerdown', e => e.stopPropagation()); el.addEventListener('wheel', e => e.stopPropagation(), { passive: true });
+    el.querySelector('#szCopy').onclick = () => { const t = JSON.stringify(Object.fromEntries(Object.entries(SZ.o).map(([k, v]) => [k, Math.round(v * 1000) + ' м']))); const ta = el.querySelector('#szOut'); ta.style.display = 'block'; ta.value = t; ta.select(); try { navigator.clipboard.writeText(t); } catch (e) {} el.querySelector('#szCopy').textContent = 'Скопировано — пришлите мне'; };
+    el.querySelector('#szReset').onclick = () => { if (!confirm('Вернуть все размеры как было?')) return; SZ.o = {}; SZ.save(); SZ.panel(true); };
+    el.addEventListener('click', e => { const b = e.target.closest('[data-k]'); if (!b) return; const k = b.dataset.k, cur = SZ.cur[k] || .05; if (b.dataset.a === '-') SZ.set(k, cur / 1.1); else if (b.dataset.a === '+') SZ.set(k, cur * 1.1); else if (b.dataset.a === 'sel') { SZ.sel = SZ.sel === k ? null : k; SZ.panel(true); } });
+    el.addEventListener('change', e => { const i = e.target.closest('input[data-k]'); if (!i) return; const m = parseFloat(String(i.value).replace(',', '.')); if (m > 0) SZ.set(i.dataset.k, m / 1000); }); }
+  const vis = SZ.vis || [], cnt = {}, ex = {}; for (const it of vis) { cnt[it.key] = (cnt[it.key] || 0) + 1; if (!ex[it.key]) ex[it.key] = it; }
+  for (const k in SZ.o) if (!cnt[k]) { cnt[k] = 0; }
+  const keys = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a]); const sig = keys.map(k => k + cnt[k] + (SZ.o[k] || '')).join('|') + SZ.sel; if (!force && sig === SZ._keys) return; SZ._keys = sig;
+  SZ.cur = {}; const rows = keys.map(k => { const it = ex[k]; const km = (it && it.km && !SZ.o[k]) ? it.km : SZ.km(k) || (it && it.km) || .05; SZ.cur[k] = km; const ed = SZ.o[k] ? '<span style="color:#7B2FF7">●</span> ' : '';
+    return `<div style="display:flex;align-items:center;gap:6px;padding:5px 2px;border-bottom:1px solid #f2f2f2;${SZ.sel === k ? 'background:#F1E8FF;' : ''}"><div data-k="${k}" data-a="sel" style="flex:1;cursor:pointer;line-height:1.2">${ed}${SZ.label(k, it && it.p)}<br><span style="color:#999;font-size:11px">${cnt[k] ? cnt[k] + ' на экране' : 'не на экране'}</span></div>`
+      + `<button data-k="${k}" data-a="-" style="width:26px;height:26px;border:0;border-radius:7px;background:#eee;font-weight:900;cursor:pointer">−</button><input data-k="${k}" value="${Math.round(km * 1000)}" style="width:44px;text-align:center;border:1px solid #ddd;border-radius:7px;padding:3px"> м<button data-k="${k}" data-a="+" style="width:26px;height:26px;border:0;border-radius:7px;background:#eee;font-weight:900;cursor:pointer">+</button></div>`; });
+  el.querySelector('#szList').innerHTML = rows.join('') || '<div style="padding:10px;color:#888">Приблизьте карту — здесь появятся объекты, которые видно на экране</div>'; };
 
 // ===== Живой остров =====
 const World = { clouds: [], birds: [], bikes: [], npcs: [], animals: [], boats: [], sea: [], surfers: [], flights: [], weather: null, night: 0, lastT: 0, lastSpawnKey: '' };
