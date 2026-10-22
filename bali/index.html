@@ -3080,7 +3080,7 @@ GL.prewarm = function () { if (!GL.on || GL._warmT) return; GL._warmT = 1;
   glIdle(step); };
 
 // ===== Постоянные здания всего острова: одно и то же место и настоящий размер на любом приближении =====
-const GLB = { minS: 70, ready: false, n: 0, x: null, y: null, k: null, v: null, ch: new Map(), C: 2, kinds: window.BLDK || [], pc: new Map(), frames: null, step: -1 };
+const GLB = { minS: 160, ready: false, n: 0, x: null, y: null, k: null, v: null, ch: new Map(), C: 2, kinds: window.BLDK || [], pc: new Map(), frames: null, step: -1 };
 GLB.load = function () { if (GLB._ld) return; GLB._ld = 1;
   const B = /duetplay\.app$/.test(location.hostname) && location.hostname !== 'bali.duetplay.app' ? 'https://bali.duetplay.app/' : '';
   fetch(B + 'bld.bin?v=' + (window.BLDV || '')).then(r => r.arrayBuffer()).then(buf => { const dv = new DataView(buf); const n = dv.getUint32(0, true); const X = new Float32Array(n), Y = new Float32Array(n), K = new Uint8Array(n), V = new Uint16Array(n);
@@ -3157,13 +3157,13 @@ GLP.update = function () { const M = Map2D; if (!GL.L.pics) { GL.L.pics = new PI
 // Всё загружается в видеокарту один раз; размер, густота и проявление считаются в шейдере — процессор при движении карты почти не работает.
 const GLS_VS = `precision highp float;
 attribute vec2 aC; attribute vec2 aQ; attribute vec2 aUV; attribute vec3 aS; attribute float aV;
-uniform mat3 projectionMatrix; uniform mat3 translationMatrix; uniform float uScale; uniform float uMin; uniform float uDens; uniform float uBA;
+uniform mat3 projectionMatrix; uniform mat3 translationMatrix; uniform float uScale; uniform float uMin; uniform float uDens; uniform float uBA; uniform float uTA;
 varying vec2 vUV; varying float vA;
 void main() {
   bool isB = aS.y < 0.001;
   float W = max(uMin * aS.y, aS.x * uScale) / uScale;
-  bool vis = aV > 0.5 && (isB ? uBA > 0.003 : aS.z <= uDens);
-  vUV = aUV; vA = isB ? uBA : 1.0;
+  bool vis = aV > 0.5 && (isB ? uBA > 0.003 : (aS.z <= uDens && uTA > 0.003));
+  vUV = aUV; vA = isB ? uBA : uTA;
   vec2 p = aC + aQ * W;
   gl_Position = vis ? vec4((projectionMatrix * translationMatrix * vec3(p, 1.0)).xy, 0.0, 1.0) : vec4(4.0, 4.0, 4.0, 1.0);
 }`;
@@ -3187,7 +3187,7 @@ GLS.init = function () { if (GLS.ok) return true; if (!GL.on || !Art.loaded || !
   for (const k of GLB.kinds) for (const im of GLS.bldImgs(k)) GLS.addImg(im);
   for (const key of GLB.ch.keys()) { const [x, y] = key.split(',').map(Number); GLS.keys.add(Math.floor(x * GLB.C / C) + ',' + Math.floor(y * GLB.C / C)); }
   GLS.draw();
-  GLS.sh = PIXI.Shader.from(GLS_VS, GLS_FS, { uScale: 1, uMin: 8, uDens: 1, uBA: 1, uSampler: GLS.tex });
+  GLS.sh = PIXI.Shader.from(GLS_VS, GLS_FS, { uScale: 1, uMin: 8, uDens: 1, uBA: 1, uTA: 1, uSampler: GLS.tex });
   GLS.layer = new PIXI.Container(); GLS.layer.sortableChildren = true; GL.world.addChildAt(GLS.layer, GL.world.getChildIndex(GL.L.decor));
   // прежние куски больше не нужны
   for (const ch of GL.decor.chunks.values()) { GL.L.decor.removeChild(ch); ch.destroy({ children: true }); } GL.decor.chunks.clear();
@@ -3219,9 +3219,11 @@ GLS.vis = function (m, s, lv, budget) { if (s < DECOR_DYN_S) { if (!m._all1) { m
   const key = lv + '/' + HiR.ver; if (m._vk === key) return true; if (!Map2D.calm) return false; if (m._vkPend !== key) { m._vkPend = key; m._vi = 0; }
   const V = m._V, T = m._trees; while (m._vi < T.length) { if (performance.now() > budget) return false; const [q, d] = T[m._vi++]; const v = coarseOk(d, s) ? 1 : 0; const b = q * 4; V[b] = V[b + 1] = V[b + 2] = V[b + 3] = v; }
   m._vb.update(); m._vk = key; m._all1 = false; return true; };
-GLS.update = function (bb) { const M = Map2D, s = M.s, on = s < FINE_S; GLS.layer.visible = on; if (!on) return;
+// последний этап: подробная карта плавно проявляется поверх общей (FINE_S … FINE_S·1.35), дома — только перед ним
+const FINE_X = 1.35; GLS.t = s => Math.max(0, Math.min(1, (s - FINE_S) / (FINE_S * (FINE_X - 1))));
+GLS.update = function (bb) { const M = Map2D, s = M.s, t = GLS.t(s), on = t < 1; GL.L.decor.alpha = t; GLS.layer.visible = on; if (!on) return;
   if (GLS.step !== Night.step) GLS.draw();
-  const u = GLS.sh.uniforms; u.uScale = s; u.uMin = s < 4 ? 5 : s < 8 ? 6.5 : 8; u.uDens = glDens(s); u.uBA = s >= GLB.minS ? Math.min(1, (s - GLB.minS) / 30) : 0;
+  const u = GLS.sh.uniforms; u.uScale = s; u.uMin = s < 4 ? 5 : s < 8 ? 6.5 : 8; u.uDens = glDens(s); u.uBA = s >= GLB.minS ? Math.min(1, (s - GLB.minS) / (FINE_S - GLB.minS)) : 0; u.uTA = 1 - t;
   for (const m of GLS.layer.children) m.visible = false;
   const C = GLS.C, lv = levelOf(s), budget = performance.now() + 4; let made = 0;
   for (let cx = Math.floor((bb[0] - .3) / C); cx <= Math.floor((bb[2] + .3) / C); cx++) for (let cy = Math.floor((bb[1] - .3) / C); cy <= Math.floor((bb[3] + .5) / C); cy++) { const key = cx + ',' + cy; if (!GLS.keys.has(key)) continue;
