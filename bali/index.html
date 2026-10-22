@@ -2981,7 +2981,7 @@ GL.buildRoads = function () {
 };
 // подробные дороги по кусочкам (подгружаются при приближении)
 GL.addRoadTile = function (key, roads) { if (!GL.on || GL.roadTiles.has(key)) return; const rs = roads.filter(r => !r._gl); rs.forEach(r => r._gl = 1); if (!rs.length) { GL.roadTiles.set(key, null); return; }
-  const g = glLineGeom(glRoadSegs(rs)); const ms = [glLineMesh(g, 0), glLineMesh(g, 1)]; GL.L.roadsHiO.addChild(ms[0]); GL.L.roadsHiF.addChild(ms[1]); GL.roadTiles.set(key, ms); GL.dirty = true; };
+  const g = glLineGeom(glRoadSegs(rs)); const ms = [glLineMesh(g, 0), glLineMesh(g, 1)]; GL.L.roadsHiO.addChild(ms[0]); GL.L.roadsHiF.addChild(ms[1]); ms._born = performance.now(); ms.forEach(m => m.alpha = 0); GL.roadTiles.set(key, ms); GL.dirty = true; };
 // пробки: отрезки главных дорог, окрашенные по загрузке
 GL.buildTraffic = function () { GL.L.traffic.removeChildren().forEach(c => c.destroy()); GL.trafficKey = Math.floor(baliNow().min / 10) + '/' + Night.step + '/' + (App.showTraffic !== false);
   if (App.showTraffic === false) return; const amber = glNC('#FFB13B'), red = glNC('#F05A5A'); const segs = [];
@@ -3000,6 +3000,7 @@ function glDecorTex(d) { const k = d.k || (d.k = Decor.kind(d)); const isB = k.s
   if (!spr) { if (isB) { const c = GL.house || (GL.house = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; drawHouse(c.getContext('2d'), 32, 62, 60, .3); c._w = 64; c._h = 64; c._name = 'bld_house_fb'; return c; })()); spr = c; } else spr = SPR[FALLBACK[k] || 'tree']; }
   return { tex: glTexFor(spr), isB, km: isB ? bldKm(k) : treeKm(k), ay: spr === SPR[FALLBACK[k] || 'tree'] ? .85 : .92 }; }
 function glMakeSprite(d) { const o = glDecorTex(d); const sp = new PIXI.Sprite(o.tex); sp.anchor.set(.5, 1 - (1 - o.ay) * o.tex._fh); sp.position.set(d.x, d.y); sp._d = d; sp._o = o; sp._flip = (d.v % 2) && !o.isB ? -1 : 1; sp._var = o.isB ? 1 : (.9 + (d.v % 97) / 480); return sp; }
+const GL_FADE = 450; // мс — новые кусочки подробной карты и улиц проявляются плавно
 const GL_CH = 2; // км — размер куска декора
 function glChunk(cx, cy) { const key = cx + ',' + cy; let ch = GL.decor.chunks.get(key); if (ch) return ch; ch = new PIXI.Container(); ch.zIndex = cy * GL_CH; ch._items = [];
   for (let gx = cx * 4; gx < cx * 4 + 4; gx++) for (let gy = cy * 4; gy < cy * 4 + 4; gy++) { const a = Map2D.dgrid.get(gx + ',' + gy); if (a) for (const d of a) { if ((d.k || (d.k = Decor.kind(d))).startsWith('bld_')) continue; ch._items.push(d); } }
@@ -3015,7 +3016,7 @@ function glFineChunk(cx, cy) { // подробный декор вблизи: к
   const bi = []; GLB.near(cx, cy, cx + 1 - 1e-9, cy + 1 - 1e-9, i => bi.push(i));
   const all = items.map(d => [d.y, d]).concat(bi.map(i => [GLB.y[i], i])); all.sort((a, b) => a[0] - b[0]);
   ch._sp = all.map(([, d]) => { let sp; if (typeof d === 'number') { sp = GLB.sprite(d); sp._d = GLB.obj(d); sp._o = { isB: true, fixed: true }; sp._flip = 1; sp._var = 1; } else sp = glMakeSprite(d); ch.addChild(sp); return sp; }); ch._lv = null; ch._t = 0;
-  GL.decor.fine.set(key, ch); GL.L.decor.addChild(ch);
+  ch._born = performance.now(); ch.alpha = 0; GL.decor.fine.set(key, ch); GL.L.decor.addChild(ch);
   if (GL.decor.fine.size > 260) { let old = null; for (const [k, c] of GL.decor.fine) if (!c.visible && (!old || c._t < old[1]._t)) old = [k, c]; if (old) { GL.L.decor.removeChild(old[1]); old[1].destroy({ children: true }); GL.decor.fine.delete(old[0]); } }
   return ch; }
 // видимость и размер спрайтов (как в прежнем рисовании)
@@ -3038,7 +3039,7 @@ GL.updateDecor = function (bb) {
     const pad = 1, x0 = Math.floor((bb[0] - pad) / GL_CH), x1 = Math.floor((bb[2] + pad) / GL_CH), y0 = Math.floor((bb[1] - pad) / GL_CH), y1 = Math.floor((bb[3] + pad) / GL_CH);
     for (let cx = x0; cx <= x1; cx++) for (let cy = y0; cy <= y1; cy++) { const key = cx + ',' + cy; if (!GL.ckeys.has(key)) continue; if (!GL.decor.chunks.has(key)) { if (made > 30) { GL.pend = true; continue; } made++; } const ch = glChunk(cx, cy); ch.visible = true; glUpdateChunk(ch, s, lv, false); } }
   for (const ch of GL.decor.fine.values()) ch.visible = false;
-  if (fine) { const now = performance.now(); made = 0; for (let cx = Math.floor((bb[0] - .1)); cx <= Math.floor(bb[2] + .1); cx++) for (let cy = Math.floor(bb[1] - .1); cy <= Math.floor(bb[3] + .3); cy++) { let ch = GL.decor.fine.get(cx + ',' + cy); if (!ch && !GLB.ready) { GL.pend = true; continue; } if (!ch && !HiR.ready(cx - .06, cy - .06, cx + 1.06, cy + 1.06)) { GL.pend = true; continue; } if (!ch && !isLand(cx + .5, cy + .5) && !isLand(cx, cy) && !isLand(cx + 1, cy + 1) && !isLand(cx + 1, cy) && !isLand(cx, cy + 1)) continue; if (!ch) { if (made > 3) { Map2D.dirty = true; GL.lastCam = ''; continue; } ch = glFineChunk(cx, cy); made++; } ch.visible = true; ch._t = now; glUpdateChunk(ch, s, lv, true); } }
+  if (fine) { const now = performance.now(); made = 0; for (let cx = Math.floor((bb[0] - .1)); cx <= Math.floor(bb[2] + .1); cx++) for (let cy = Math.floor(bb[1] - .1); cy <= Math.floor(bb[3] + .3); cy++) { let ch = GL.decor.fine.get(cx + ',' + cy); if (!ch && !GLB.ready) { GL.pend = true; continue; } if (!ch && !HiR.ready(cx - .06, cy - .06, cx + 1.06, cy + 1.06)) { GL.pend = true; continue; } if (!ch && !isLand(cx + .5, cy + .5) && !isLand(cx, cy) && !isLand(cx + 1, cy + 1) && !isLand(cx + 1, cy) && !isLand(cx, cy + 1)) continue; if (!ch) { if (made > 3) { Map2D.dirty = true; GL.lastCam = ''; continue; } ch = glFineChunk(cx, cy); made++; } ch.visible = true; ch._t = now; if (ch._born) { const a = Math.min(1, (now - ch._born) / GL_FADE); ch.alpha = a; if (a < 1) GL.pend = true; else ch._born = 0; } glUpdateChunk(ch, s, lv, true); } }
 };
 
 // ----- кадр -----
@@ -3060,7 +3061,7 @@ GL.render = function (now) {
   const wO = new Float32Array(8), wF = new Float32Array(8), lvMax = useHi ? 7 : 4;
   for (let k = 1; k <= 7; k++) { const fa = roadFade(k, s); if (fa <= 0 || k > lvMax) continue; const wOut = roadWpx(k, s) * (.45 + .55 * fa) * Math.min(1, fa * 1.6); wO[k] = k === 7 ? 0 : wOut / 2; wF[k] = (k === 7 ? wOut : Math.max(.8, wOut - (k >= 5 ? 1.4 : 2.2))) / 2; }
   const setR = ms => { ms[0].shader.uniforms.uScale = s; ms[0].shader.uniforms.uW.set(wO); ms[1].shader.uniforms.uScale = s; ms[1].shader.uniforms.uW.set(wF); };
-  setR(GL.lo); for (const ms of GL.roadTiles.values()) if (ms) setR(ms);
+  setR(GL.lo); const tnow = performance.now(); for (const ms of GL.roadTiles.values()) if (ms) { setR(ms); if (ms._born) { const a = Math.min(1, (tnow - ms._born) / GL_FADE); ms[0].alpha = ms[1].alpha = a; if (a < 1) GL.pend = true; else ms._born = 0; } }
   if (GL.tr) { GL.L.traffic.visible = s > 6 && s < 500; const u = GL.tr.shader.uniforms; u.uScale = s; for (let k = 1; k <= 4; k++) u.uW[k] = Math.max(1.2, roadWpx(k, s) - 2.6) / 2; }
   // вулканы
   for (const sp of GL.volc) { const p = sp._p, big = p.e > 2500 ? 1 : p.e > 2000 ? .7 : .5; const w = Math.max(16, Math.min(900, s * 5 * big)); const k = (w / s) / sp.texture.width; sp.scale.set(k); }
@@ -3220,7 +3221,7 @@ GLS.vis = function (m, s, lv, budget) { if (s < DECOR_DYN_S) { if (!m._all1) { m
   const V = m._V, T = m._trees; while (m._vi < T.length) { if (performance.now() > budget) return false; const [q, d] = T[m._vi++]; const v = coarseOk(d, s) ? 1 : 0; const b = q * 4; V[b] = V[b + 1] = V[b + 2] = V[b + 3] = v; }
   m._vb.update(); m._vk = key; m._all1 = false; return true; };
 // последний этап: подробная карта плавно проявляется поверх общей (FINE_S … FINE_S·1.35), дома — только перед ним
-const FINE_X = 1.35; GLS.t = s => Math.max(0, Math.min(1, (s - FINE_S) / (FINE_S * (FINE_X - 1))));
+const FINE_X = 1.6; GLS.t = s => Math.max(0, Math.min(1, (s - FINE_S) / (FINE_S * (FINE_X - 1))));
 GLS.update = function (bb) { const M = Map2D, s = M.s, t = GLS.t(s), on = t < 1; GL.L.decor.alpha = t; GLS.layer.visible = on; if (!on) return;
   if (GLS.step !== Night.step) GLS.draw();
   const u = GLS.sh.uniforms; u.uScale = s; u.uMin = s < 4 ? 5 : s < 8 ? 6.5 : 8; u.uDens = glDens(s); u.uBA = s >= GLB.minS ? Math.min(1, (s - GLB.minS) / (FINE_S - GLB.minS)) : 0; u.uTA = 1 - t;
