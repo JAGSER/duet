@@ -2920,6 +2920,8 @@ function glInit() {
     if (typeof PIXI === 'undefined' || /nogl/.test(location.search)) return false;
     const cv = document.createElement('canvas'); cv.id = 'glmap'; cv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;display:block';
     Map2D.cv.parentNode.insertBefore(cv, Map2D.cv);
+    // чёткость при уменьшении: выборка из чуть более подробного уровня текстуры
+    const G = PIXI.BatchShaderGenerator && PIXI.BatchShaderGenerator.prototype; if (G && !G._sharp) { const f = G.generateSampleSrc; G.generateSampleSrc = function (n) { return f.call(this, n).replace(/vTextureCoord\)/g, 'vTextureCoord, -0.5)'); }; G._sharp = 1; }
     const app = new PIXI.Application({ view: cv, resizeTo: Map2D.cv, antialias: true, backgroundColor: 0x1E88E0, resolution: Math.min(window.devicePixelRatio || 1, 2), autoDensity: true, autoStart: false, powerPreference: 'high-performance' });
     GL.app = app; app.ticker.stop();
     GL.waves = new PIXI.TilingSprite(glWaveTex(), 100, 100); app.stage.addChild(GL.waves);
@@ -2992,6 +2994,8 @@ GL.buildTraffic = function () { GL.L.traffic.removeChildren().forEach(c => c.des
 function glTexFor(cv) { // текстура из картинки спрайта (ночью — перекрашенная версия), с мип-уровнями
   const im = Night.step && cv._name && !cv._noNight ? Night.img(cv, Night.kindOf(cv._name)) : cv; let t = GL.texC.get(im); if (t) return t;
   // на квадрат степени двойки — чтобы работали мип-уровни (чётко и быстро при уменьшении)
+  // WebGL2: картинка как есть, в исходном разрешении — без промежуточного пересжатия (оно и портило линии)
+  if (GL.app && GL.app.renderer.context.webGLVersion === 2) { t = PIXI.Texture.from(im, { mipmap: PIXI.MIPMAP_MODES.ON, scaleMode: PIXI.SCALE_MODES.LINEAR }); t._fw = im.width / 256; t._fh = 1; GL.texC.set(im, t); return t; }
   const S = 256, k = Math.min(S / im.width, S / im.height); const c = document.createElement('canvas'); c.width = c.height = S; const g = c.getContext('2d'); g.imageSmoothingQuality = 'high';
   const w = Math.round(im.width * k), h = Math.round(im.height * k); g.drawImage(im, (S - w) / 2, S - h, w, h);
   t = PIXI.Texture.from(c, { mipmap: PIXI.MIPMAP_MODES.ON, scaleMode: PIXI.SCALE_MODES.LINEAR }); t._fw = w / S; t._fh = h / S; GL.texC.set(im, t); return t; }
@@ -3108,19 +3112,20 @@ GLB.atlas = function () { if (GLB.frames && GLB.step === Night.step) return GLB.
   if (GLB.base) GLB.base.destroy(); GLB.base = PIXI.BaseTexture.from(c, { mipmap: PIXI.MIPMAP_MODES.ON, scaleMode: PIXI.SCALE_MODES.LINEAR });
   GLB.frames = {}; for (const k in fr) GLB.frames[k] = fr[k].map(f => { const t = new PIXI.Texture(GLB.base, new PIXI.Rectangle(f.ox, f.oy, cell, cell)); t._fw = f.w / cell; t._fh = (f.h + 4) / cell; t._ay = .92; return t; });
   return GLB.frames; };
-GLB.sprite = function (i) { const fr = GLB.atlas()[GLB.kind(i)] || GLB.atlas().bld_house; const t = fr[GLB.v[i] % fr.length]; const sp = new PIXI.Sprite(t); const km = GLB.km(i);
+GLB.sprite = function (i) { const arr = GLS.bldImgs(GLB.kind(i)), t = glTexFor(arr[GLB.v[i] % arr.length]), sp = new PIXI.Sprite(t); sp.anchor.set(.5, 1 - .08 * t._fh); sp.position.set(GLB.x[i], GLB.y[i]); sp.scale.set(GLB.km(i) / (256 * t._fw)); return sp; };
+GLB.spriteOld = function (i) { const fr = GLB.atlas()[GLB.kind(i)] || GLB.atlas().bld_house; const t = fr[GLB.v[i] % fr.length]; const sp = new PIXI.Sprite(t); const km = GLB.km(i);
   sp.anchor.set(.5, 1 - (1 - t._ay) * (t._fh - 4 / 256) - 4 / 256); sp.position.set(GLB.x[i], GLB.y[i]); const k = km / (256 * t._fw); sp.scale.set(k); return sp; };
 // дальний и средний план: статичные «частицы» (загружаются в видеокарту один раз)
 GLB.chunk = function (key) { let pc = GLB.pc.get(key); if (pc) return pc; const a = GLB.ch.get(key); if (!a) return null;
   pc = new PIXI.ParticleContainer(a.length, { vertices: false, position: false, rotation: false, uvs: false, tint: false }); pc.zIndex = +key.split(',')[1] * GLB.C + GLB.C - .001;
   for (const i of a) pc.addChild(GLB.sprite(i)); GLB.pc.set(key, pc); GL.L.decor.addChild(pc); return pc; };
 // все кусочки зданий готовим заранее в фоне — при приближении они уже на месте
-GLB.prebuild = function () { if (GLS.ok) return; if (!Art.loaded) return setTimeout(GLB.prebuild, 500); const keys = [...GLB.ch.keys()];
+GLB.prebuild = function () { return; if (!Art.loaded) return setTimeout(GLB.prebuild, 500); const keys = [...GLB.ch.keys()];
   const R = GL.app.renderer; GLB.rt = GLB.rt || PIXI.RenderTexture.create({ width: 4, height: 4 });
   // кусок сразу загружаем в видеокарту (невидимым рендером в крошечную текстуру), чтобы при первом показе не было рывка
   const step = () => { if (GLS.ok) return; const t0 = performance.now(); while (keys.length && performance.now() - t0 < 6) { const pc = GLB.chunk(keys.pop()); if (!pc) continue; const v = pc.visible; pc.visible = true; try { R.render(pc, { renderTexture: GLB.rt, clear: false, skipUpdateTransform: false }); } catch (e) {} pc.visible = v; } if (keys.length) glIdle(step); else { GLB.all = 1; GL.lastCam = ''; } };
   glIdle(step); };
-GLB.update = function (bb) { if (!GLB.ready) { GLB.load(); return; } if (GLS.ok) return; const s = Map2D.s, on = s >= GLB.minS && s < FINE_S;
+GLB.update = function (bb) { if (!GLB.ready) { GLB.load(); return; } return; // дома рисует GLS const s = Map2D.s, on = s >= GLB.minS && s < FINE_S;
   if (GLB.step !== Night.step && GLB.frames) { for (const pc of GLB.pc.values()) { GL.L.decor.removeChild(pc); pc.destroy({ children: true }); } GLB.pc.clear(); GLB.frames = null; GLB.prebuild(); }
   for (const pc of GLB.pc.values()) pc.visible = false; if (!on) return; const C = GLB.C; let made = 0; const fa = Math.min(1, (s - GLB.minS) / 30); // дома меньше пикселя плавно проявляются, а не выскакивают
   for (let cx = Math.floor((bb[0] - .2) / C); cx <= Math.floor((bb[2] + .2) / C); cx++) for (let cy = Math.floor((bb[1] - .2) / C); cy <= Math.floor((bb[3] + .4) / C); cy++) { const key = cx + ',' + cy; if (!GLB.ch.has(key)) continue;
@@ -3169,8 +3174,8 @@ void main() {
   gl_Position = vis ? vec4((projectionMatrix * translationMatrix * vec3(p, 1.0)).xy, 0.0, 1.0) : vec4(4.0, 4.0, 4.0, 1.0);
 }`;
 const GLS_FS = `precision mediump float; varying vec2 vUV; varying float vA; uniform sampler2D uSampler;
-void main() { vec4 c = texture2D(uSampler, vUV) * vA; if (c.a < 0.004) discard; gl_FragColor = c; }`;
-const GLS = { C: 4, ok: false, ch: new Map(), keys: null, slot: new Map(), list: [], step: -1, AW: 2048, AH: 1024, cell: 128 };
+void main() { vec4 c = texture2D(uSampler, vUV, -0.5) * vA; if (c.a < 0.004) discard; gl_FragColor = c; }`;
+const GLS = { C: 4, ok: false, ch: new Map(), keys: null, slot: new Map(), list: [], step: -1, AW: 4096, AH: 2048, cell: 256 };
 GLS.treeImg = function (d) { const k = d.k || (d.k = Decor.kind(d)); let spr = Art.pickFrom(k, d.v); if (!(spr && /_f/.test(spr._name || ''))) spr = flatTree(k, d.v); const fb = SPR[FALLBACK[k] || 'tree']; if (!spr) spr = fb; return [spr, spr === fb ? .85 : .92]; };
 GLS.houseFb = function () { return GL.house || (GL.house = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; drawHouse(c.getContext('2d'), 32, 62, 60, .3); c._w = 64; c._h = 64; c._name = 'bld_house_fb'; return c; })()); };
 GLS.bldImgs = function (k) { const a = (Art.set[k] || []).filter(Boolean); return a.length ? a : [GLS.houseFb()]; };
