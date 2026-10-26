@@ -20196,7 +20196,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202610211636';
+const APP_VERSION = '202610260829';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
@@ -21877,7 +21877,7 @@ function plusLang() {
   set('setClipsL', '🎬 Видео-клипы: иногда записывать смешные моменты по 5 сек', '🎬 Video clips: sometimes record funny 5-second moments');
   chatLaunchers().forEach(b => { b.title = tr('Чат', 'Chat'); });
   $('bInstall2').textContent = '📲 ' + tr('Установить ярлык на рабочий стол', 'Install a desktop shortcut');
-  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 57 · 21.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
+  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 58 · 26.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
 }
 plusLang();
 try { document.documentElement.lang = LANG; } catch (e) {}
@@ -22168,13 +22168,13 @@ setupScreen = wrapFn('setupScreen', () => trlPlace());
 applyStatic = wrapFn('applyStatic', () => { if (!started && $('scrSetup') && !$('scrSetup').classList.contains('hidden')) trlPlace(); });
 
 // GitHub web upload flattens folders, so all media is served from the site root; ?v= busts the phone's HTTP cache on updates
-Arcade.sprBase = './'; Arcade.sprQ = '?v=57';
+Arcade.sprBase = './'; Arcade.sprQ = '?v=58';
 /* ================= extended graphics + intro clips + game music (settings under the arcade mode switch) =================
    • «Графика: Обычная / Расширенная» — Arcade.hd (sprite atlases sprites/a<n>.png|json drawn by api.spr in games).
    • «Заставки: Вкл / Выкл» — a 3-second funny clip intros/<id>.mp4 before a game (id = a<n> or a classic id).
    • «Музыка: Вкл / Выкл» — a looped track music/<id>.mp3 quietly under the game.
    Which clips / tracks exist is baked in at build time (MEDIA_LIST), so nothing 404s. */
-const MEDIA_LIST = {"intros": ["a1", "a11", "a12", "a13", "a14", "a15", "a16", "a17", "a18", "a19", "a1_b", "a2", "a20", "a21", "a22", "a23", "a24", "a25", "a26", "a27", "a28", "a29", "a3", "a30", "a31", "a32", "a33", "a34", "a35", "a36", "a37", "a38", "a39", "a3_b", "a4", "a40", "a41", "a43", "a43_b", "a44", "a45", "a46", "a49", "a5", "a51", "a52", "a53", "a55", "a56", "a57", "a58", "a59", "a6", "a60", "a61", "a6_b", "a7", "a8", "a9", "draw", "match", "react", "rps", "ttt", "tug"], "music": ["m_arcade", "m_battle", "m_chill", "m_space", "m_sport", "m_winter"], "sfx": ["a11_hit", "a11_shoot", "a12_bounce", "a13_hit", "a14_shoot", "a16_shoot", "a17_tap", "a19_hit", "a22_score", "a23_hit", "a27_splash", "a29_tap", "a36_hit", "a3_shoot", "a43_hit", "a44_bounce", "a45_hit", "a52_bounce", "a53_shoot", "a57_tap", "a61_tap", "a6_hit", "a9_score", "boom", "bounce", "hit", "lose", "pop", "score", "shoot", "splash", "tap", "win"], "pack": {"a11_hit": [0.0, 0.2], "a11_shoot": [0.5, 0.45], "a12_bounce": [1.25, 0.45], "a13_hit": [2.0, 0.35], "a14_shoot": [2.65, 0.29], "a16_shoot": [3.24, 0.45], "a17_tap": [3.99, 0.35], "a19_hit": [4.64, 0.18], "a22_score": [5.12, 0.7], "a23_hit": [6.12, 0.15], "a27_splash": [6.57, 0.37], "a29_tap": [7.24, 0.45], "a36_hit": [7.99, 0.45], "a3_shoot": [8.74, 0.45], "a43_hit": [9.49, 0.45], "a44_bounce": [10.24, 0.45], "a45_hit": [10.99, 0.33], "a52_bounce": [11.62, 0.45], "a53_shoot": [12.37, 0.45], "a57_tap": [13.12, 0.45], "a61_tap": [13.87, 0.15], "a6_hit": [14.32, 0.33], "a9_score": [14.95, 0.7], "boom": [15.95, 0.8], "bounce": [17.05, 0.45], "hit": [17.8, 0.36], "lose": [18.46, 0.7], "pop": [19.46, 0.17], "score": [19.93, 0.7], "shoot": [20.93, 0.45], "splash": [21.68, 0.45], "tap": [22.43, 0.19], "win": [22.92, 1.2]}, "musmap": {"a1": "m_arcade", "a2": "m_arcade", "a3": "m_battle", "a4": "m_arcade", "a5": "m_sport", "a6": "m_chill", "a7": "m_arcade", "a8": "m_battle", "a9": "m_arcade", "a11": "m_winter", "a12": "m_sport", "a13": "m_battle", "a14": "m_space", "a15": "m_arcade", "a16": "m_battle", "a17": "m_arcade", "a18": "m_arcade", "a19": "m_arcade", "a20": "m_arcade", "a21": "m_chill", "a22": "m_sport", "a23": "m_chill", "a24": "m_sport", "a25": "m_arcade", "a26": "m_arcade", "a27": "m_chill", "a28": "m_arcade", "a29": "m_chill", "a30": "m_chill", "a31": "m_arcade", "a32": "m_arcade", "a33": "m_arcade", "a34": "m_space", "a35": "m_arcade", "a36": "m_battle", "a37": "m_chill", "a38": "m_winter", "a39": "m_chill", "a40": "m_arcade", "a41": "m_arcade", "a43": "m_battle", "a44": "m_winter", "a45": "m_sport", "a46": "m_arcade", "a49": "m_arcade", "a51": "m_chill", "a52": "m_sport", "a53": "m_battle", "a55": "m_arcade", "a56": "m_battle", "a57": "m_chill", "a58": "m_chill", "a59": "m_chill", "a60": "m_chill", "a61": "m_chill", "rps": "m_arcade", "react": "m_sport", "tug": "m_battle", "ttt": "m_chill", "match": "m_chill", "draw": "m_chill"}};
+const MEDIA_LIST = {"intros": ["a1", "a11", "a12", "a15", "a16", "a27", "a32", "a33", "a34", "a36", "a38", "a6_b", "a7", "a8", "match"], "music": ["m_arcade", "m_battle", "m_chill", "m_space", "m_sport", "m_winter"], "sfx": ["a11_hit", "a11_shoot", "a12_bounce", "a13_hit", "a14_shoot", "a16_shoot", "a17_tap", "a19_hit", "a22_score", "a23_hit", "a27_splash", "a29_tap", "a36_hit", "a3_shoot", "a43_hit", "a44_bounce", "a45_hit", "a52_bounce", "a53_shoot", "a57_tap", "a61_tap", "a6_hit", "a9_score", "boom", "bounce", "hit", "lose", "pop", "score", "shoot", "splash", "tap", "win"], "pack": {"a11_hit": [0.0, 0.2], "a11_shoot": [0.5, 0.45], "a12_bounce": [1.25, 0.45], "a13_hit": [2.0, 0.35], "a14_shoot": [2.65, 0.29], "a16_shoot": [3.24, 0.45], "a17_tap": [3.99, 0.35], "a19_hit": [4.64, 0.18], "a22_score": [5.12, 0.7], "a23_hit": [6.12, 0.15], "a27_splash": [6.57, 0.37], "a29_tap": [7.24, 0.45], "a36_hit": [7.99, 0.45], "a3_shoot": [8.74, 0.45], "a43_hit": [9.49, 0.45], "a44_bounce": [10.24, 0.45], "a45_hit": [10.99, 0.33], "a52_bounce": [11.62, 0.45], "a53_shoot": [12.37, 0.45], "a57_tap": [13.12, 0.45], "a61_tap": [13.87, 0.15], "a6_hit": [14.32, 0.33], "a9_score": [14.95, 0.7], "boom": [15.95, 0.8], "bounce": [17.05, 0.45], "hit": [17.8, 0.36], "lose": [18.46, 0.7], "pop": [19.46, 0.17], "score": [19.93, 0.7], "shoot": [20.93, 0.45], "splash": [21.68, 0.45], "tap": [22.43, 0.19], "win": [22.92, 1.2]}, "musmap": {"a1": "m_arcade", "a2": "m_arcade", "a3": "m_battle", "a4": "m_arcade", "a5": "m_sport", "a6": "m_chill", "a7": "m_arcade", "a8": "m_battle", "a9": "m_arcade", "a11": "m_winter", "a12": "m_sport", "a13": "m_battle", "a14": "m_space", "a15": "m_arcade", "a16": "m_battle", "a17": "m_arcade", "a18": "m_arcade", "a19": "m_arcade", "a20": "m_arcade", "a21": "m_chill", "a22": "m_sport", "a23": "m_chill", "a24": "m_sport", "a25": "m_arcade", "a26": "m_arcade", "a27": "m_chill", "a28": "m_arcade", "a29": "m_chill", "a30": "m_chill", "a31": "m_arcade", "a32": "m_arcade", "a33": "m_arcade", "a34": "m_space", "a35": "m_arcade", "a36": "m_battle", "a37": "m_chill", "a38": "m_winter", "a39": "m_chill", "a40": "m_arcade", "a41": "m_arcade", "a43": "m_battle", "a44": "m_winter", "a45": "m_sport", "a46": "m_arcade", "a49": "m_arcade", "a51": "m_chill", "a52": "m_sport", "a53": "m_battle", "a55": "m_arcade", "a56": "m_battle", "a57": "m_chill", "a58": "m_chill", "a59": "m_chill", "a60": "m_chill", "a61": "m_chill", "rps": "m_arcade", "react": "m_sport", "tug": "m_battle", "ttt": "m_chill", "match": "m_chill", "draw": "m_chill"}};
 if (!MEDIA_LIST.pack) MEDIA_LIST.pack = null;
 const HDP = { intro: (() => { try { return localStorage.getItem('duet-intro') !== '0'; } catch (e) { return true; } })(), music: (() => { try { return localStorage.getItem('duet-music') !== '0'; } catch (e) { return true; } })() };
 (function () {
@@ -22211,7 +22211,7 @@ function playIntro(id, done) {
   const clip = vars[Math.floor(Math.random() * vars.length)];
   if (introEl) introEl.remove();
   // files live in the site root on GitHub (folder was flattened), intros/ kept as a second try
-  const srcs = [clip + '.mp4?v=57', 'intros/' + clip + '.mp4'];
+  const srcs = [clip + '.mp4?v=58', 'intros/' + clip + '.mp4'];
   const v = h('video', { autoplay: false, playsInline: true, preload: 'auto' });
   v.setAttribute('playsinline', ''); v.muted = false;
   let fin = false, si = 0;
@@ -22229,7 +22229,7 @@ function playIntro(id, done) {
 let musEl = null;
 function musPlay(id) {
   musStop(); const tr0 = MEDIA_LIST.musmap[id] || (MEDIA_LIST.music.includes(id) ? id : null); if (!HDP.music || !tr0) return;
-  musEl = new Audio(tr0 + '.mp3?v=57'); musEl.loop = true; musEl.volume = .12; musEl.play().catch(() => {});
+  musEl = new Audio(tr0 + '.mp3?v=58'); musEl.loop = true; musEl.volume = .12; musEl.play().catch(() => {});
 }
 function musStop() { if (musEl) { try { musEl.pause(); } catch (e) {} musEl = null; } }
 // the clip plays over the game's «Play» card on both phones, then the music starts
@@ -22250,7 +22250,7 @@ const smpOn = () => { try { return localStorage.getItem('duet-sfx2') === '1'; } 
 function smpCtx() { if (!SMP.ctx) { try { SMP.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } if (SMP.ctx && SMP.ctx.state === 'suspended') SMP.ctx.resume(); return SMP.ctx; }
 function smpLoadPack() {
   if (SMP.buf || SMP.busy || !MEDIA_LIST.pack) return; const c = smpCtx(); if (!c) return; SMP.busy = true;
-  fetch('pack.mp3?v=57').then(r => r.arrayBuffer()).then(a => new Promise((ok, no) => c.decodeAudioData(a, ok, no))).then(b => { SMP.buf = b; }).catch(() => { SMP.busy = false; });
+  fetch('pack.mp3?v=58').then(r => r.arrayBuffer()).then(a => new Promise((ok, no) => c.decodeAudioData(a, ok, no))).then(b => { SMP.buf = b; }).catch(() => { SMP.busy = false; });
 }
 function smpPreload() { if (smpOn()) smpLoadPack(); }
 Arcade.sample = (name, n) => {
