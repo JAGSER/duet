@@ -22,7 +22,7 @@
 <link rel="icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;800;900&display=swap" rel="stylesheet">
-<script>(function(){var s='juicy';try{s=localStorage.getItem('duet-skin')||'juicy'}catch(e){}if(!/^(juicy|icons|memphis|glass)$/.test(s))s='juicy';document.documentElement.setAttribute('data-skin',s);var f={memphis:'family=Rubik:wght@500;600;700;800;900&family=Rubik+Mono+One',glass:'family=Manrope:wght@500;600;700;800'}[s];if(f){var l=document.createElement('link');l.id='skf-'+s;l.rel='stylesheet';l.href='https://fonts.googleapis.com/css2?'+f+'&display=swap';document.head.appendChild(l)}if(s==='memphis'){var m=document.querySelector('meta[name=theme-color]');if(m)m.content='#fdf1ff'}})();</script>
+<script>(function(){var s='juicy';try{s=localStorage.getItem('duet-skin')||'juicy'}catch(e){}if(!/^(juicy|classic)$/.test(s))s='juicy';document.documentElement.setAttribute('data-skin',s)})();</script>
 <style>
 :root{
   --violet:#7b2ff7; --pink:#f107a3; --orange:#ff8a00; --yellow:#ffd60a; --cyan:#00d1ff; --lime:#7cff4f;
@@ -271,21 +271,18 @@ canvas#cvDraw{width:100%;aspect-ratio:3/4;border-radius:18px;background:#fffdf5;
 @keyframes wave{0%{transform:scale(.3) rotate(0);opacity:0}20%{opacity:1;transform:scale(1.1) rotate(-20deg)}40%{transform:rotate(20deg)}60%{transform:rotate(-15deg)}100%{transform:scale(1.2);opacity:0}}
 .confetti{position:fixed;top:-20px;width:10px;height:16px;z-index:46;pointer-events:none;animation:fall 1.8s linear forwards}
 @keyframes fall{to{transform:translateY(110vh) rotate(720deg)}}
-/* ================= DESIGN SKINS =================
-   html[data-skin=juicy|icons|memphis|glass] is set in <head> before first paint.
-   juicy  = the original Duet look (gradient, chunky cards) with picture tiles
-   icons  = phone home screen: app-icon game grid, search and categories, flat iOS-like controls
-   memphis= light dotted paper, solid colour blocks, geometric shapes, offset shadows, Rubik Mono One
-   glass  = frosted glass panels over the Duet gradient, Manrope */
+/* ================= DESIGN =================
+   html[data-skin=juicy|classic] is set in <head> before first paint.
+   juicy   = juicy cards with picture tiles (default)
+   classic = the earlier look: emoji tiles, only the base styles */
 
-/* ---------- shared: picture tiles, design picker, games filter ---------- */
+/* ---------- picture tiles (juicy) and the design picker ---------- */
 .tile .art{position:absolute;pointer-events:none;z-index:1;display:block}
-.tile .art b{position:absolute;inset:0;background:url(tiles.webp?v=60) no-repeat;background-size:800% 800%}
+.tile .art b{position:absolute;inset:0;background:url(tiles.webp?v=61) no-repeat;background-size:800% 800%}
 .tile.has-art .ic{display:none}
-.tile>*{position:relative;z-index:1}
+:where(html[data-skin=juicy]) .tile>*{position:relative;z-index:1}
 .tile>.art{position:absolute}
-.tile .num,.tile .hot,.tile .rt{z-index:2}
-#gfilt{display:none}
+:where(html[data-skin=juicy]) .tile .num,:where(html[data-skin=juicy]) .tile .hot,:where(html[data-skin=juicy]) .tile .rt{z-index:2}
 .skgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0 14px}
 .skc{border:0;padding:8px 8px 10px;border-radius:20px;background:#f3eeff;font:inherit;color:var(--ink);text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:5px;box-shadow:0 0 0 3px transparent;transition:box-shadow .15s,transform .1s}
 .skc:active{transform:scale(.97)}
@@ -315,207 +312,6 @@ html[data-skin=juicy] #modeSeg{display:grid;grid-template-columns:repeat(3,1fr);
 html[data-skin=juicy] #modeSeg button{padding:11px 4px;border-radius:14px;font-size:15px}
 html[data-skin=juicy] #modeSeg button.on{box-shadow:0 3px 0 rgba(0,0,0,.12)}
 html[data-skin=juicy] .lvlrow:has(#modeSeg){margin:-2px 0 12px}
-
-/* ================= ICONS ================= */
-html[data-skin=icons] .btn{box-shadow:0 6px 16px rgba(40,0,80,.22);border-radius:18px}
-html[data-skin=icons] .btn:active{transform:scale(.97);box-shadow:0 3px 8px rgba(40,0,80,.2)}
-html[data-skin=icons] .btn.y,html[data-skin=icons] .btn.c{box-shadow:0 6px 16px rgba(40,0,80,.18)}
-html[data-skin=icons] .btn.g{box-shadow:none}
-html[data-skin=icons] .bwatch,html[data-skin=icons] .bgames,html[data-skin=icons] #bFind{justify-content:flex-start!important;padding:13px 16px;border-radius:20px;box-shadow:0 8px 20px rgba(40,0,80,.25)!important}
-html[data-skin=icons] .bwatch .chev,html[data-skin=icons] .bgames .chev{margin-left:auto}
-html[data-skin=icons] #bFind::after{content:"›";margin-left:auto;font-size:22px;line-height:1}
-html[data-skin=icons] .iconbtn{background:rgba(255,255,255,.95);color:var(--ink);border-radius:14px;box-shadow:0 4px 12px rgba(40,0,80,.2)}
-html[data-skin=icons] .logo b{border-radius:12px;box-shadow:0 4px 12px rgba(40,0,80,.2)}
-html[data-skin=icons] .ava{border-radius:15px;box-shadow:0 4px 12px rgba(40,0,80,.2)}
-html[data-skin=icons] .card{border-radius:26px;box-shadow:0 10px 28px rgba(40,0,80,.2)}
-html[data-skin=icons] .stage{border-radius:26px}
-html[data-skin=icons] .ctrl{border-radius:18px;box-shadow:0 4px 12px rgba(40,0,80,.18)}
-html[data-skin=icons] .ctrl:active{transform:scale(.94)}
-html[data-skin=icons] .reacts button{border-radius:16px;background:rgba(255,255,255,.2)}
-html[data-skin=icons] .sheet .card{border-radius:30px 30px 0 0;padding-top:24px;position:relative}
-html[data-skin=icons] .sheet .card::before{content:"";position:absolute;left:50%;top:9px;width:40px;height:5px;margin-left:-20px;border-radius:3px;background:#e2dcf2}
-html[data-skin=icons] .lobbybar,html[data-skin=icons] .pending{box-shadow:0 8px 20px rgba(40,0,80,.2);border-radius:20px}
-html[data-skin=icons] .toast{border-radius:999px}
-html[data-skin=icons] .sect{font-size:13px;letter-spacing:1px;text-transform:uppercase;margin:18px 4px 12px;opacity:.95}
-html[data-skin=icons] .sect b{font-weight:900}
-html[data-skin=icons] #modeSeg{display:flex;width:100%;background:none;padding:0;gap:6px}
-html[data-skin=icons] #modeSeg button{flex:1;border-radius:13px;background:rgba(255,255,255,.18);color:#fff;padding:9px 4px;font-size:14px}
-html[data-skin=icons] #modeSeg button.on{background:#ffd60a;color:#3b1170}
-html[data-skin=icons] #gfilt{display:block;margin:0 0 12px}
-html[data-skin=icons] .gsearch{display:flex;align-items:center;gap:8px;height:46px;border-radius:16px;background:rgba(255,255,255,.95);padding:0 14px;box-shadow:0 6px 16px rgba(40,0,80,.18)}
-html[data-skin=icons] .gsearch input{flex:1;min-width:0;border:0;outline:0;background:transparent;font:inherit;font-size:16px;color:var(--ink)}
-html[data-skin=icons] .gsearch input::placeholder{color:#8a7fb0}
-html[data-skin=icons] .gchips{display:flex;gap:6px;overflow-x:auto;margin:10px -16px 0;padding:0 16px 2px;scrollbar-width:none}
-html[data-skin=icons] .gchips::-webkit-scrollbar{display:none}
-html[data-skin=icons] .gchips button{flex:none;border:0;padding:7px 12px;border-radius:999px;background:rgba(255,255,255,.16);color:#fff;font:inherit;font-size:13px;white-space:nowrap;cursor:pointer}
-html[data-skin=icons] .gchips button.on{background:#fff;color:var(--violet)}
-html[data-skin=icons] #arcGrid,html[data-skin=icons] #grid{grid-template-columns:repeat(4,1fr);gap:16px 6px}
-html[data-skin=icons] #arcGrid .tile,html[data-skin=icons] #grid .tile{background:none!important;box-shadow:none;padding:0;min-height:0;display:flex;flex-direction:column;align-items:center;text-align:center;overflow:visible;border-radius:0}
-html[data-skin=icons] .tile:active{transform:scale(.94)}
-html[data-skin=icons] .tile::after{display:none}
-html[data-skin=icons] .tile .art{position:relative!important;width:74px;height:74px;border-radius:22px;background:var(--tbg);box-shadow:0 4px 0 rgba(0,0,0,.16);flex:none}
-html[data-skin=icons] .tile .art b{inset:7px}
-html[data-skin=icons] .tile .tt{font-size:12px;font-weight:800;line-height:1.15;margin-top:6px;max-width:84px;text-shadow:0 1px 2px rgba(0,0,0,.2)}
-html[data-skin=icons] .tile .ds,html[data-skin=icons] .tile .num,html[data-skin=icons] .tile .rt{display:none}
-html[data-skin=icons] .tile .md{display:none}
-html[data-skin=icons] .tile .hot{position:absolute;top:-6px;right:calc(50% - 44px);left:auto;font-size:12px;background:#fff;border-radius:50%;width:22px;height:22px;display:grid;place-items:center;box-shadow:0 2px 4px rgba(0,0,0,.2);z-index:3}
-html[data-skin=icons] .tile.soon .ic{width:74px;height:74px;border-radius:22px;border:2px dashed rgba(255,255,255,.45);display:grid;place-items:center;font-size:30px}
-html[data-skin=icons] .tile.soon .tt{opacity:.75;letter-spacing:1px}
-html[data-skin=icons] #arcGrid .tile.gx,html[data-skin=icons] #grid .tile.gx{display:none}
-html[data-skin=icons] #bSkinG{background:rgba(255,255,255,.95);color:var(--ink)}
-
-/* ================= MEMPHIS ================= */
-html[data-skin=memphis]{--mk:#1d1340;--mp:#ff5aa5;--mb:#2ec4ff;--my:#ffd23f;--mv:#8a5cff;--mg:#00d68f;--mo:#ff8a3d;--muted:#6a5c93}
-html[data-skin=memphis] body{font-family:Rubik,Nunito,system-ui,sans-serif;font-weight:700;color:var(--mk);background:#fdf1ff;background-image:radial-gradient(#e7cdf6 2px,transparent 2.6px);background-size:26px 26px;background-attachment:scroll}
-html[data-skin=memphis] body::before{display:none}
-html[data-skin=memphis] h1,html[data-skin=memphis] h2,html[data-skin=memphis] .ghead h2{font-family:"Rubik Mono One",Rubik,sans-serif;font-weight:400;letter-spacing:-.3px}
-html[data-skin=memphis] h1{color:var(--mk);text-shadow:3px 3px 0 var(--mp)}
-html[data-skin=memphis] .logo b{background:var(--my);border-radius:50%;box-shadow:3px 3px 0 var(--mk)}
-html[data-skin=memphis] .pts{color:var(--mk)}
-html[data-skin=memphis] .pts .pn{color:var(--mp)}
-html[data-skin=memphis] .iconbtn{background:#fff;color:var(--mk);border-radius:50%;box-shadow:3px 3px 0 var(--mk)}
-html[data-skin=memphis] .status{color:var(--mk)}
-html[data-skin=memphis] .ava{border-radius:50%;box-shadow:3px 3px 0 var(--mb)}
-html[data-skin=memphis] .ava i{border-color:#fdf1ff}
-html[data-skin=memphis] .stage{border-radius:30px 30px 30px 8px;box-shadow:8px 8px 0 var(--mb);background:var(--mk)}
-html[data-skin=memphis] .ph{background:radial-gradient(rgba(255,255,255,.1) 2px,transparent 2.6px) 0 0/22px 22px,var(--mk)}
-html[data-skin=memphis] .ctrl{background:#fff;border-radius:14px;box-shadow:3px 3px 0 var(--mk)}
-html[data-skin=memphis] .ctrl:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--mk)}
-html[data-skin=memphis] .ctrl:nth-child(2n){border-radius:50%}
-html[data-skin=memphis] .ctrl.act{background:var(--my)}
-html[data-skin=memphis] .ctrl.offc{background:#ffc6dd}
-html[data-skin=memphis] .reacts button{background:#fff;box-shadow:2px 2px 0 rgba(29,19,64,.35);border-radius:12px}
-html[data-skin=memphis] .reacts button:nth-child(3n+1){border-radius:50%}
-html[data-skin=memphis] .btn{font-family:Rubik,Nunito,sans-serif;font-weight:800;background:var(--mv);color:#fff;box-shadow:4px 4px 0 var(--mk);border-radius:16px}
-html[data-skin=memphis] .btn:active{transform:translate(2px,2px);box-shadow:2px 2px 0 var(--mk)}
-html[data-skin=memphis] .btn.y{background:var(--my);color:var(--mk);box-shadow:4px 4px 0 var(--mk)}
-html[data-skin=memphis] .btn.c{background:var(--mb);color:var(--mk);box-shadow:4px 4px 0 var(--mk)}
-html[data-skin=memphis] .btn.g{background:#fff;color:var(--mk);box-shadow:3px 3px 0 var(--mk)}
-html[data-skin=memphis] .bwatch{background:var(--mo)!important;color:var(--mk)!important;box-shadow:4px 4px 0 var(--mk)!important;border-radius:999px}
-html[data-skin=memphis] #bFind{border-radius:8px}
-html[data-skin=memphis] .bgames{background:var(--mp)!important;color:var(--mk)!important;box-shadow:4px 4px 0 var(--mk)!important;border-radius:26px 26px 8px 26px}
-html[data-skin=memphis] .card{background:#fff;color:var(--mk);border-radius:24px;box-shadow:6px 6px 0 var(--mp)}
-html[data-skin=memphis] .sheet{background:rgba(29,19,64,.45)}
-html[data-skin=memphis] .sheet .card{border-radius:28px 28px 0 0;box-shadow:0 -7px 0 var(--my)}
-html[data-skin=memphis] input.f{border-color:#eadbfb;background:#fbf6ff}
-html[data-skin=memphis] input.f:focus{border-color:var(--mv)}
-html[data-skin=memphis] .emojis button{background:#f6edff;border-radius:50%}
-html[data-skin=memphis] .emojis button.on{background:var(--my);border-color:var(--mk)}
-html[data-skin=memphis] .code{background:#fff6d1;border-color:var(--mo)}
-html[data-skin=memphis] .hero,html[data-skin=memphis] .hero p,html[data-skin=memphis] .invhero,html[data-skin=memphis] .invnote{color:var(--mk)}
-html[data-skin=memphis] .hero h1,html[data-skin=memphis] .invhero h1{font-size:30px}
-html[data-skin=memphis] .langsw button{background:#fff;color:var(--mk);box-shadow:2px 2px 0 var(--mk)}
-html[data-skin=memphis] .langsw button.on{background:var(--mk);color:#fff}
-html[data-skin=memphis] .langsw.in button{background:#f3eaff;color:var(--mk);box-shadow:none}
-html[data-skin=memphis] .langsw.in button.on{background:var(--mk);color:#fff}
-html[data-skin=memphis] .trl{background:#fff;color:var(--mk);box-shadow:5px 5px 0 var(--mv)}
-html[data-skin=memphis] .sect{color:var(--mk);font-size:17px}
-html[data-skin=memphis] .sect b{font-family:"Rubik Mono One",Rubik,sans-serif;font-weight:400;text-shadow:2px 2px 0 var(--mb)}
-html[data-skin=memphis] .sect span{color:var(--mk);opacity:.7}
-html[data-skin=memphis] .lvlrow,html[data-skin=memphis] .hdrow .lb{color:var(--mk)}
-html[data-skin=memphis] .seg{background:#fff;box-shadow:2px 2px 0 var(--mk)}
-html[data-skin=memphis] .seg button{color:var(--mk)}
-html[data-skin=memphis] .seg button.on{background:var(--mk);color:#fff}
-html[data-skin=memphis] #modeSeg{display:grid;grid-template-columns:repeat(3,1fr);width:100%;background:none;box-shadow:none;padding:0;gap:10px}
-html[data-skin=memphis] #modeSeg button{background:#fff;box-shadow:3px 3px 0 var(--mk);padding:11px 2px;font-size:14px;border-radius:999px}
-html[data-skin=memphis] #modeSeg button:nth-child(2){border-radius:6px}
-html[data-skin=memphis] #modeSeg button:nth-child(3){border-radius:22px 22px 6px 22px}
-html[data-skin=memphis] #modeSeg button.on{background:var(--mk);color:#fff}
-html[data-skin=memphis] #bSkinG{background:#fff;color:var(--mk);box-shadow:2px 2px 0 var(--mk)}
-html[data-skin=memphis] #arcGrid,html[data-skin=memphis] #grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
-html[data-skin=memphis] #arcGrid .tile,html[data-skin=memphis] #grid .tile{min-height:178px;padding:12px;display:flex;flex-direction:column;justify-content:flex-end;align-items:flex-start;box-shadow:none;color:var(--mi,var(--mk));background:var(--mc)!important}
-html[data-skin=memphis] .tile.c0{--mc:var(--mp)}html[data-skin=memphis] .tile.c1{--mc:var(--mb)}html[data-skin=memphis] .tile.c2{--mc:var(--my)}
-html[data-skin=memphis] .tile.c3{--mc:var(--mv);--mi:#fff}html[data-skin=memphis] .tile.c4{--mc:var(--mg)}html[data-skin=memphis] .tile.c5{--mc:var(--mo)}
-html[data-skin=memphis] .tile.k0{border-radius:22px}html[data-skin=memphis] .tile.k1{border-radius:90px 90px 14px 14px}
-html[data-skin=memphis] .tile.k2{border-radius:14px 64px 14px 14px}html[data-skin=memphis] .tile.k3{border-radius:14px 14px 64px 14px}
-html[data-skin=memphis] .tile::after{width:auto;height:auto;border-radius:0;background:none;inset:auto;opacity:1}
-html[data-skin=memphis] .tile.k0::after{content:"";right:-6px;top:12px;width:70px;height:20px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 70 20'%3E%3Cpath d='M2 10 Q10 0 18 10 T34 10 T50 10 T66 10' fill='none' stroke='white' stroke-opacity='.75' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat}
-html[data-skin=memphis] .tile.k1::after{content:"";left:-10px;top:44px;width:40px;height:40px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cpolygon points='20,2 38,36 2,36' fill='%231d1340' fill-opacity='.18'/%3E%3C/svg%3E") no-repeat}
-html[data-skin=memphis] .tile.k2::after{content:"";right:-14px;bottom:34px;width:56px;height:56px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 56 56'%3E%3Ccircle cx='28' cy='28' r='22' fill='none' stroke='white' stroke-opacity='.6' stroke-width='6'/%3E%3C/svg%3E") no-repeat}
-html[data-skin=memphis] .tile.k3::after{content:"";left:8px;top:8px;width:60px;height:30px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 30'%3E%3Cpath d='M2 26 L12 6 L22 26 L32 6 L42 26 L52 6' fill='none' stroke='%231d1340' stroke-opacity='.22' stroke-width='4'/%3E%3C/svg%3E") no-repeat}
-html[data-skin=memphis] .tile .art{left:50%;top:14px;width:96px;height:96px;transform:translateX(-50%)}
-html[data-skin=memphis] .tile .tt{font-family:"Rubik Mono One",Rubik,sans-serif;font-weight:400;font-size:12.5px;line-height:1.2;text-transform:uppercase;margin-top:0}
-html[data-skin=memphis] .tile .ds{display:none}
-html[data-skin=memphis] .tile .md{background:rgba(255,255,255,.55);color:var(--mk);margin-top:6px}
-html[data-skin=memphis] .tile .num{left:12px;right:auto;top:11px;opacity:.7}
-html[data-skin=memphis] .tile .hot{left:auto;right:12px;top:8px}
-html[data-skin=memphis] .tile .rt{background:rgba(255,255,255,.6);color:var(--mk)}
-html[data-skin=memphis] .tile.soon{background:transparent!important;border:3px dashed #c6a7e8;color:#9b7cc6;justify-content:center;align-items:center;opacity:1!important;filter:none}
-html[data-skin=memphis] .tile.soon::after{display:none}
-html[data-skin=memphis] .tile.soon .tt{font-size:14px;letter-spacing:2px}
-html[data-skin=memphis] .tile:disabled{filter:grayscale(.5)}
-html[data-skin=memphis] #watchBox .card{background:var(--mk);color:#fff;box-shadow:6px 6px 0 var(--mo)}
-html[data-skin=memphis] .lobbybar,html[data-skin=memphis] .pending,html[data-skin=memphis] .updbar{box-shadow:4px 4px 0 var(--mk)}
-html[data-skin=memphis] .toast{background:var(--my);color:var(--mk);box-shadow:4px 4px 0 var(--mk);border-radius:14px}
-html[data-skin=memphis] .net{color:var(--mk);opacity:.65}
-html[data-skin=memphis] .net.warn{background:var(--mk);color:#fff;opacity:1}
-html[data-skin=memphis] #verFoot{color:rgba(29,19,64,.6)}
-html[data-skin=memphis] .seolinks a{color:rgba(29,19,64,.5)}
-html[data-skin=memphis] .chatbox{font-family:Rubik,Nunito,sans-serif;box-shadow:6px 6px 0 var(--mb);border-radius:20px}
-html[data-skin=memphis] #view{background:#fdf1ff radial-gradient(#e7cdf6 2px,transparent 2.6px) 0 0/26px 26px}
-html[data-skin=memphis] #view .vtop,html[data-skin=memphis] #view .score,html[data-skin=memphis] #info,html[data-skin=memphis] #info2{color:var(--mk)}
-html[data-skin=memphis] #view .vtop h2{font-family:"Rubik Mono One",Rubik,sans-serif;font-weight:400;font-size:15px}
-html[data-skin=memphis] #view .score .you{color:#0094c6}
-html[data-skin=memphis] #view .score .bot{color:#e23d8b}
-html[data-skin=memphis] #cv,html[data-skin=memphis] #cv2{border-radius:20px;box-shadow:6px 6px 0 var(--mk)}
-html[data-skin=memphis] #view .ov .card{box-shadow:6px 6px 0 var(--mp)}
-html[data-skin=memphis] .vcap,html[data-skin=memphis] .vcnt{color:#fff}
-html[data-skin=memphis] .tapsound{color:var(--mk)}
-
-/* ================= GLASS ================= */
-html[data-skin=glass]{--gl:rgba(255,255,255,.16);--glb:1px solid rgba(255,255,255,.38);--gls:0 10px 30px rgba(40,0,80,.18);--glf:blur(18px) saturate(150%)}
-html[data-skin=glass] body{font-family:Manrope,Nunito,system-ui,sans-serif;font-weight:700}
-html[data-skin=glass] body::before{background:radial-gradient(circle at 10% 14%,rgba(255,214,10,.55),transparent 30%),radial-gradient(circle at 94% 44%,rgba(0,209,255,.5),transparent 32%),radial-gradient(circle at 18% 86%,rgba(124,255,79,.32),transparent 30%)}
-html[data-skin=glass] h1{text-shadow:none;font-weight:800}
-html[data-skin=glass] .logo b,html[data-skin=glass] .iconbtn,html[data-skin=glass] .ava,html[data-skin=glass] .ctrl,html[data-skin=glass] .reacts button{background:var(--gl);border:var(--glb);-webkit-backdrop-filter:var(--glf);backdrop-filter:var(--glf);box-shadow:var(--gls)}
-html[data-skin=glass] .ctrl.act{background:rgba(255,214,10,.82)}
-html[data-skin=glass] .ctrl.offc{background:rgba(255,80,140,.42)}
-html[data-skin=glass] .ava i{border-color:rgba(255,255,255,.8)}
-html[data-skin=glass] .stage{border:1px solid rgba(255,255,255,.4);border-radius:28px;background:rgba(20,8,50,.35);box-shadow:0 14px 40px rgba(40,0,80,.3)}
-html[data-skin=glass] .stage video{background:transparent}
-html[data-skin=glass] .ph{background:radial-gradient(circle at 50% 40%,rgba(123,47,247,.45),rgba(20,8,50,.6) 70%)}
-html[data-skin=glass] .btn{border-radius:18px;box-shadow:0 8px 22px rgba(80,10,140,.28);border:1px solid rgba(255,255,255,.3)}
-html[data-skin=glass] .btn:active{transform:scale(.98);box-shadow:0 4px 12px rgba(80,10,140,.25)}
-html[data-skin=glass] .btn.y{box-shadow:0 8px 22px rgba(180,130,0,.3)}
-html[data-skin=glass] .btn.c{box-shadow:0 8px 22px rgba(0,120,170,.3)}
-html[data-skin=glass] .btn.g{background:rgba(123,47,247,.1);color:var(--violet);box-shadow:none;border-color:rgba(123,47,247,.12)}
-html[data-skin=glass] .bwatch,html[data-skin=glass] .bgames,html[data-skin=glass] #bFind,html[data-skin=glass] #bInstall2,html[data-skin=glass] #view .vtop .btn.g,html[data-skin=glass] #view .vtop2 .btn.g{color:#fff!important;border:var(--glb)!important;-webkit-backdrop-filter:var(--glf);backdrop-filter:var(--glf);box-shadow:var(--gls)!important}
-html[data-skin=glass] .bwatch{background:rgba(255,138,0,.4)!important}
-html[data-skin=glass] #bFind{background:rgba(0,209,255,.34)}
-html[data-skin=glass] .bgames{background:rgba(123,47,247,.42)!important}
-html[data-skin=glass] #bInstall2,html[data-skin=glass] #view .vtop .btn.g,html[data-skin=glass] #view .vtop2 .btn.g{background:var(--gl)}
-html[data-skin=glass] .card,html[data-skin=glass] .lobbybar,html[data-skin=glass] .pending,html[data-skin=glass] .toast,html[data-skin=glass] .updbar,html[data-skin=glass] .chatbox:not(.dock){background:rgba(255,255,255,.8);border:1px solid rgba(255,255,255,.7);-webkit-backdrop-filter:blur(22px) saturate(160%);backdrop-filter:blur(22px) saturate(160%);box-shadow:0 14px 40px rgba(40,0,80,.25)}
-html[data-skin=glass] .card{border-radius:28px}
-html[data-skin=glass] .sheet{background:rgba(30,0,60,.3);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
-html[data-skin=glass] .sheet .card{background:rgba(255,255,255,.86);border-radius:30px 30px 0 0}
-html[data-skin=glass] input.f{background:rgba(255,255,255,.7);border-color:rgba(123,47,247,.16)}
-html[data-skin=glass] .chatbox{font-family:Manrope,Nunito,sans-serif}
-html[data-skin=glass] .seg{background:rgba(0,0,0,.12);border:1px solid rgba(255,255,255,.22)}
-html[data-skin=glass] .seg button.on{background:rgba(255,255,255,.92)}
-html[data-skin=glass] .langsw button{background:var(--gl);border:var(--glb)}
-html[data-skin=glass] .langsw.in button{background:rgba(123,47,247,.1);border:0}
-html[data-skin=glass] .langsw.in button.on{background:var(--violet)}
-html[data-skin=glass] .trl{border:var(--glb);-webkit-backdrop-filter:var(--glf);backdrop-filter:var(--glf);box-shadow:var(--gls)}
-html[data-skin=glass] #watchBox .card{background:rgba(20,10,44,.55);color:#fff;border:1px solid rgba(255,255,255,.18)}
-html[data-skin=glass] #bSkinG{background:var(--gl);border:var(--glb)}
-html[data-skin=glass] #gamesBox{background:rgba(255,255,255,.1);border:var(--glb);box-shadow:var(--gls);border-radius:28px;padding:4px 12px 14px;margin-top:6px}
-html[data-skin=glass] #arcGrid,html[data-skin=glass] #grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-html[data-skin=glass] #arcGrid .tile,html[data-skin=glass] #grid .tile{background:rgba(255,255,255,.16)!important;border:1px solid rgba(255,255,255,.38);box-shadow:0 10px 26px rgba(40,0,80,.16);border-radius:24px;min-height:214px;padding:12px 12px 13px;display:flex;flex-direction:column;justify-content:flex-end;align-items:flex-start}
-html[data-skin=glass] .tile::after{display:none}
-html[data-skin=glass] .tile .art{left:50%;top:10px;width:98px;height:98px;transform:translateX(-50%);filter:drop-shadow(0 10px 10px rgba(40,0,80,.25))}
-html[data-skin=glass] .tile .tt{font-size:15px;font-weight:800;line-height:1.15;margin-top:0}
-html[data-skin=glass] .tile .ds{font-size:12px;font-weight:600;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-html[data-skin=glass] .tile .md{background:rgba(255,255,255,.18)}
-html[data-skin=glass] .tile .num{left:12px;right:auto;top:10px}
-html[data-skin=glass] .tile .hot{left:34px;right:auto;top:8px}
-html[data-skin=glass] .tile .rt{top:10px;bottom:auto;right:10px;background:rgba(0,0,0,.18)}
-html[data-skin=glass] .tile.soon{border-style:dashed;justify-content:center;align-items:center;opacity:1!important}
-html[data-skin=glass] .tile.soon .tt{letter-spacing:3px;opacity:.8}
-html[data-skin=glass] #view{background:linear-gradient(135deg,#5b1fc7,#c4108a 55%,#e07400)}
-html[data-skin=glass] #view::before{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle at 10% 14%,rgba(255,214,10,.4),transparent 30%),radial-gradient(circle at 94% 60%,rgba(0,209,255,.4),transparent 32%)}
-html[data-skin=glass] #view>*{position:relative}
-html[data-skin=glass] #view>#stageBox,html[data-skin=glass] #view>#half2{position:relative}
-html[data-skin=glass] #cv,html[data-skin=glass] #cv2{border-radius:24px;box-shadow:0 0 0 1px rgba(255,255,255,.35),0 14px 40px rgba(20,0,60,.4)}
 
 </style>
 </head>
@@ -20443,7 +20239,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202610270058';
+const APP_VERSION = '202610272121';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
@@ -22124,7 +21920,7 @@ function plusLang() {
   set('setClipsL', '🎬 Видео-клипы: иногда записывать смешные моменты по 5 сек', '🎬 Video clips: sometimes record funny 5-second moments');
   chatLaunchers().forEach(b => { b.title = tr('Чат', 'Chat'); });
   $('bInstall2').textContent = '📲 ' + tr('Установить ярлык на рабочий стол', 'Install a desktop shortcut');
-  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 60 · 27.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
+  $('verFoot').textContent = tr('Дуэт', 'Duet') + ' · ' + tr('версия', 'version') + ' 61 · 27.10.2026'; $('bFull').title = tr('На весь экран', 'Full screen');
 }
 plusLang();
 try { document.documentElement.lang = LANG; } catch (e) {}
@@ -22415,7 +22211,7 @@ setupScreen = wrapFn('setupScreen', () => trlPlace());
 applyStatic = wrapFn('applyStatic', () => { if (!started && $('scrSetup') && !$('scrSetup').classList.contains('hidden')) trlPlace(); });
 
 // GitHub web upload flattens folders, so all media is served from the site root; ?v= busts the phone's HTTP cache on updates
-Arcade.sprBase = './'; Arcade.sprQ = '?v=60';
+Arcade.sprBase = './'; Arcade.sprQ = '?v=61';
 /* ================= extended graphics + intro clips + game music (settings under the arcade mode switch) =================
    • «Графика: Обычная / Расширенная» — Arcade.hd (sprite atlases sprites/a<n>.png|json drawn by api.spr in games).
    • «Заставки: Вкл / Выкл» — a 3-second funny clip intros/<id>.mp4 before a game (id = a<n> or a classic id).
@@ -22458,7 +22254,7 @@ function playIntro(id, done) {
   const clip = vars[Math.floor(Math.random() * vars.length)];
   if (introEl) introEl.remove();
   // files live in the site root on GitHub (folder was flattened), intros/ kept as a second try
-  const srcs = [clip + '.mp4?v=60', 'intros/' + clip + '.mp4'];
+  const srcs = [clip + '.mp4?v=61', 'intros/' + clip + '.mp4'];
   const v = h('video', { autoplay: false, playsInline: true, preload: 'auto' });
   v.setAttribute('playsinline', ''); v.muted = false;
   let fin = false, si = 0;
@@ -22476,7 +22272,7 @@ function playIntro(id, done) {
 let musEl = null;
 function musPlay(id) {
   musStop(); const tr0 = MEDIA_LIST.musmap[id] || (MEDIA_LIST.music.includes(id) ? id : null); if (!HDP.music || !tr0) return;
-  musEl = new Audio(tr0 + '.mp3?v=60'); musEl.loop = true; musEl.volume = .12; musEl.play().catch(() => {});
+  musEl = new Audio(tr0 + '.mp3?v=61'); musEl.loop = true; musEl.volume = .12; musEl.play().catch(() => {});
 }
 function musStop() { if (musEl) { try { musEl.pause(); } catch (e) {} musEl = null; } }
 // the clip plays over the game's «Play» card on both phones, then the music starts
@@ -22497,7 +22293,7 @@ const smpOn = () => { try { return localStorage.getItem('duet-sfx2') === '1'; } 
 function smpCtx() { if (!SMP.ctx) { try { SMP.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } if (SMP.ctx && SMP.ctx.state === 'suspended') SMP.ctx.resume(); return SMP.ctx; }
 function smpLoadPack() {
   if (SMP.buf || SMP.busy || !MEDIA_LIST.pack) return; const c = smpCtx(); if (!c) return; SMP.busy = true;
-  fetch('pack.mp3?v=60').then(r => r.arrayBuffer()).then(a => new Promise((ok, no) => c.decodeAudioData(a, ok, no))).then(b => { SMP.buf = b; }).catch(() => { SMP.busy = false; });
+  fetch('pack.mp3?v=61').then(r => r.arrayBuffer()).then(a => new Promise((ok, no) => c.decodeAudioData(a, ok, no))).then(b => { SMP.buf = b; }).catch(() => { SMP.busy = false; });
 }
 function smpPreload() { if (smpOn()) smpLoadPack(); }
 Arcade.sample = (name, n) => {
@@ -22566,34 +22362,20 @@ function tttSlash(board, cells, line) {
   board.append(sp);
 }
 
-/* ================= design skins: picker (first launch, settings, games menu), picture tiles, games filter =================
-   The skin itself is html[data-skin]; it is set in <head> before the first paint and styled in skins.css. */
+/* ================= design: juicy cards (default) or classic; switch in settings and in the games menu =================
+   The design itself is html[data-skin]; it is set in <head> before the first paint and styled in skins.css. */
 const SKINS = [
-  { id: 'juicy', ru: 'Сочные карточки', en: 'Juicy cards', dru: 'Яркий градиент и сочные карточки игр', den: 'Bright gradient and juicy game cards' },
-  { id: 'icons', ru: 'Иконки', en: 'Icons', dru: 'Игры как иконки на телефоне, поиск и категории', den: 'Games as phone icons, search and categories' },
-  { id: 'memphis', ru: 'Мемфис', en: 'Memphis', dru: 'Светлый фон, яркие фигуры и цветные плитки', den: 'Light paper, bold shapes and colour tiles' },
-  { id: 'glass', ru: 'Стекло', en: 'Glass', dru: 'Матовое стекло на фирменном градиенте', den: 'Frosted glass on the Duet gradient' },
+  { id: 'juicy', ru: 'Сочные карточки', en: 'Juicy cards', dru: 'Яркие карточки игр с картинками', den: 'Bright game cards with pictures' },
+  { id: 'classic', ru: 'Классический', en: 'Classic', dru: 'Прежний вид: плитки с эмодзи', den: 'The earlier look: emoji tiles' },
 ];
-const SKIN_FONTS = { memphis: 'family=Rubik:wght@500;600;700;800;900&family=Rubik+Mono+One', glass: 'family=Manrope:wght@500;600;700;800' };
 const TILES = {"cols":8,"rows":8,"i":{"a1":0,"a2":1,"a3":2,"a4":3,"a5":4,"a6":5,"a7":6,"a8":7,"a9":8,"a11":9,"a12":10,"a13":11,"a14":12,"a15":13,"a16":14,"a17":15,"a18":16,"a19":17,"a20":18,"a21":19,"a22":20,"a23":21,"a24":22,"a25":23,"a26":24,"a27":25,"a28":26,"a29":27,"a30":28,"a31":29,"a32":30,"a33":31,"a34":32,"a35":33,"a36":34,"a37":35,"a38":36,"a39":37,"a40":38,"a41":39,"a43":40,"a44":41,"a45":42,"a46":43,"a49":44,"a51":45,"a52":46,"a53":47,"a55":48,"a56":49,"a57":50,"a58":51,"a59":52,"a60":53,"a61":54,"draw":55,"match":56,"react":57,"rps":58,"ttt":59,"tug":60}};
-// game groups for the category chips (Icons design)
-const GCATS = [['all', '✨', 'Все', 'All'], ['duel', '⚔️', 'Дуэли', 'Duels'], ['sport', '⚽', 'Спорт', 'Sport'], ['speed', '⚡', 'Кто быстрее', 'Speed'], ['coop', '🤝', 'Вместе', 'Co-op'], ['sens', '🎤', 'Голос и движения', 'Voice & motion'], ['board', '🎲', 'Настольные', 'Board games']];
-const GCAT = {};
-[['duel', 'a1 a2 a3 a4 a8 a11 a14 a16 a46 a51 a53'], ['sport', 'a5 a6 a7 a22 a23 a24 a44 a52'], ['speed', 'a12 a13 a17 a18 a19 a20 a27 a28 a37 a40 a49 a56 react tug'],
-  ['coop', 'a15 a25 a26 a55 draw match'], ['sens', 'a21 a31 a32 a33 a34 a35 a36 a38 a39 a41'], ['board', 'a29 a30 a57 a58 a59 a60 a61 ttt rps']].forEach(([c, ids]) => ids.split(' ').forEach(i => { GCAT[i] = c; }));
-const SKF = { cat: 'all', q: '' };
 
 function skinId() { const s = document.documentElement.dataset.skin; return SKINS.some(x => x.id === s) ? s : 'juicy'; }
 function skinName(id) { const s = SKINS.find(x => x.id === (id || skinId())) || SKINS[0]; return tr(s.ru, s.en); }
-function skinFonts(id) {
-  const f = SKIN_FONTS[id]; if (!f || document.getElementById('skf-' + id)) return;
-  document.head.append(h('link', { id: 'skf-' + id, rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?' + f + '&display=swap' }));
-}
 function skinSet(id) {
   if (!SKINS.some(x => x.id === id)) id = 'juicy';
-  document.documentElement.dataset.skin = id; skinFonts(id);
+  document.documentElement.dataset.skin = id;
   try { localStorage.setItem('duet-skin', id); } catch (e) {}
-  const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = id === 'memphis' ? '#fdf1ff' : '#7b2ff7';
   document.querySelectorAll('.skc').forEach(b => b.classList.toggle('on', b.dataset.skin === id));
   skinLabels(); try { renderGrid(); } catch (e) {}
   try { track('skin', { s: id }); } catch (e) {}
@@ -22608,11 +22390,11 @@ function skinSheet() {
   if ($('skinSheet')) return;
   const grid = h('div', { className: 'skgrid' });
   SKINS.forEach(s => grid.append(h('button', { className: 'skc', type: 'button', 'data-skin': s.id, on: { click: () => skinSet(s.id) } },
-    h('img', { src: 'skin-' + s.id + '.webp?v=60', alt: '', loading: 'lazy' }), h('b', {}, tr(s.ru, s.en)), h('small', {}, tr(s.dru, s.den)))));
+    h('img', { src: 'skin-' + s.id + '.webp?v=61', alt: '', loading: 'lazy' }), h('b', {}, tr(s.ru, s.en)), h('small', {}, tr(s.dru, s.den)))));
   const sh = h('div', { className: 'sheet hidden', id: 'skinSheet', on: { click: e => { if (e.target.id === 'skinSheet') skinClose(); } } },
     h('div', { className: 'card' },
       h('div', { className: 'ghead' }, h('h2', { id: 'skinTitle' }, '✨ ' + tr('Выбери дизайн', 'Pick a design')), h('button', { className: 'btn g', id: 'bCloseSkin', type: 'button', style: 'padding:10px 14px', on: { click: () => skinClose() } }, '✕')),
-      h('p', { className: 'small', style: 'margin:0' }, tr('Меняется только внешний вид: все игры, видеосвязь и кино остаются. Поменять можно в любой момент в настройках или в меню игр.', 'Only the look changes: all games, video chat and movies stay. Change it any time in settings or in the games menu.')),
+      h('p', { className: 'small', style: 'margin:0' }, tr('Меняется только внешний вид: все игры, видеосвязь и кино остаются.', 'Only the look changes: all games, video chat and movies stay.')),
       grid,
       h('button', { className: 'btn w', id: 'bSkinOk', type: 'button', on: { click: () => skinClose() } }, tr('Готово', 'Done'))));
   document.body.append(sh);
@@ -22622,57 +22404,33 @@ function skinOpen() {
   document.querySelectorAll('.skc').forEach(b => b.classList.toggle('on', b.dataset.skin === skinId()));
   $('skinSheet').classList.remove('hidden');
 }
-function skinClose() {
-  const s = $('skinSheet'); if (s) s.classList.add('hidden');
-  try { if (!localStorage.getItem('duet-skin')) localStorage.setItem('duet-skin', skinId()); } catch (e) {}
-}
-// picture for a game tile: the composed sprite art from tiles.webp
+function skinClose() { const s = $('skinSheet'); if (s) s.classList.add('hidden'); }
+// picture for a game tile (juicy only): the composed sprite art from tiles.webp
 function skinArt(t, id) {
   const i = TILES.i[id]; if (i == null || t.querySelector(':scope > .art')) return;
   const c = i % TILES.cols, r = Math.floor(i / TILES.cols);
   t.classList.add('has-art');
   t.prepend(h('i', { className: 'art' }, h('b', { style: `background-position:${(c / (TILES.cols - 1) * 100).toFixed(4)}% ${(r / (TILES.rows - 1) * 100).toFixed(4)}%` })));
 }
-function skinFilterBar() {
-  if ($('gfilt') || !$('arcGrid')) return;
-  const q = h('input', { id: 'gq', type: 'search', autocomplete: 'off', placeholder: tr('Найти игру', 'Find a game'), on: { input: () => { SKF.q = q.value.trim().toLowerCase(); skinFilterApply(); } } });
-  const chips = h('div', { className: 'gchips' });
-  GCATS.forEach(([k, e, ru, en]) => chips.append(h('button', { type: 'button', className: k === SKF.cat ? 'on' : '', 'data-c': k, on: { click: () => { SKF.cat = k; chips.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.c === k)); skinFilterApply(); } } }, e + ' ' + tr(ru, en))));
-  const bar = h('div', { id: 'gfilt' }, h('label', { className: 'gsearch' }, h('span', {}, '🔍'), q), chips);
-  const lr = $('hdRow') || $('lvlRow'); if (lr) lr.after(bar); else $('arcGrid').before(bar);
-}
-function skinFilterApply() {
-  const on = skinId() === 'icons';
-  document.querySelectorAll('#arcGrid .tile, #grid .tile').forEach(t => {
-    let hide = false;
-    if (on && SKF.cat !== 'all' && t.dataset.cat !== SKF.cat) hide = true;
-    if (on && SKF.q) { const tt = t.querySelector('.tt'); if (!tt || tt.textContent.toLowerCase().indexOf(SKF.q) < 0) hide = true; }
-    t.classList.toggle('gx', hide);
-  });
-}
 function skinDecorate() {
   if (!$('arcGrid')) return;
-  const list = Arcade.games.slice().sort((a, b) => a.n - b.n); let k = 0;
-  const deco = (t, id, bg) => {
-    t.dataset.id = id; t.dataset.cat = GCAT[id] || 'soon';
-    if (bg) t.style.setProperty('--tbg', bg);
-    t.classList.add('c' + (k % 6), 'k' + (k % 4)); k++;
-    if (!t.classList.contains('soon')) skinArt(t, id);
+  const art = skinId() === 'juicy';
+  const deco = (t, id) => {
+    if (art) { if (!t.classList.contains('soon')) skinArt(t, id); return; }
+    t.classList.remove('has-art'); const a = t.querySelector(':scope > .art'); if (a) a.remove();
   };
-  [...$('arcGrid').children].forEach((t, i) => { const g = list[i]; if (g) deco(t, 'a' + g.n, g.bg); });
-  const ids = Object.keys(GAMES); [...$('grid').children].forEach((t, i) => { const id = ids[i]; if (id) deco(t, id, GAMES[id].bg); });
-  skinFilterBar(); skinFilterApply();
+  const list = Arcade.games.slice().sort((a, b) => a.n - b.n);
+  [...$('arcGrid').children].forEach((t, i) => { const g = list[i]; if (g) deco(t, 'a' + g.n); });
+  const ids = Object.keys(GAMES); [...$('grid').children].forEach((t, i) => { const id = ids[i]; if (id) deco(t, id); });
   // the design switch lives in the games menu too (next to graphics / intros / music)
   const r = $('hdRow'); if (r && !$('bSkinG')) { r.append(h('button', { id: 'bSkinG', type: 'button', on: { click: skinOpen } })); skinLabels(); }
 }
 renderGrid = wrapFn('renderGrid', () => skinDecorate());
-applyStatic = wrapFn('applyStatic', () => { skinLabels(); const g = $('gq'); if (g) g.placeholder = tr('Найти игру', 'Find a game'); });
+applyStatic = wrapFn('applyStatic', () => skinLabels());
 (function skinBoot() {
   const b = $('bSkinS'); if (b) b.onclick = () => { $('sheet').classList.add('hidden'); skinOpen(); };
-  skinLabels(); skinFonts(skinId());
+  skinLabels();
   try { renderGrid(); } catch (e) {}
-  let first = false; try { first = !localStorage.getItem('duet-skin'); } catch (e) {}
-  if (first) setTimeout(skinOpen, 700);
 })();
 
 /* Soundboard samples (mp3). Rendered with the FluidR3 GM soundfont (MIT, Frank Wen) and taken from OpenRCT2 OpenSoundEffects (CC BY 4.0). */
