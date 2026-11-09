@@ -20098,6 +20098,7 @@ const LNS = NS + 'lobby/';
 const LOB = { on: false, searching: false, peers: new Map(), skip: new Map(), inviting: null, match: null, saved: null, showCam: false, lastPub: 0 };
 function lobbyTopics() { return S.dev ? [LNS + 'p/+', LNS + 'm/' + S.dev, LNS + 'hi', LNS + 'rec/+', LNS + 'u/+', LNS + 'box/' + S.dev + '/+'] : []; }
 function lobbyPub(clear) {
+  if (!clear && isBotUA()) return;
   const body = clear ? '' : JSON.stringify({ d: S.dev, name: S.me.del ? tr('Гость', 'Guest') : S.me.name, emoji: S.me.del ? '👤' : S.me.emoji, lang: LANG, a: S.me.del || meAuto() ? 1 : 0, cc: S.me.del ? '' : S.cc || '', g: S.me.del ? '' : S.me.g || '', st: LOB.searching ? 'free' : 'busy', ts: Date.now() });
   connectedClients().forEach(c => { try { c.publish(LNS + 'p/' + S.dev, body, { qos: 0, retain: true }); } catch (e) {} });
   LOB.lastPub = Date.now();
@@ -20339,7 +20340,15 @@ function playHourText() {
 }
 /* ================= players directory: everyone who ever came, kept on the relay; call to play or write a message ================= */
 const USERS = new Map();
-function userPub() { if (!S.dev || !S.me) return; const b = JSON.stringify(S.me.del ? { del: 1, name: '', emoji: '👤', seen: Date.now() } : Object.assign({ name: S.me.name, emoji: S.me.emoji, lang: LANG, a: meAuto() ? 1 : 0, cc: S.cc || '', seen: Date.now() }, meCard())); connectedClients().forEach(c => { try { c.publish(LNS + 'u/' + S.dev, b, { qos: 0, retain: true }); } catch (e) {} }); }
+// crawlers open the page and leave: a visitor joins the players list only after touching / clicking / typing and 20+ seconds on the site
+const HUMAN = { t0: Date.now(), act: false };
+function isBotUA() { try { return !!navigator.webdriver || /bot|crawl|spider|slurp|headless|lighthouse|pagespeed|preview|inspection|monitor/i.test(navigator.userAgent); } catch (e) { return false; } }
+function humanOk() { return !isBotUA() && HUMAN.act && Date.now() - HUMAN.t0 >= 20000; }
+['pointerdown', 'touchstart', 'keydown', 'wheel'].forEach(ev => addEventListener(ev, e => {
+  if (HUMAN.act || (e && e.isTrusted === false)) return; HUMAN.act = true;
+  setTimeout(() => { try { if (started) userPub(); } catch (x) {} }, Math.max(0, 20000 - (Date.now() - HUMAN.t0)) + 200);
+}, { passive: true, capture: true }));
+function userPub() { if (!S.dev || !S.me || !humanOk()) return; const b = JSON.stringify(S.me.del ? { del: 1, name: '', emoji: '👤', seen: Date.now() } : Object.assign({ name: S.me.name, emoji: S.me.emoji, lang: LANG, a: meAuto() ? 1 : 0, cc: S.cc || '', seen: Date.now() }, meCard())); connectedClients().forEach(c => { try { c.publish(LNS + 'u/' + S.dev, b, { qos: 0, retain: true }); } catch (e) {} }); }
 function userGot(dev, str) { if (!dev || dev === S.dev || !str) return; try { const m = JSON.parse(str); USERS.set(dev, { dev, name: String(m.name || '?').slice(0, 16), emoji: String(m.emoji || '🙂').slice(0, 4), seen: +m.seen || 0, lang: m.lang, a: !!m.a, cc: ccOk(m.cc), g: m.g === 'm' || m.g === 'f' ? m.g : '', tz: String(m.tz || '').slice(0, 40), dv: m.dv === 'd' ? 'd' : m.dv === 'm' ? 'm' : '', since: +m.since || 0, gp: +m.gp || 0, nl: String(m.nl || '').slice(0, 12), ph: typeof m.ph === 'string' && m.ph.startsWith('data:image/jpeg;base64,') && m.ph.length < 30000 ? m.ph : '', del: !!m.del }); if ($('usersSheet') && !$('usersSheet').classList.contains('hidden')) renderUsers(); } catch (e) {} }
 setInterval(() => { if (started) userPub(); }, 5 * 60000);
 function agoText(ts) { const d = Math.max(0, Date.now() - ts) / 60000; if (d < 2) return tr('только что', 'just now'); if (d < 60) return tr(`${Math.round(d)} мин назад`, `${Math.round(d)} min ago`); if (d < 1440) return tr(`${Math.round(d / 60)} ч назад`, `${Math.round(d / 60)} h ago`); return tr(`${Math.round(d / 1440)} дн назад`, `${Math.round(d / 1440)} d ago`); }
@@ -20617,7 +20626,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202611094900';
+const APP_VERSION = '202611095000';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
