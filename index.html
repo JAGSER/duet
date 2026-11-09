@@ -18697,7 +18697,7 @@ function startNet() {
         will: { topic: topicP(S.dev), payload: '', retain: true, qos: 0 } });
     } catch (e) { return { url, connected: false, end() {}, publish() {} }; }
     c.url = url;
-    c.on('connect', () => { c.subscribe([NS + S.pair.id + '/p/+', topicM(S.dev), ...lobbyTopics()], { qos: 0 }); if (LOB.on) LOB.subAt = Date.now(); if (started) setTimeout(lobbyPub, 300); try { c.publish(topicP(S.dev), presencePayload(), { qos: 0, retain: true }); } catch (e) {} renderNet(); });
+    c.on('connect', () => { c.subscribe([NS + S.pair.id + '/p/+', topicM(S.dev), ...lobbyTopics()], { qos: 0 }); LOB.subAt = Date.now(); if (started) setTimeout(lobbyPub, 300); try { c.publish(topicP(S.dev), presencePayload(), { qos: 0, retain: true }); } catch (e) {} renderNet(); });
     ['close', 'offline', 'error', 'reconnect'].forEach(ev => c.on(ev, () => renderNet()));
     c.on('message', (topic, buf) => onWire(topic, buf ? buf.toString() : ''));
     return c;
@@ -20123,7 +20123,8 @@ function lobbyWire(topic, str) {
     let m; try { m = JSON.parse(str); } catch (e) { return; }
     if (m.ts && Math.abs(Date.now() - m.ts) > 30 * 60000) { LOB.peers.delete(dev); return; } // only drop very old retained ghosts (phone clocks may differ)
     const prev = LOB.peers.get(dev); // a retained doc right after subscribing may be someone who already left: count them once they announce again
-    LOB.peers.set(dev, { live: !!(prev && prev.live) || !!prev || Date.now() - (LOB.subAt || 0) > 3000, dev, name: String(m.name || '?').slice(0, 16), emoji: String(m.emoji || '🙂').slice(0, 4), st: m.st, seen: Date.now(), ts: m.ts || Date.now(), lang: m.lang });
+    const fresh = !m.ts || Math.abs(Date.now() - m.ts) < 120000; // a doc older than 2 minutes is someone who already closed the site
+    LOB.peers.set(dev, { live: fresh && (!!(prev && prev.live) || !!prev || Date.now() - (LOB.subAt || 0) > 3000), dev, name: String(m.name || '?').slice(0, 16), emoji: String(m.emoji || '🙂').slice(0, 4), st: m.st, seen: Date.now(), ts: m.ts || Date.now(), lang: m.lang });
     const now1 = LOB.peers.get(dev); if (now1.live && !(prev && prev.live) && Date.now() - (LOB.subAt || 0) > 6000) toast(`👋 ${tr('На сайт зашёл', 'Someone joined')} ${now1.emoji} ${now1.name}`, 2500);
     renderLobby(); return;
   }
@@ -20318,7 +20319,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202611091800';
+const APP_VERSION = '202611091900';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
