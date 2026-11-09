@@ -20326,8 +20326,8 @@ renderGrid = wrapFn('renderGrid', () => recDecorate());
   } catch (e) {}
   return om && om(kind, info);
 }; }
-/* ---- the evening game hour: everyone gathers at the same time (18:00 UTC = 21:00 Moscow) ---- */
-const PH_UTC = 18;
+/* ---- the evening game hour: everyone gathers at the same time (14:00 UTC: the busiest hour by Umami) ---- */
+const PH_UTC = 14;
 function playHourText() {
   const n = new Date(), t = new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate(), PH_UTC));
   const loc = t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -20466,7 +20466,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202611093000';
+const APP_VERSION = '202611093100';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
