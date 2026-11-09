@@ -18762,7 +18762,7 @@ window.addEventListener('pagehide', () => { try { send({ t: 'bye' }); publishPre
 function setOnline(v) {
   if (online === v) return; online = v;
   if (v && LOB.match) lobbyArrived();
-  if (v) { lastSeen = Date.now(); sendHello(); if (isA() || (localStream && outTracks().length)) ensurePC(); checkPending(); tune(523, 659, 784); vibrate(80); toast(ptEmoji() + ' ' + T.cameOnline(ptName())); }
+  if (v) { lastSeen = Date.now(); sendHello(); if (isA() || (localStream && outTracks().length)) ensurePC(); checkPending(); tune(523, 659, 784); vibrate(80); if (!LOB.match) toast(ptEmoji() + ' ' + T.cameOnline(ptName())); }
   else { closePC(); if (LOB.match) setTimeout(() => { if (LOB.match && !online) { toast(tr('Соперник ушёл — ищем нового', 'Opponent left — finding a new one')); leaveMatch(true); } }, 6000); if (gameId) { closeGame(true); toast(T.lost); } else if (Arcade.current() && arcNet) { arcClose(); toast(T.lost); } else toast(T.wentOffline(ptName())); }
   renderStatus(); renderVideo(); renderGrid(); renderNet();
 }
@@ -20155,7 +20155,7 @@ setInterval(() => {
   if (!LOB.on) { for (const [d, p] of LOB.peers) if (now0() - p.seen > 40000) LOB.peers.delete(d); renderOnline(); return; }
   if (LOB.searching && !LOB.match && online) { lobbyStop(); return; } // the partner came: stop searching
   const now = Date.now();
-  if (LOB.searching && !LOB.botHint && now - (LOB.since || now) > 5000 && !Arcade.current() && !gameId) { LOB.botHint = true; toast('🤖 ' + tr('Пока ищем, сыграй с ботом. Как только найдётся живой игрок, переключим к нему', 'While we search, play the bot. As soon as a real player shows up, we switch you to them'), 5000); }
+  
   if (now - LOB.lastPub > 12000) lobbyPub();
   for (const [d, p] of LOB.peers) if (now - p.seen > 40000) LOB.peers.delete(d);
   for (const [d, t] of LOB.skip) if (now - t > 30000) LOB.skip.delete(d);
@@ -20180,7 +20180,7 @@ function enterMatch(room, peer) {
   LOB.match = { room, dev: peer.dev, name: peer.name, emoji: peer.emoji };
   S.pair = { id: 'R' + room.toUpperCase() }; S.partner = { name: peer.name, emoji: peer.emoji }; Arcade.partnerLang = peer.lang;
   lobbyPub(); setTimeout(netReset, 600); renderLobby(); // let the ok/presence messages leave before reconnecting
-  tune(523, 784, 1046); toast(`🎲 ${tr('Нашёлся соперник', 'Opponent found')}: ${peer.emoji} ${peer.name}`, 3000);
+  tune(523, 784, 1046);
 }
 function leaveMatch(next) {
   if (!LOB.match) return;
@@ -20228,7 +20228,7 @@ demoV.muted = true; demoV.setAttribute('playsinline', ''); demoV.setAttribute('m
 const demoBg = h('video', { className: 'demoBg', playsInline: true, muted: true }); demoBg.muted = true; demoBg.setAttribute('playsinline', '');
 const demoBox = h('div', { id: 'demoBox', className: 'hidden' }, demoBg, demoV, h('span', { className: 'demoTag', id: 'demoTag' }), h('div', { className: 'demoCap', id: 'demoCap' }));
 $('stage').insertBefore(demoBox, $('localV'));
-document.head.append(h('style', {}, '.stage.demo .ph{display:none}#demoBox{position:absolute;inset:0;z-index:2;background:#24124f}#demoBox video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}#demoBox .demoBg{object-fit:cover;filter:blur(18px) brightness(.7);transform:scale(1.15)}.demoTag{position:absolute;top:8px;left:8px;z-index:2;background:rgba(0,0,0,.45);color:#fff;font-size:11px;font-weight:800;padding:3px 8px;border-radius:9px;letter-spacing:.5px;text-transform:uppercase}.demoCap{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);z-index:2;background:rgba(20,0,50,.6);color:#fff;font-size:14px;font-weight:800;padding:7px 14px;border-radius:14px;white-space:nowrap;backdrop-filter:blur(6px)}'));
+document.head.append(h('style', {}, '.toast{transform:translateX(-50%) translateY(calc(-100% - 80px))!important;opacity:0;pointer-events:none;transition:transform .3s,opacity .3s}.toast.show{transform:translateX(-50%) translateY(0)!important;opacity:1}.stage.demo .ph{display:none}#demoBox{position:absolute;inset:0;z-index:2;background:#24124f}#demoBox video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}#demoBox .demoBg{object-fit:cover;filter:blur(18px) brightness(.7);transform:scale(1.15)}.demoTag{position:absolute;top:8px;left:8px;z-index:2;background:rgba(0,0,0,.45);color:#fff;font-size:11px;font-weight:800;padding:3px 8px;border-radius:9px;letter-spacing:.5px;text-transform:uppercase}.demoCap{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);z-index:2;background:rgba(20,0,50,.6);color:#fff;font-size:14px;font-weight:800;padding:7px 14px;border-radius:14px;white-space:nowrap;backdrop-filter:blur(6px)}'));
 const demoUnseen = () => { const seen = S.demoSeen || []; const a = []; for (let i = 0; i < DEMO_N; i++) if (!seen.includes(i + 1)) a.push(i); return a; }; // a clip is shown to a player only once, ever
 function demoNext() { const un = demoUnseen(); if (!un.length) { demoLeft = 0; return; } demoI = un[Math.floor(Math.random() * un.length)]; S.demoSeen = (S.demoSeen || []).concat(demoI + 1); save(); demoV.src = demoBg.src = 'demo' + (demoI + 1) + '.mp4?v=62'; demoV.play().catch(() => {}); demoBg.play().catch(() => {}); }
 demoV.addEventListener('ended', () => { if (!demoOn) return; if (--demoLeft > 0 && demoUnseen().length) demoNext(); else { demoOn = false; demoBox.classList.add('hidden'); $('stage').classList.remove('demo'); demoBg.pause(); } });
@@ -20253,7 +20253,6 @@ function lobbyArrived() {
   if (n) { setTimeout(() => { if (online && LOB.match === m && !Arcade.current()) openArc(n); }, 1200); return; } // was playing: carry on with the real player
   if (Arcade.current() || gameId || W.open) return;
   $('stage').scrollIntoView({ behavior: 'smooth', block: 'center' });
-  toast(`🎉 ${tr('Подключился игрок', 'A player joined')}: ${m.emoji} ${m.name}`, 4000);
 }
 // call diagnostics while matched with a random player (no personal data): lets us see why sound or video is missing
 setInterval(() => {
@@ -20319,7 +20318,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202611092000';
+const APP_VERSION = '202611092100';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
