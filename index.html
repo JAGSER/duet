@@ -20096,7 +20096,7 @@ $('installSheet').onclick = e => { if (e.target === $('installSheet')) $('instal
    Strangers never see/hear you unless you press «Показать себя». */
 const LNS = NS + 'lobby/';
 const LOB = { on: false, searching: false, peers: new Map(), skip: new Map(), inviting: null, match: null, saved: null, showCam: false, lastPub: 0 };
-function lobbyTopics() { return S.dev ? [LNS + 'p/+', LNS + 'm/' + S.dev, LNS + 'hi', LNS + 'rec/+'] : []; }
+function lobbyTopics() { return S.dev ? [LNS + 'p/+', LNS + 'm/' + S.dev, LNS + 'hi', LNS + 'rec/+', LNS + 'u/+', LNS + 'box/' + S.dev + '/+'] : []; }
 function lobbyPub(clear) {
   const body = clear ? '' : JSON.stringify({ d: S.dev, name: S.me.name, emoji: S.me.emoji, lang: LANG, st: LOB.searching ? 'free' : 'busy', ts: Date.now() });
   connectedClients().forEach(c => { try { c.publish(LNS + 'p/' + S.dev, body, { qos: 0, retain: true }); } catch (e) {} });
@@ -20117,6 +20117,8 @@ function lobbyStop() { LOB.searching = false; LOB.inviting = null; if (!LOB.matc
 function lobbyWire(topic, str) {
   const rest = topic.slice(LNS.length).split('/');
   if (rest[0] === 'rec') { recGot(rest[1], str); return; }
+  if (rest[0] === 'u') { userGot(rest[1], str); return; }
+  if (rest[0] === 'box') { if (rest[1] === S.dev) boxGot(topic, str); return; }
   if (rest[0] === 'hi') { if (str !== S.dev && started) setTimeout(lobbyPub, 200 + Math.random() * 600); return; }
   if (rest[0] === 'p') {
     const dev = rest[1]; if (!dev || dev === S.dev) return;
@@ -20145,7 +20147,9 @@ function lobbyWire(topic, str) {
     if (LOB.inviting && LOB.inviting.room === m.room && !LOB.match) enterMatch(m.room, peer);
     else lobbySend(m.f, { t: 'bye', room: m.room });
   } else if (m.t === 'no') {
-    if (LOB.inviting && LOB.inviting.room === m.room) { LOB.skip.set(m.f, Date.now()); LOB.inviting = null; }
+    if (LOB.inviting && LOB.inviting.room === m.room) { if (LOB.inviting.manual) toast(`${peer.emoji} ${peer.name} ${tr('сейчас не может', 'can\'t play right now')}`, 2500); LOB.skip.set(m.f, Date.now()); LOB.inviting = null; }
+  } else if (m.t === 'call') {
+    if (!(S.blocked || []).includes(m.f) && !LOB.match) callBar(peer, m.room); else lobbySend(m.f, { t: 'no', room: m.room });
   } else if (m.t === 'bye') {
     if (LOB.match && LOB.match.room === m.room) { toast(tr('Соперник ушёл', 'Your opponent left')); leaveMatch(true); }
   }
@@ -20160,7 +20164,7 @@ setInterval(() => {
   if (now - LOB.lastPub > 12000) lobbyPub();
   for (const [d, p] of LOB.peers) if (now - p.seen > 40000) LOB.peers.delete(d);
   for (const [d, t] of LOB.skip) if (now - t > 30000) LOB.skip.delete(d);
-  if (LOB.inviting && now - LOB.inviting.t0 > 3000) { LOB.skip.set(LOB.inviting.to, now); LOB.inviting = null; }
+  if (LOB.inviting && now - LOB.inviting.t0 > (LOB.inviting.manual ? 60000 : 3000)) { LOB.skip.set(LOB.inviting.to, now); LOB.inviting = null; }
   if (LOB.searching && !LOB.match && !LOB.autoBot && now - (LOB.since || now) > 10000) { LOB.autoBot = true; if (!Arcade.current() && !gameId && !W.open && document.visibilityState === 'visible' && !document.querySelector('.sheet:not(.hidden)')) { playBotWhileWaiting(); openArc(5); } }
   if (LOB.searching && !LOB.inviting && !LOB.match) {
     const free = [...LOB.peers.values()].filter(p => p.live && p.st === 'free' && !LOB.skip.has(p.dev));
@@ -20277,9 +20281,9 @@ function renderOnline() {
   const live = [...LOB.peers.values()].filter(p => p.live);
   if (!started) { onlineBar.textContent = ''; return; }
   const names = live.map(p => `${p.emoji} ${p.name}${p.st === 'free' ? ' 🔍' : ''}`);
-  onlineBar.innerHTML = ''; onlineBar.append(h('b', {}, `🟢 ${tr('Сейчас на сайте', 'Online now')}: ${live.length + 1}`), document.createTextNode(' · ' + [tr('ты', 'you')].concat(names).join(', ')), h('div', { className: 'phour' }, playHourText()));
+  onlineBar.innerHTML = ''; onlineBar.append(h('b', {}, `🟢 ${tr('Сейчас на сайте', 'Online now')}: ${live.length + 1}`), document.createTextNode(' · ' + [tr('ты', 'you')].concat(names).join(', ')), h('div', { className: 'phour' }, playHourText())); renderUsersBtn();
 }
-function presenceStart() { lobbySubscribe(); lobbyPub(); setTimeout(() => connectedClients().forEach(c => { try { c.publish(LNS + 'hi', S.dev, { qos: 0 }); } catch (e) {} }), 400); }
+function presenceStart() { lobbySubscribe(); lobbyPub(); userPub(); setTimeout(askName, 1500); setTimeout(() => connectedClients().forEach(c => { try { c.publish(LNS + 'hi', S.dev, { qos: 0 }); } catch (e) {} }), 400); }
 addEventListener('pagehide', () => { try { lobbyPub(true); } catch (e) {} });
 /* ---- tab in the background: blink the title (and a system notification if allowed) when a player is found ---- */
 function attention(msg) {
@@ -20332,6 +20336,97 @@ function playHourText() {
   const hh = Math.floor(d / 3600000), mm = Math.floor(d % 3600000 / 60000);
   return '⏰ ' + tr(`Каждый день в ${loc} все собираются играть · через ${hh ? hh + ' ч ' : ''}${mm} мин`, `Every day at ${loc} everyone meets to play · in ${hh ? hh + 'h ' : ''}${mm}m`);
 }
+/* ================= players directory: everyone who ever came, kept on the relay; call to play or write a message ================= */
+const USERS = new Map();
+function userPub() { if (!S.dev || !S.me) return; const b = JSON.stringify({ name: S.me.name, emoji: S.me.emoji, lang: LANG, seen: Date.now() }); connectedClients().forEach(c => { try { c.publish(LNS + 'u/' + S.dev, b, { qos: 0, retain: true }); } catch (e) {} }); }
+function userGot(dev, str) { if (!dev || dev === S.dev || !str) return; try { const m = JSON.parse(str); USERS.set(dev, { dev, name: String(m.name || '?').slice(0, 16), emoji: String(m.emoji || '🙂').slice(0, 4), seen: +m.seen || 0, lang: m.lang }); if ($('usersSheet') && !$('usersSheet').classList.contains('hidden')) renderUsers(); } catch (e) {} }
+setInterval(() => { if (started) userPub(); }, 5 * 60000);
+function agoText(ts) { const d = Math.max(0, Date.now() - ts) / 60000; if (d < 2) return tr('только что', 'just now'); if (d < 60) return tr(`${Math.round(d)} мин назад`, `${Math.round(d)} min ago`); if (d < 1440) return tr(`${Math.round(d / 60)} ч назад`, `${Math.round(d / 60)} h ago`); return tr(`${Math.round(d / 1440)} дн назад`, `${Math.round(d / 1440)} d ago`); }
+function isOnlineDev(dev) { const p = LOB.peers.get(dev); return !!(p && p.live); }
+// --- messages: a retained doc per message in the recipient's box, so it waits until they come back ---
+function boxSend(to, body) { const id = Date.now().toString(36) + rid(4); const w = JSON.stringify(Object.assign({ f: S.dev, name: S.me.name, emoji: S.me.emoji, ts: Date.now() }, body)); connectedClients().forEach(c => { try { c.publish(LNS + 'box/' + to + '/' + id, w, { qos: 0, retain: true }); } catch (e) {} }); }
+function boxGot(topic, str) {
+  if (!str) return; let m; try { m = JSON.parse(str); } catch (e) { return; }
+  // take it out of the box (every relay keeps its own copy)
+  connectedClients().forEach(c => { try { c.publish(topic, '', { qos: 0, retain: true }); } catch (e) {} });
+  if (!m || !m.f || m.f === S.dev || (S.blocked || []).includes(m.f)) return;
+  const id = topic.split('/').pop(); S.inbox = S.inbox || [];
+  if (S.inbox.some(x => x.id === id)) return;
+  S.inbox.push({ id, f: m.f, name: String(m.name || '?').slice(0, 16), emoji: String(m.emoji || '🙂').slice(0, 4), text: String(m.text || '').slice(0, 300), call: m.t === 'call', ts: m.ts || Date.now(), mine: false, read: false });
+  S.inbox = S.inbox.slice(-150); save(); renderUsersBtn();
+  toast(m.t === 'call' ? `🎮 ${m.emoji} ${m.name} ${tr('зовёт играть', 'invites you to play')}` : `💬 ${m.emoji} ${m.name}: ${String(m.text || '').slice(0, 60)}`, 3500);
+  attention(m.t === 'call' ? '🎮 ' + tr('Тебя зовут играть', 'Someone invites you to play') : '💬 ' + tr('Новое сообщение', 'New message'));
+  if ($('usersSheet') && !$('usersSheet').classList.contains('hidden')) renderUsers();
+}
+// --- call to play: live invite if they are online (they accept), otherwise a message that waits in their box ---
+function callToPlay(u) {
+  if (isOnlineDev(u.dev)) { const room = rid(8); LOB.inviting = { to: u.dev, room, t0: Date.now(), manual: true }; lobbySend(u.dev, { t: 'call', room }); toast('🎮 ' + tr(`Зовём ${u.name}…`, `Inviting ${u.name}…`), 2500); }
+  else { boxSend(u.dev, { t: 'call', text: tr('Зовёт сыграть в Дуэт', 'Invites you to play Duet') }); toast('📨 ' + tr(`${u.name} сейчас нет, приглашение дождётся`, `${u.name} is away, the invite will wait`), 3000); }
+  inboxAdd(u, tr('🎮 Позвал(а) играть', '🎮 Invited to play'));
+}
+function inboxAdd(u, text) { S.inbox = S.inbox || []; S.inbox.push({ id: 'me' + Date.now(), f: u.dev, name: u.name, emoji: u.emoji, text, ts: Date.now(), mine: true, read: true }); S.inbox = S.inbox.slice(-150); save(); }
+function callBar(peer, room) {
+  const old = $('callBar'); if (old) old.remove();
+  const bar = h('div', { id: 'callBar', className: 'lobbybar match' }, h('span', {}, `🎮 ${peer.emoji} ${peer.name} ${tr('зовёт играть', 'invites you to play')}`),
+    h('div', { className: 'lbtns' }, h('button', { className: 'btn y', on: { click: () => { bar.remove(); LOB.inviting = null; lobbySend(peer.dev, { t: 'ok', room }); enterMatch(room, peer); } } }, tr('Играть', 'Play')), h('button', { className: 'btn g', on: { click: () => { bar.remove(); lobbySend(peer.dev, { t: 'no', room }); } } }, tr('Нет', 'No'))));
+  const lb = $('lobbyBar'); if (lb) lb.before(bar); else document.body.append(bar);
+  bar.scrollIntoView({ behavior: 'smooth', block: 'center' }); tune(523, 659); attention('🎮 ' + tr('Тебя зовут играть', 'Someone invites you to play'));
+  setTimeout(() => { if (bar.isConnected) bar.remove(); }, 60000);
+}
+// --- the sheet: all players, online first ---
+function usersSheet() {
+  if ($('usersSheet')) return;
+  document.body.append(h('div', { className: 'sheet hidden', id: 'usersSheet', on: { click: e => { if (e.target.id === 'usersSheet') $('usersSheet').classList.add('hidden'); } } },
+    h('div', { className: 'card', style: 'max-height:86vh;overflow:auto' },
+      h('div', { className: 'ghead' }, h('h2', { id: 'usersTitle' }), h('button', { className: 'btn g', type: 'button', style: 'padding:10px 14px', on: { click: () => $('usersSheet').classList.add('hidden') } }, '✕')),
+      h('div', { id: 'usersBody' }))));
+  document.head.append(h('style', {}, '.urow{display:flex;align-items:center;gap:8px;padding:9px 4px;border-bottom:1px solid #eee6ff}.urow .un{flex:1;min-width:0}.urow .un b{display:block;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.urow .un small{color:var(--muted);font-weight:700;font-size:12px}.urow .btn{padding:8px 10px;font-size:14px}.udot{width:9px;height:9px;border-radius:50%;background:#c9c0e0;flex:none}.udot.on{background:#2ecc71}.umsg{font-size:13px;padding:6px 4px;border-bottom:1px dashed #eee6ff}.umsg.mine{color:var(--muted)}#bUsers{border:0;border-radius:12px;padding:5px 10px;font:inherit;font-size:12px;font-weight:800;cursor:pointer;background:rgba(255,255,255,.25);color:#fff;margin-left:6px}'));
+}
+function openUsers(focus) { usersSheet(); $('usersSheet').classList.remove('hidden'); renderUsers(focus); }
+function renderUsers(focus) {
+  const body = $('usersBody'); if (!body) return; $('usersTitle').textContent = '👥 ' + tr('Игроки', 'Players');
+  body.innerHTML = '';
+  // a conversation with one player
+  if (focus) {
+    const u = USERS.get(focus) || (S.inbox || []).filter(x => x.f === focus).map(x => ({ dev: x.f, name: x.name, emoji: x.emoji }))[0]; if (!u) return;
+    (S.inbox || []).forEach(x => { if (x.f === focus && !x.mine) x.read = true; }); save(); renderUsersBtn();
+    body.append(h('button', { className: 'btn g', type: 'button', style: 'margin-bottom:8px', on: { click: () => renderUsers() } }, '← ' + tr('Все игроки', 'All players')),
+      h('div', { style: 'font-weight:900;font-size:17px;margin:4px 0 8px' }, `${u.emoji} ${u.name}`));
+    (S.inbox || []).filter(x => x.f === focus).slice(-40).forEach(x => body.append(h('div', { className: 'umsg' + (x.mine ? ' mine' : '') }, (x.mine ? tr('Ты', 'You') : x.name) + ': ' + (x.call && !x.mine ? '🎮 ' + tr('зовёт играть', 'invites you to play') : x.text))));
+    const inp = h('input', { type: 'text', maxLength: 300, placeholder: tr('Сообщение…', 'Message…'), style: 'flex:1;min-width:0;font:inherit;padding:10px 12px;border-radius:12px;border:2px solid #e3dbff' });
+    const sendIt = () => { const t = inp.value.trim(); if (!t) return; boxSend(u.dev, { t: 'msg', text: t }); inboxAdd(u, t); inp.value = ''; renderUsers(focus); };
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') sendIt(); });
+    body.append(h('div', { style: 'display:flex;gap:8px;margin-top:10px' }, inp, h('button', { className: 'btn y', type: 'button', on: { click: sendIt } }, '➤')),
+      h('div', { style: 'display:flex;gap:8px;margin-top:8px' }, h('button', { className: 'btn c', type: 'button', on: { click: () => callToPlay(u) } }, '🎮 ' + tr('Позвать играть', 'Invite to play')),
+        h('button', { className: 'btn g', type: 'button', on: { click: () => { S.blocked = (S.blocked || []).concat(u.dev); S.inbox = (S.inbox || []).filter(x => x.f !== u.dev); save(); renderUsers(); renderUsersBtn(); } } }, '🚫 ' + tr('Заблокировать', 'Block'))));
+    setTimeout(() => inp.focus(), 50); return;
+  }
+  const blocked = S.blocked || [];
+  const list = [...USERS.values()].filter(u => !blocked.includes(u.dev)).map(u => Object.assign({}, u, { on: isOnlineDev(u.dev) })).sort((a, b) => (b.on - a.on) || (b.seen - a.seen)).slice(0, 200);
+  const unread = d => (S.inbox || []).filter(x => x.f === d && !x.mine && !x.read).length;
+  if (!list.length) body.append(h('p', { className: 'small' }, tr('Пока здесь пусто. Как только кто-то зайдёт на сайт, он появится в списке.', 'Nobody here yet. Everyone who visits the site shows up here.')));
+  list.forEach(u => { const n = unread(u.dev);
+    body.append(h('div', { className: 'urow' }, h('i', { className: 'udot' + (u.on ? ' on' : '') }),
+      h('div', { className: 'un' }, h('b', {}, `${u.emoji} ${u.name}`), h('small', {}, u.on ? tr('на сайте', 'online') : tr('был(а) ', 'seen ') + agoText(u.seen))),
+      h('button', { className: 'btn c', type: 'button', title: tr('Позвать играть', 'Invite to play'), on: { click: () => callToPlay(u) } }, '🎮'),
+      h('button', { className: 'btn g', type: 'button', title: tr('Написать', 'Message'), on: { click: () => renderUsers(u.dev) } }, '💬' + (n ? ' ' + n : '')))); });
+}
+function renderUsersBtn() {
+  const bar = $('onlineBar'); if (!bar) return; let b = $('bUsers');
+  const n = (S.inbox || []).filter(x => !x.mine && !x.read).length;
+  if (!b) { b = h('button', { id: 'bUsers', type: 'button', on: { click: () => openUsers() } }); }
+  b.textContent = '👥 ' + tr('Все игроки', 'All players') + (n ? ` · 💬 ${n}` : '');
+  const first = bar.firstChild; if (b.parentNode !== bar) { if (first && first.nextSibling) bar.insertBefore(b, first.nextSibling); else bar.append(b); }
+}
+// --- name: newcomers get «Игрок 123», a small bar asks for a real name (can be skipped) ---
+function askName() {
+  if (S.nameAsked || !/^(Игрок|Player) \d+$/.test(S.me.name) || $('nameBar')) return;
+  const inp = h('input', { type: 'text', maxLength: 16, placeholder: tr('Как тебя зовут?', 'What\'s your name?'), style: 'flex:1 1 140px;min-width:0;font:inherit;padding:9px 12px;border-radius:12px;border:2px solid #e3dbff' });
+  const done = save1 => { const v = inp.value.trim(); if (save1 && v) { S.me.name = v.slice(0, 16); try { renderStatus(); } catch (e) {} lobbyPub(); userPub(); } S.nameAsked = true; save(); bar.remove(); };
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') done(true); });
+  const bar = h('div', { id: 'nameBar', className: 'lobbybar' }, h('span', {}, '👋 ' + tr('Как тебя зовут? Так тебя увидят другие игроки', 'What\'s your name? Other players will see it')), h('div', { className: 'lbtns', style: 'display:flex;gap:8px;flex:1 1 100%' }, inp, h('button', { className: 'btn y', type: 'button', on: { click: () => done(true) } }, 'OK'), h('button', { className: 'btn g', type: 'button', on: { click: () => done(false) } }, '✕')));
+  const lb = $('lobbyBar'); if (lb) lb.before(bar);
+}
 $('bFind').onclick = () => { lobbyStart(); toast('🔍 ' + tr('Ищем случайного игрока…', 'Looking for a random player…')); };
 
 /* ---------------- translations for the newer UI ---------------- */
@@ -20371,7 +20466,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202611092700';
+const APP_VERSION = '202611092800';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
