@@ -18647,8 +18647,9 @@ function show(id) { ['scrSetup', 'scrInvite', 'scrMain'].forEach(s => $(s).class
 function emojiPicker(el, cur, onPick) { el.innerHTML = ''; EMOJIS.forEach(e => el.append(h('button', { className: e === cur ? 'on' : '', textContent: e, type: 'button', on: { click: () => { [...el.children].forEach(b => b.classList.remove('on')); el.children[EMOJIS.indexOf(e)].classList.add('on'); onPick(e); } } }))); }
 
 let pickEmoji = EMOJIS[rnd(EMOJIS.length)];
+let firstVisit = false; // the install sheet waits until the next visit, so a newcomer sees the app first
 // first visit without an invite link: straight in, camera on and the search for a player running
-function autoGuest() { let id = ''; for (let i = 0; i < 8; i++) id += ALPH[rnd(ALPH.length)]; S = { me: { name: tr('Игрок', 'Player') + ' ' + (100 + rnd(900)), emoji: pickEmoji }, pair: { id }, partner: null, autoRandom: true }; save(); pinUrl(); startMain(); }
+function autoGuest() { firstVisit = true; let id = ''; for (let i = 0; i < 8; i++) id += ALPH[rnd(ALPH.length)]; S = { me: { name: tr('Игрок', 'Player') + ' ' + (100 + rnd(900)), emoji: pickEmoji }, pair: { id }, partner: null, autoRandom: true }; save(); pinUrl(); startMain(); }
 function setupScreen() {
   show('scrSetup');
   emojiPicker($('emojiPick'), pickEmoji, e => pickEmoji = e);
@@ -18696,7 +18697,7 @@ function startNet() {
         will: { topic: topicP(S.dev), payload: '', retain: true, qos: 0 } });
     } catch (e) { return { url, connected: false, end() {}, publish() {} }; }
     c.url = url;
-    c.on('connect', () => { c.subscribe([NS + S.pair.id + '/p/+', topicM(S.dev), ...lobbyTopics()], { qos: 0 }); if (LOB.on) setTimeout(lobbyPub, 300); try { c.publish(topicP(S.dev), presencePayload(), { qos: 0, retain: true }); } catch (e) {} renderNet(); });
+    c.on('connect', () => { c.subscribe([NS + S.pair.id + '/p/+', topicM(S.dev), ...lobbyTopics()], { qos: 0 }); if (LOB.on) LOB.subAt = Date.now(); if (LOB.on) setTimeout(lobbyPub, 300); try { c.publish(topicP(S.dev), presencePayload(), { qos: 0, retain: true }); } catch (e) {} renderNet(); });
     ['close', 'offline', 'error', 'reconnect'].forEach(ev => c.on(ev, () => renderNet()));
     c.on('message', (topic, buf) => onWire(topic, buf ? buf.toString() : ''));
     return c;
@@ -18760,6 +18761,7 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('pagehide', () => { try { send({ t: 'bye' }); publishPresence(false); } catch (e) {} });
 function setOnline(v) {
   if (online === v) return; online = v;
+  if (v && LOB.match) lobbyArrived();
   if (v) { lastSeen = Date.now(); sendHello(); if (isA() || (localStream && outTracks().length)) ensurePC(); checkPending(); tune(523, 659, 784); vibrate(80); toast(ptEmoji() + ' ' + T.cameOnline(ptName())); }
   else { closePC(); if (LOB.match) setTimeout(() => { if (LOB.match && !online) { toast(tr('Соперник ушёл — ищем нового', 'Opponent left — finding a new one')); leaveMatch(true); } }, 6000); if (gameId) { closeGame(true); toast(T.lost); } else if (Arcade.current() && arcNet) { arcClose(); toast(T.lost); } else toast(T.wentOffline(ptName())); }
   renderStatus(); renderVideo(); renderGrid(); renderNet();
@@ -20101,9 +20103,10 @@ function lobbyPub(clear) {
   LOB.lastPub = Date.now();
 }
 function lobbySend(dev, m) { const w = JSON.stringify(Object.assign({ f: S.dev, name: S.me.name, emoji: S.me.emoji, lang: LANG }, m)); connectedClients().forEach(c => { try { c.publish(LNS + 'm/' + dev, w, { qos: 0 }); } catch (e) {} }); }
-function lobbySubscribe() { connectedClients().forEach(c => { try { c.subscribe(lobbyTopics(), { qos: 0 }); } catch (e) {} }); }
+function lobbySubscribe() { LOB.subAt = Date.now(); connectedClients().forEach(c => { try { c.subscribe(lobbyTopics(), { qos: 0 }); } catch (e) {} }); }
 function lobbyStart() {
   if (!S.dev) return;
+  if (!LOB.searching) LOB.since = Date.now();
   LOB.on = true; LOB.searching = true; LOB.inviting = null;
   lobbySubscribe(); lobbyPub(); renderLobby();
   // tell everyone who is already searching to re-announce themselves (retained messages can be missed)
@@ -20119,7 +20122,9 @@ function lobbyWire(topic, str) {
     if (!str) { LOB.peers.delete(dev); renderLobby(); return; }
     let m; try { m = JSON.parse(str); } catch (e) { return; }
     if (m.ts && Math.abs(Date.now() - m.ts) > 30 * 60000) { LOB.peers.delete(dev); return; } // only drop very old retained ghosts (phone clocks may differ)
-    LOB.peers.set(dev, { dev, name: String(m.name || '?').slice(0, 16), emoji: String(m.emoji || '🙂').slice(0, 4), st: m.st, seen: Date.now(), lang: m.lang });
+    const prev = LOB.peers.get(dev); // a retained doc right after subscribing may be someone who already left: count them once they announce again
+    LOB.peers.set(dev, { live: !!(prev && prev.live) || !!prev || Date.now() - (LOB.subAt || 0) > 3000, dev, name: String(m.name || '?').slice(0, 16), emoji: String(m.emoji || '🙂').slice(0, 4), st: m.st, seen: Date.now(), ts: m.ts || Date.now(), lang: m.lang });
+    const now1 = LOB.peers.get(dev); if (now1.live && !(prev && prev.live)) toast(`👋 ${tr('На сайт зашёл', 'Someone joined')} ${now1.emoji} ${now1.name}`, 2500);
     renderLobby(); return;
   }
   if (rest[0] !== 'm' || rest[1] !== S.dev) return;
@@ -20142,12 +20147,13 @@ setInterval(() => {
   if (!started || !LOB.on) return;
   if (LOB.searching && !LOB.match && online) { lobbyStop(); return; } // the partner came: stop searching
   const now = Date.now();
+  if (LOB.searching && !LOB.botHint && now - (LOB.since || now) > 5000 && !Arcade.current() && !gameId) { LOB.botHint = true; toast('🤖 ' + tr('Пока ищем, сыграй с ботом. Как только найдётся живой игрок, переключим к нему', 'While we search, play the bot. As soon as a real player shows up, we switch you to them'), 5000); }
   if (now - LOB.lastPub > 12000) lobbyPub();
   for (const [d, p] of LOB.peers) if (now - p.seen > 40000) LOB.peers.delete(d);
   for (const [d, t] of LOB.skip) if (now - t > 30000) LOB.skip.delete(d);
   if (LOB.inviting && now - LOB.inviting.t0 > 3000) { LOB.skip.set(LOB.inviting.to, now); LOB.inviting = null; }
   if (LOB.searching && !LOB.inviting && !LOB.match) {
-    const free = [...LOB.peers.values()].filter(p => p.st === 'free' && !LOB.skip.has(p.dev));
+    const free = [...LOB.peers.values()].filter(p => p.live && p.st === 'free' && !LOB.skip.has(p.dev));
     const mine = free.filter(p => p.dev > S.dev);
     mine.sort((a, b) => b.seen - a.seen); const fresh = mine.filter(p => now - p.seen < 15000);
     if (mine.length) { const pool = fresh.length ? fresh : mine; const p = pool[Math.floor(Math.random() * pool.length)]; const room = rid(8); LOB.inviting = { to: p.dev, room, t0: now }; lobbySend(p.dev, { t: 'inv', room }); }
@@ -20161,6 +20167,7 @@ function netReset() {
 }
 function enterMatch(room, peer) {
   LOB.searching = false; LOB.inviting = null; LOB.showCam = false;
+  const cur = Arcade.current(); LOB.resume = cur && !cur.soon ? cur.n : null;
   if (!LOB.saved) LOB.saved = { pair: S.pair, partner: S.partner };
   LOB.match = { room, dev: peer.dev, name: peer.name, emoji: peer.emoji };
   S.pair = { id: 'R' + room.toUpperCase() }; S.partner = { name: peer.name, emoji: peer.emoji }; Arcade.partnerLang = peer.lang;
@@ -20186,8 +20193,9 @@ function showMeToStranger() {
   send({ t: 'cam', on: LOB.showCam }); renderLobby();
 }
 function renderLobby() {
+  demoRender();
   const bar = $('lobbyBar'); if (!bar) return;
-  const n = [...LOB.peers.values()].length;
+  const n = [...LOB.peers.values()].filter(p => p.live).length; // only people who are really on the site now
   $('bFind').classList.toggle('hidden', LOB.searching || !!LOB.match);
   if (LOB.match) {
     bar.className = 'lobbybar match';
@@ -20199,9 +20207,43 @@ function renderLobby() {
   } else if (LOB.searching) {
     bar.className = 'lobbybar';
     $('lobbyText').textContent = `🔍 ${tr('Ищем игрока…', 'Looking for a player…')} ${tr('Сейчас на сайте', 'Online now')}: ${n + 1}`;
-    $('lobbyBtns').innerHTML = ''; $('lobbyBtns').append(h('button', { className: 'btn g', on: { click: lobbyStop } }, tr('Отмена', 'Cancel')));
+    $('lobbyBtns').innerHTML = ''; $('lobbyBtns').append(h('button', { className: 'btn y', on: { click: playBotWhileWaiting } }, '🤖 ' + tr('Сыграть с ботом', 'Play the bot')), h('button', { className: 'btn g', on: { click: lobbyStop } }, tr('Отмена', 'Cancel')));
     bar.classList.remove('hidden');
   } else bar.classList.add('hidden');
+}
+
+/* ---- while searching: sample clips in the partner window, bot game, switch when a real player comes ---- */
+const DEMO_N = 1;
+let demoI = Math.floor(Math.random() * DEMO_N), demoOn = false;
+const demoV = h('video', { id: 'demoV', playsInline: true, muted: true, preload: 'auto' });
+demoV.muted = true; demoV.setAttribute('playsinline', ''); demoV.setAttribute('muted', '');
+const demoBg = h('video', { className: 'demoBg', playsInline: true, muted: true }); demoBg.muted = true; demoBg.setAttribute('playsinline', '');
+const demoBox = h('div', { id: 'demoBox', className: 'hidden' }, demoBg, demoV, h('span', { className: 'demoTag', id: 'demoTag' }), h('div', { className: 'demoCap', id: 'demoCap' }));
+$('stage').insertBefore(demoBox, $('localV'));
+document.head.append(h('style', {}, '.stage.demo .ph{display:none}#demoBox{position:absolute;inset:0;z-index:2;background:#24124f}#demoBox video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}#demoBox .demoBg{object-fit:cover;filter:blur(18px) brightness(.7);transform:scale(1.15)}.demoTag{position:absolute;top:8px;left:8px;z-index:2;background:rgba(0,0,0,.45);color:#fff;font-size:11px;font-weight:800;padding:3px 8px;border-radius:9px;letter-spacing:.5px;text-transform:uppercase}.demoCap{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);z-index:2;background:rgba(20,0,50,.6);color:#fff;font-size:14px;font-weight:800;padding:7px 14px;border-radius:14px;white-space:nowrap;backdrop-filter:blur(6px)}'));
+function demoNext() { demoI = (demoI + 1 + Math.floor(Math.random() * (DEMO_N - 1))) % DEMO_N; demoV.src = demoBg.src = 'demo' + (demoI + 1) + '.mp4?v=62'; demoV.play().catch(() => {}); demoBg.play().catch(() => {}); }
+demoV.addEventListener('ended', () => { if (demoOn) demoNext(); });
+demoV.addEventListener('error', () => { if (demoOn) setTimeout(demoNext, 800); });
+function demoRender() {
+  const on = !!(started && LOB.searching && !LOB.match && !online);
+  $('demoTag').textContent = tr('пример', 'sample');
+  $('demoCap').textContent = '🔍 ' + tr('Ищем живого игрока…', 'Looking for a real player…');
+  if (on === demoOn) return;
+  demoOn = on; demoBox.classList.toggle('hidden', !on); $('stage').classList.toggle('demo', on);
+  if (on) demoNext(); else [demoV, demoBg].forEach(v => { v.pause(); v.removeAttribute('src'); v.load(); });
+}
+function playBotWhileWaiting() {
+  S.playMode = 'bot'; S.pending = null; S.gamesOpen = true; save();
+  try { renderGamesBtn(); } catch (e) {} renderGrid();
+  const g = $('arcGrid'); if (g) g.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function lobbyArrived() {
+  const m = LOB.match, n = LOB.resume; LOB.resume = null;
+  if (!LOB.showCam && localStream) setTimeout(() => { if (LOB.match === m && !LOB.showCam) showMeToStranger(); }, 800); // players see and hear each other right away; «Скрыть меня» turns it off
+  if (n) { setTimeout(() => { if (online && LOB.match === m && !Arcade.current()) openArc(n); }, 1200); return; } // was playing: carry on with the real player
+  if (Arcade.current() || gameId || W.open) return;
+  $('stage').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  toast(`🎉 ${tr('Подключился игрок', 'A player joined')}: ${m.emoji} ${m.name}`, 4000);
 }
 $('bFind').onclick = () => { lobbyStart(); toast('🔍 ' + tr('Ищем случайного игрока…', 'Looking for a random player…')); };
 
@@ -20224,7 +20266,7 @@ applyExtrasLang();
 /* ---------------- ask to install every launch until it runs from the shortcut ---------------- */
 function maybeAskInstall() {
   const standalone = matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: window-controls-overlay)').matches || navigator.standalone;
-  if (standalone) return;
+  if (standalone || firstVisit) return;
   setTimeout(() => { if (!$('installSheet').classList.contains('hidden') || !$('view').hidden || W.open || ($('skinSheet') && !$('skinSheet').classList.contains('hidden'))) return; openInstall(true); }, 2500);
 }
 
@@ -20242,7 +20284,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202611091200';
+const APP_VERSION = '202611091400';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
