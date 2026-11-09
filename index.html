@@ -20161,7 +20161,7 @@ setInterval(() => {
   for (const [d, p] of LOB.peers) if (now - p.seen > 40000) LOB.peers.delete(d);
   for (const [d, t] of LOB.skip) if (now - t > 30000) LOB.skip.delete(d);
   if (LOB.inviting && now - LOB.inviting.t0 > 3000) { LOB.skip.set(LOB.inviting.to, now); LOB.inviting = null; }
-  if (LOB.searching && !LOB.match && !LOB.autoBot && now - (LOB.since || now) > 10000) { LOB.autoBot = true; if (!Arcade.current() && !gameId && !W.open && document.visibilityState === 'visible' && !document.querySelector('.sheet:not(.hidden)')) { playBotWhileWaiting(); openArc(1); } }
+  if (LOB.searching && !LOB.match && !LOB.autoBot && now - (LOB.since || now) > 10000) { LOB.autoBot = true; if (!Arcade.current() && !gameId && !W.open && document.visibilityState === 'visible' && !document.querySelector('.sheet:not(.hidden)')) { playBotWhileWaiting(); openArc(5); } }
   if (LOB.searching && !LOB.inviting && !LOB.match) {
     const free = [...LOB.peers.values()].filter(p => p.live && p.st === 'free' && !LOB.skip.has(p.dev));
     const mine = free.filter(p => p.dev > S.dev);
@@ -20371,7 +20371,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202611092500';
+const APP_VERSION = '202611092600';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
