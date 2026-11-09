@@ -18649,7 +18649,7 @@ function emojiPicker(el, cur, onPick) { el.innerHTML = ''; EMOJIS.forEach(e => e
 let pickEmoji = EMOJIS[rnd(EMOJIS.length)];
 let firstVisit = false; // the install sheet waits until the next visit, so a newcomer sees the app first
 // first visit without an invite link: straight in, camera on and the search for a player running
-function autoGuest() { firstVisit = true; let id = ''; for (let i = 0; i < 8; i++) id += ALPH[rnd(ALPH.length)]; S = { me: { name: tr('Игрок', 'Player') + ' ' + (100 + rnd(900)), emoji: pickEmoji }, pair: { id }, partner: null, autoRandom: true }; save(); pinUrl(); startMain(); }
+function autoGuest() { firstVisit = true; let id = ''; for (let i = 0; i < 8; i++) id += ALPH[rnd(ALPH.length)]; S = { me: { name: '', emoji: pickEmoji }, pair: { id }, partner: null, autoRandom: true }; S.me.name = S.me.autoName = genNick(); save(); pinUrl(); startMain(); }
 function setupScreen() {
   show('scrSetup');
   emojiPicker($('emojiPick'), pickEmoji, e => pickEmoji = e);
@@ -20098,7 +20098,7 @@ const LNS = NS + 'lobby/';
 const LOB = { on: false, searching: false, peers: new Map(), skip: new Map(), inviting: null, match: null, saved: null, showCam: false, lastPub: 0 };
 function lobbyTopics() { return S.dev ? [LNS + 'p/+', LNS + 'm/' + S.dev, LNS + 'hi', LNS + 'rec/+', LNS + 'u/+', LNS + 'box/' + S.dev + '/+'] : []; }
 function lobbyPub(clear) {
-  const body = clear ? '' : JSON.stringify({ d: S.dev, name: S.me.name, emoji: S.me.emoji, lang: LANG, st: LOB.searching ? 'free' : 'busy', ts: Date.now() });
+  const body = clear ? '' : JSON.stringify({ d: S.dev, name: S.me.name, emoji: S.me.emoji, lang: LANG, a: meAuto() ? 1 : 0, cc: S.cc || '', st: LOB.searching ? 'free' : 'busy', ts: Date.now() });
   connectedClients().forEach(c => { try { c.publish(LNS + 'p/' + S.dev, body, { qos: 0, retain: true }); } catch (e) {} });
   LOB.lastPub = Date.now();
 }
@@ -20127,7 +20127,7 @@ function lobbyWire(topic, str) {
     if (m.ts && Math.abs(Date.now() - m.ts) > 30 * 60000) { LOB.peers.delete(dev); return; } // only drop very old retained ghosts (phone clocks may differ)
     const prev = LOB.peers.get(dev); // a retained doc right after subscribing may be someone who already left: count them once they announce again
     const fresh = !m.ts || Math.abs(Date.now() - m.ts) < 120000; // a doc older than 2 minutes is someone who already closed the site
-    LOB.peers.set(dev, { live: fresh && (!!(prev && prev.live) || !!prev || Date.now() - (LOB.subAt || 0) > 3000), dev, name: String(m.name || '?').slice(0, 16), emoji: String(m.emoji || '🙂').slice(0, 4), st: m.st, seen: Date.now(), ts: m.ts || Date.now(), lang: m.lang });
+    LOB.peers.set(dev, { live: fresh && (!!(prev && prev.live) || !!prev || Date.now() - (LOB.subAt || 0) > 3000), dev, name: String(m.name || '?').slice(0, 16), emoji: String(m.emoji || '🙂').slice(0, 4), st: m.st, seen: Date.now(), ts: m.ts || Date.now(), lang: m.lang, a: !!m.a, cc: ccOk(m.cc) });
     const now1 = LOB.peers.get(dev); if (now1.live && !(prev && prev.live) && Date.now() - (LOB.subAt || 0) > 6000) toast(`👋 ${tr('На сайт зашёл', 'Someone joined')} ${now1.emoji} ${now1.name}`, 2500);
     renderLobby(); return;
   }
@@ -20165,7 +20165,7 @@ setInterval(() => {
   for (const [d, p] of LOB.peers) if (now - p.seen > 40000) LOB.peers.delete(d);
   for (const [d, t] of LOB.skip) if (now - t > 30000) LOB.skip.delete(d);
   if (LOB.inviting && now - LOB.inviting.t0 > (LOB.inviting.manual ? 60000 : 3000)) { LOB.skip.set(LOB.inviting.to, now); LOB.inviting = null; }
-  if (LOB.searching && !LOB.match && !LOB.autoBot && now - (LOB.since || now) > 10000) { LOB.autoBot = true; if (!Arcade.current() && !gameId && !W.open && document.visibilityState === 'visible' && !document.querySelector('.sheet:not(.hidden)')) { playBotWhileWaiting(); openArc(5); } }
+  if (LOB.searching && !LOB.match && !LOB.autoBot && now - (LOB.since || now) > 10000) { LOB.autoBot = true; if (!Arcade.current() && !gameId && !W.open && document.visibilityState === 'visible' && !document.querySelector('.sheet:not(.hidden)')) botCountdown(); }
   if (LOB.searching && !LOB.inviting && !LOB.match) {
     const free = [...LOB.peers.values()].filter(p => p.live && p.st === 'free' && !LOB.skip.has(p.dev));
     const mine = free.filter(p => p.dev > S.dev);
@@ -20280,10 +20280,11 @@ document.head.append(h('style', {}, '#onlineBar{font-size:13px;font-weight:700;c
 function renderOnline() {
   const live = [...LOB.peers.values()].filter(p => p.live);
   if (!started) { onlineBar.textContent = ''; return; }
-  const names = live.map(p => `${p.emoji} ${p.name}${p.st === 'free' ? ' 🔍' : ''}`);
-  onlineBar.innerHTML = ''; onlineBar.append(h('b', {}, `🟢 ${tr('Сейчас на сайте', 'Online now')}: ${live.length + 1}`), document.createTextNode(' · ' + [tr('ты', 'you')].concat(names).join(', ')), h('div', { className: 'phour' }, playHourText())); renderUsersBtn();
+  onlineBar.innerHTML = ''; onlineBar.append(h('b', {}, `🟢 ${tr('Сейчас на сайте', 'Online now')}: ${live.length + 1}`), document.createTextNode(' · ' + tr('ты', 'you')));
+  live.forEach(p => onlineBar.append(document.createTextNode(', '), h('span', { className: p.a ? 'nick' : 'rname' }, `${p.emoji} ${p.name}${p.cc ? ' ' + ccFlag(p.cc) : ''}${p.st === 'free' ? ' 🔍' : ''}`)));
+  onlineBar.append(h('div', { className: 'phour' }, playHourText())); renderUsersBtn();
 }
-function presenceStart() { lobbySubscribe(); lobbyPub(); userPub(); setTimeout(askName, 1500); setTimeout(() => connectedClients().forEach(c => { try { c.publish(LNS + 'hi', S.dev, { qos: 0 }); } catch (e) {} }), 400); }
+function presenceStart() { nickMigrate(); ccFetch(); lobbySubscribe(); lobbyPub(); userPub(); setTimeout(() => askName('time'), 150000); setTimeout(() => connectedClients().forEach(c => { try { c.publish(LNS + 'hi', S.dev, { qos: 0 }); } catch (e) {} }), 400); }
 addEventListener('pagehide', () => { try { lobbyPub(true); } catch (e) {} });
 /* ---- tab in the background: blink the title (and a system notification if allowed) when a player is found ---- */
 function attention(msg) {
@@ -20338,8 +20339,8 @@ function playHourText() {
 }
 /* ================= players directory: everyone who ever came, kept on the relay; call to play or write a message ================= */
 const USERS = new Map();
-function userPub() { if (!S.dev || !S.me) return; const b = JSON.stringify({ name: S.me.name, emoji: S.me.emoji, lang: LANG, seen: Date.now() }); connectedClients().forEach(c => { try { c.publish(LNS + 'u/' + S.dev, b, { qos: 0, retain: true }); } catch (e) {} }); }
-function userGot(dev, str) { if (!dev || dev === S.dev || !str) return; try { const m = JSON.parse(str); USERS.set(dev, { dev, name: String(m.name || '?').slice(0, 16), emoji: String(m.emoji || '🙂').slice(0, 4), seen: +m.seen || 0, lang: m.lang }); if ($('usersSheet') && !$('usersSheet').classList.contains('hidden')) renderUsers(); } catch (e) {} }
+function userPub() { if (!S.dev || !S.me) return; const b = JSON.stringify({ name: S.me.name, emoji: S.me.emoji, lang: LANG, a: meAuto() ? 1 : 0, cc: S.cc || '', seen: Date.now() }); connectedClients().forEach(c => { try { c.publish(LNS + 'u/' + S.dev, b, { qos: 0, retain: true }); } catch (e) {} }); }
+function userGot(dev, str) { if (!dev || dev === S.dev || !str) return; try { const m = JSON.parse(str); USERS.set(dev, { dev, name: String(m.name || '?').slice(0, 16), emoji: String(m.emoji || '🙂').slice(0, 4), seen: +m.seen || 0, lang: m.lang, a: !!m.a, cc: ccOk(m.cc) }); if ($('usersSheet') && !$('usersSheet').classList.contains('hidden')) renderUsers(); } catch (e) {} }
 setInterval(() => { if (started) userPub(); }, 5 * 60000);
 function agoText(ts) { const d = Math.max(0, Date.now() - ts) / 60000; if (d < 2) return tr('только что', 'just now'); if (d < 60) return tr(`${Math.round(d)} мин назад`, `${Math.round(d)} min ago`); if (d < 1440) return tr(`${Math.round(d / 60)} ч назад`, `${Math.round(d / 60)} h ago`); return tr(`${Math.round(d / 1440)} дн назад`, `${Math.round(d / 1440)} d ago`); }
 function isOnlineDev(dev) { const p = LOB.peers.get(dev); return !!(p && p.live); }
@@ -20360,6 +20361,7 @@ function boxGot(topic, str) {
 }
 // --- call to play: live invite if they are online (they accept), otherwise a message that waits in their box ---
 function callToPlay(u) {
+  if (meAuto() && !NAMEQ.call) { NAMEQ.call = true; askName('call', () => callToPlay(u)); return; }
   if (isOnlineDev(u.dev)) { const room = rid(8); LOB.inviting = { to: u.dev, room, t0: Date.now(), manual: true }; lobbySend(u.dev, { t: 'call', room }); toast('🎮 ' + tr(`Зовём ${u.name}…`, `Inviting ${u.name}…`), 2500); }
   else { boxSend(u.dev, { t: 'call', text: tr('Зовёт сыграть в Дуэт', 'Invites you to play Duet') }); toast('📨 ' + tr(`${u.name} сейчас нет, приглашение дождётся`, `${u.name} is away, the invite will wait`), 3000); }
   inboxAdd(u, tr('🎮 Позвал(а) играть', '🎮 Invited to play'));
@@ -20407,7 +20409,7 @@ function renderUsers(focus) {
   if (!list.length) body.append(h('p', { className: 'small' }, tr('Пока здесь пусто. Как только кто-то зайдёт на сайт, он появится в списке.', 'Nobody here yet. Everyone who visits the site shows up here.')));
   list.forEach(u => { const n = unread(u.dev);
     body.append(h('div', { className: 'urow' }, h('i', { className: 'udot' + (u.on ? ' on' : '') }),
-      h('div', { className: 'un' }, h('b', {}, `${u.emoji} ${u.name}`), h('small', {}, u.on ? tr('на сайте', 'online') : tr('был(а) ', 'seen ') + agoText(u.seen))),
+      h('div', { className: 'un' }, h('b', { className: u.a ? 'nick' : '' }, `${u.emoji} ${u.name}`), h('small', {}, [u.cc ? ccFlag(u.cc) + ' ' + ccName(u.cc) : '', u.a ? tr('без имени', 'no name yet') : '', u.on ? tr('на сайте', 'online') : tr('был(а) ', 'seen ') + agoText(u.seen)].filter(Boolean).join(' · '))),
       h('button', { className: 'btn c', type: 'button', title: tr('Позвать играть', 'Invite to play'), on: { click: () => callToPlay(u) } }, '🎮'),
       h('button', { className: 'btn g', type: 'button', title: tr('Написать', 'Message'), on: { click: () => renderUsers(u.dev) } }, '💬' + (n ? ' ' + n : '')))); });
 }
@@ -20419,14 +20421,54 @@ function renderUsersBtn() {
   const first = bar.firstChild; if (b.parentNode !== bar) { if (first && first.nextSibling) bar.insertBefore(b, first.nextSibling); else bar.append(b); }
 }
 // --- name: newcomers get «Игрок 123», a small bar asks for a real name (can be skipped) ---
-function askName() {
-  if (S.nameAsked || !/^(Игрок|Player) \d+$/.test(S.me.name) || $('nameBar')) return;
-  const inp = h('input', { type: 'text', maxLength: 16, placeholder: tr('Как тебя зовут?', 'What\'s your name?'), style: 'flex:1 1 140px;min-width:0;font:inherit;padding:9px 12px;border-radius:12px;border:2px solid #e3dbff' });
-  const done = save1 => { const v = inp.value.trim(); if (save1 && v) { S.me.name = v.slice(0, 16); try { renderStatus(); } catch (e) {} lobbyPub(); userPub(); } S.nameAsked = true; save(); bar.remove(); };
-  inp.addEventListener('keydown', e => { if (e.key === 'Enter') done(true); });
-  const bar = h('div', { id: 'nameBar', className: 'lobbybar' }, h('span', {}, '👋 ' + tr('Как тебя зовут? Так тебя увидят другие игроки', 'What\'s your name? Other players will see it')), h('div', { className: 'lbtns', style: 'display:flex;gap:8px;flex:1 1 100%' }, inp, h('button', { className: 'btn y', type: 'button', on: { click: () => done(true) } }, 'OK'), h('button', { className: 'btn g', type: 'button', on: { click: () => done(false) } }, '✕')));
-  const lb = $('lobbyBar'); if (lb) lb.before(bar);
+const NICK_A = [['Весёлый', 'Happy'], ['Сонный', 'Sleepy'], ['Быстрый', 'Quick'], ['Хитрый', 'Sly'], ['Смелый', 'Brave'], ['Тихий', 'Quiet'], ['Ловкий', 'Nimble'], ['Добрый', 'Kind'], ['Шустрый', 'Zippy'], ['Важный', 'Proud'], ['Мудрый', 'Wise'], ['Бодрый', 'Perky']];
+const NICK_N = [['Енот', 'Raccoon'], ['Тигр', 'Tiger'], ['Кот', 'Cat'], ['Лис', 'Fox'], ['Ёж', 'Hedgehog'], ['Барсук', 'Badger'], ['Волк', 'Wolf'], ['Пингвин', 'Penguin'], ['Хомяк', 'Hamster'], ['Кролик', 'Rabbit'], ['Филин', 'Owl'], ['Бобр', 'Beaver'], ['Лемур', 'Lemur'], ['Жираф', 'Giraffe'], ['Слон', 'Elephant']];
+function genNick() { for (;;) { const a = NICK_A[Math.floor(Math.random() * NICK_A.length)], n = NICK_N[Math.floor(Math.random() * NICK_N.length)]; const v = tr(a[0], a[1]) + ' ' + tr(n[0], n[1]); if (v.length <= 16) return v; } }
+function meAuto() { return !!(S && S.me) && (S.me.name === S.me.autoName || /^(Игрок|Player) \d+$/.test(S.me.name)); }
+// players who still have «Игрок 123» get a nickname (they can change it any time)
+function nickMigrate() { if (S && S.me && /^(Игрок|Player) \d+$/.test(S.me.name)) { S.me.name = S.me.autoName = genNick(); save(); try { renderStatus(); } catch (e) {} } }
+function ccOk(c) { c = String(c || '').toUpperCase(); return /^[A-Z]{2}$/.test(c) ? c : ''; }
+function ccFlag(c) { return c ? String.fromCodePoint(...[...c].map(x => 0x1F1A5 + x.charCodeAt(0))) : ''; }
+function ccName(c) { try { return new Intl.DisplayNames([LANG === 'en' ? 'en' : 'ru'], { type: 'region' }).of(c) || c; } catch (e) { return c; } }
+// country of this visitor (once a day), shown next to the name in the players list
+function ccFetch() {
+  if (S.cc && Date.now() - (S.ccAt || 0) < 86400000) return;
+  const got = c => { c = ccOk(c); if (!c) return false; S.cc = c; S.ccAt = Date.now(); save(); try { lobbyPub(); userPub(); } catch (e) {} return true; };
+  fetch('https://api.country.is/').then(r => r.json()).then(j => { if (!got(j.country)) throw 0; })
+    .catch(() => fetch('https://get.geojs.io/v1/ip/country.json').then(r => r.json()).then(j => got(j.country)).catch(() => {}));
 }
+// --- name: newcomers get a nickname; a real name is asked at good moments, at most once per visit ---
+const NAMEQ = { shown: false, call: false };
+function askName(why, after) {
+  if (!meAuto() || $('nameBar')) { after && after(); return; }
+  if (why !== 'call' && NAMEQ.shown) return;
+  NAMEQ.shown = true;
+  const msg = why === 'win' ? '🏆 ' + tr('Ты выиграл! Как тебя подписать в рекордах?', 'You won! What name should the records show?')
+    : why === 'call' ? '👋 ' + tr('Напиши имя, чтобы тебя узнали', 'Add your name so they know who you are')
+    : '👋 ' + tr('Как тебя зовут? Так тебя увидят другие игроки', 'What\'s your name? Other players will see it');
+  const inp = h('input', { type: 'text', maxLength: 16, placeholder: tr('Твоё имя', 'Your name'), style: 'flex:1 1 140px;min-width:0;font:inherit;padding:9px 12px;border-radius:12px;border:2px solid #e3dbff' });
+  const done = save1 => { const v = inp.value.trim(); if (save1 && v) { S.me.name = v.slice(0, 16); save(); try { renderStatus(); } catch (e) {} lobbyPub(); userPub(); } bar.remove(); after && after(); };
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') done(true); });
+  const bar = h('div', { id: 'nameBar', className: 'lobbybar' }, h('span', {}, msg), h('div', { className: 'lbtns', style: 'display:flex;gap:8px;flex:1 1 100%' }, inp, h('button', { className: 'btn y', type: 'button', on: { click: () => done(true) } }, 'OK'), h('button', { className: 'btn g', type: 'button', on: { click: () => done(false) } }, why === 'call' ? tr('Позже', 'Later') : '✕')));
+  document.body.append(bar); setTimeout(() => inp.focus(), 80);
+}
+// after the first finished game with the bot
+{ const om2 = Arcade.onMoment; Arcade.onMoment = (kind, info) => { try { if (kind === 'end' && info && info.mode === 'bot' && !info.hotseat) setTimeout(() => askName(info.result === 'win' ? 'win' : 'game'), 1800); } catch (e) {} return om2 && om2(kind, info); }; }
+// --- while searching: a game with the bot starts after a short countdown that can be cancelled ---
+function botCountdown() {
+  const old = $('botCd'); if (old) old.remove();
+  let n = 3; const num = h('b', {}, String(n));
+  const bar = h('div', { id: 'botCd', className: 'lobbybar' }, h('span', {}, '🤖 ' + tr('Пока ищем игрока: футбол с ботом через ', 'While we search: football with the bot in '), num, ' ' + tr('сек', 's')),
+    h('button', { className: 'btn g', type: 'button', on: { click: () => { clearInterval(iv); bar.remove(); } } }, tr('Отмена', 'Cancel')));
+  document.body.append(bar);
+  const iv = setInterval(() => {
+    if (!bar.isConnected) return clearInterval(iv);
+    if (LOB.match || !LOB.searching || Arcade.current() || gameId || W.open) { clearInterval(iv); bar.remove(); return; }
+    if (--n > 0) { num.textContent = String(n); return; }
+    clearInterval(iv); bar.remove(); playBotWhileWaiting(); openArc(5);
+  }, 1000);
+}
+document.head.append(h('style', {}, '#onlineBar .nick,.urow .un b.nick{font-style:italic;opacity:.72;font-weight:600}#nameBar,#botCd{position:fixed;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 14px);z-index:95;margin:0 auto;box-shadow:0 8px 30px rgba(0,0,0,.3);max-width:520px}#botCd{justify-content:space-between;flex-wrap:nowrap}#botCd b{font-size:18px;color:var(--violet)}'));
 $('bFind').onclick = () => { lobbyStart(); toast('🔍 ' + tr('Ищем случайного игрока…', 'Looking for a random player…')); };
 
 /* ---------------- translations for the newer UI ---------------- */
@@ -20466,7 +20508,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202611094200';
+const APP_VERSION = '202611094300';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
