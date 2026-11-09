@@ -20130,6 +20130,11 @@ function lobbyWire(topic, str) {
   if (rest[0] !== 'm' || rest[1] !== S.dev) return;
   let m; try { m = JSON.parse(str); } catch (e) { return; }
   if (!m || !m.f || m.f === S.dev) return;
+  // every message goes out through several relays, so the same one arrives 2-5 times: handle it once
+  const key = m.f + '|' + m.t + '|' + m.room; LOB.seen = LOB.seen || new Map(); const tnow = Date.now();
+  for (const [k, t] of LOB.seen) if (tnow - t > 20000) LOB.seen.delete(k);
+  if (LOB.seen.has(key)) return; LOB.seen.set(key, tnow);
+  if (LOB.match && LOB.match.room === m.room && (m.t === 'inv' || m.t === 'ok')) return; // already together in this room
   const peer = { dev: m.f, name: String(m.name || '?').slice(0, 16), emoji: String(m.emoji || '🙂').slice(0, 4), lang: m.lang };
   if (m.t === 'inv') {
     if (LOB.searching && !LOB.match) { LOB.inviting = null; lobbySend(m.f, { t: 'ok', room: m.room }); enterMatch(m.room, peer); } // a real person answering beats waiting on my own invite
@@ -20286,7 +20291,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202611091500';
+const APP_VERSION = '202611091600';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
