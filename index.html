@@ -20223,7 +20223,7 @@ function renderLobby() {
 }
 
 /* ---- while searching: sample clips in the partner window, bot game, switch when a real player comes ---- */
-const DEMO_N = 4;
+const DEMO_N = 5;
 let demoI = Math.floor(Math.random() * DEMO_N), demoOn = false, demoLeft = DEMO_N, demoSince = 0; // each clip plays once per search, then the window goes back to normal
 const demoV = h('video', { id: 'demoV', playsInline: true, muted: true, preload: 'auto' });
 demoV.muted = true; demoV.setAttribute('playsinline', ''); demoV.setAttribute('muted', '');
@@ -20371,7 +20371,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202611092400';
+const APP_VERSION = '202611092500';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
