@@ -20096,7 +20096,7 @@ $('installSheet').onclick = e => { if (e.target === $('installSheet')) $('instal
    Strangers never see/hear you unless you press «Показать себя». */
 const LNS = NS + 'lobby/';
 const LOB = { on: false, searching: false, peers: new Map(), skip: new Map(), inviting: null, match: null, saved: null, showCam: false, lastPub: 0 };
-function lobbyTopics() { return S.dev ? [LNS + 'p/+', LNS + 'm/' + S.dev, LNS + 'hi'] : []; }
+function lobbyTopics() { return S.dev ? [LNS + 'p/+', LNS + 'm/' + S.dev, LNS + 'hi', LNS + 'rec/+'] : []; }
 function lobbyPub(clear) {
   const body = clear ? '' : JSON.stringify({ d: S.dev, name: S.me.name, emoji: S.me.emoji, lang: LANG, st: LOB.searching ? 'free' : 'busy', ts: Date.now() });
   connectedClients().forEach(c => { try { c.publish(LNS + 'p/' + S.dev, body, { qos: 0, retain: true }); } catch (e) {} });
@@ -20106,7 +20106,7 @@ function lobbySend(dev, m) { const w = JSON.stringify(Object.assign({ f: S.dev, 
 function lobbySubscribe() { LOB.subAt = Date.now(); connectedClients().forEach(c => { try { c.subscribe(lobbyTopics(), { qos: 0 }); } catch (e) {} }); }
 function lobbyStart() {
   if (!S.dev) return;
-  if (!LOB.searching) LOB.since = Date.now();
+  if (!LOB.searching) { LOB.since = Date.now(); LOB.autoBot = false; }
   LOB.on = true; LOB.searching = true; LOB.inviting = null;
   lobbySubscribe(); lobbyPub(); renderLobby();
   // tell everyone who is already searching to re-announce themselves (retained messages can be missed)
@@ -20116,6 +20116,7 @@ function lobbyStart() {
 function lobbyStop() { LOB.searching = false; LOB.inviting = null; if (!LOB.match) LOB.on = false; lobbyPub(); renderLobby(); }
 function lobbyWire(topic, str) {
   const rest = topic.slice(LNS.length).split('/');
+  if (rest[0] === 'rec') { recGot(rest[1], str); return; }
   if (rest[0] === 'hi') { if (str !== S.dev && started) setTimeout(lobbyPub, 200 + Math.random() * 600); return; }
   if (rest[0] === 'p') {
     const dev = rest[1]; if (!dev || dev === S.dev) return;
@@ -20160,6 +20161,7 @@ setInterval(() => {
   for (const [d, p] of LOB.peers) if (now - p.seen > 40000) LOB.peers.delete(d);
   for (const [d, t] of LOB.skip) if (now - t > 30000) LOB.skip.delete(d);
   if (LOB.inviting && now - LOB.inviting.t0 > 3000) { LOB.skip.set(LOB.inviting.to, now); LOB.inviting = null; }
+  if (LOB.searching && !LOB.match && !LOB.autoBot && now - (LOB.since || now) > 10000) { LOB.autoBot = true; if (!Arcade.current() && !gameId && !W.open && document.visibilityState === 'visible' && !document.querySelector('.sheet:not(.hidden)')) { playBotWhileWaiting(); openArc(1); } }
   if (LOB.searching && !LOB.inviting && !LOB.match) {
     const free = [...LOB.peers.values()].filter(p => p.live && p.st === 'free' && !LOB.skip.has(p.dev));
     const mine = free.filter(p => p.dev > S.dev);
@@ -20180,7 +20182,7 @@ function enterMatch(room, peer) {
   LOB.match = { room, dev: peer.dev, name: peer.name, emoji: peer.emoji };
   S.pair = { id: 'R' + room.toUpperCase() }; S.partner = { name: peer.name, emoji: peer.emoji }; Arcade.partnerLang = peer.lang;
   lobbyPub(); setTimeout(netReset, 600); renderLobby(); // let the ok/presence messages leave before reconnecting
-  tune(523, 784, 1046);
+  tune(523, 784, 1046); attention('🔔 ' + tr('Игрок нашёлся!', 'Player found!'));
 }
 function leaveMatch(next) {
   if (!LOB.match) return;
@@ -20215,7 +20217,7 @@ function renderLobby() {
   } else if (LOB.searching) {
     bar.className = 'lobbybar';
     $('lobbyText').textContent = `🔍 ${tr('Ищем игрока…', 'Looking for a player…')} ${tr('Сейчас на сайте', 'Online now')}: ${n + 1}`;
-    $('lobbyBtns').innerHTML = ''; $('lobbyBtns').append(h('button', { className: 'btn y', on: { click: playBotWhileWaiting } }, '🤖 ' + tr('Сыграть с ботом', 'Play the bot')), h('button', { className: 'btn g', on: { click: lobbyStop } }, tr('Отмена', 'Cancel')));
+    $('lobbyBtns').innerHTML = ''; $('lobbyBtns').append(h('button', { className: 'btn y', on: { click: playBotWhileWaiting } }, '🤖 ' + tr('Сыграть с ботом', 'Play the bot')), h('button', { className: 'btn c', on: { click: shareInvite } }, '👫 ' + tr('Позвать друга', 'Invite a friend')), h('button', { className: 'btn g', on: { click: lobbyStop } }, tr('Отмена', 'Cancel')));
     bar.classList.remove('hidden');
   } else bar.classList.add('hidden');
 }
@@ -20275,10 +20277,61 @@ function renderOnline() {
   const live = [...LOB.peers.values()].filter(p => p.live);
   if (!started) { onlineBar.textContent = ''; return; }
   const names = live.map(p => `${p.emoji} ${p.name}${p.st === 'free' ? ' 🔍' : ''}`);
-  onlineBar.innerHTML = ''; onlineBar.append(h('b', {}, `🟢 ${tr('Сейчас на сайте', 'Online now')}: ${live.length + 1}`), document.createTextNode(' · ' + [tr('ты', 'you')].concat(names).join(', ')));
+  onlineBar.innerHTML = ''; onlineBar.append(h('b', {}, `🟢 ${tr('Сейчас на сайте', 'Online now')}: ${live.length + 1}`), document.createTextNode(' · ' + [tr('ты', 'you')].concat(names).join(', ')), h('div', { className: 'phour' }, playHourText()));
 }
 function presenceStart() { lobbySubscribe(); lobbyPub(); setTimeout(() => connectedClients().forEach(c => { try { c.publish(LNS + 'hi', S.dev, { qos: 0 }); } catch (e) {} }), 400); }
 addEventListener('pagehide', () => { try { lobbyPub(true); } catch (e) {} });
+/* ---- tab in the background: blink the title (and a system notification if allowed) when a player is found ---- */
+function attention(msg) {
+  try { if (window.Notification && Notification.permission === 'granted' && document.hidden) new Notification('Duet', { body: msg, icon: 'icon-192.png' }); } catch (e) {}
+  if (!document.hidden) return;
+  const t0 = document.title; let on = false;
+  const iv = setInterval(() => { document.title = (on = !on) ? msg : t0; }, 900);
+  const stop = () => { if (document.hidden) return; clearInterval(iv); document.title = t0; document.removeEventListener('visibilitychange', stop); };
+  document.addEventListener('visibilitychange', stop);
+}
+/* ---- records of real players against the bot: best win streak per game, kept on the relay ---- */
+const REC = {};
+const winsW = n => tr(n % 10 === 1 && n % 100 !== 11 ? 'победа' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 'победы' : 'побед', n === 1 ? 'win' : 'wins');
+function recGot(id, str) { if (!id) return; try { const m = JSON.parse(str); if (m && m.name && m.s > 0) { REC[id] = { name: String(m.name).slice(0, 16), emoji: String(m.emoji || '🙂').slice(0, 4), s: +m.s, d: m.d }; recDecorate(); } } catch (e) {} }
+function recDecorate() {
+  const g = $('arcGrid'); if (!g) return;
+  const list = Arcade.games.slice().sort((a, b) => a.n - b.n);
+  [...g.children].forEach((t, i) => {
+    const G = list[i]; if (!G || G.soon) return; const r = REC['a' + G.n]; let el = t.querySelector(':scope > .recb');
+    if (!r) { if (el) el.remove(); return; }
+    if (!el) { el = h('div', { className: 'recb' }); const md = t.querySelector(':scope > .md'); if (md) md.before(el); else t.append(el); }
+    el.textContent = `🏆 ${r.emoji} ${r.name}: ${r.s} ${winsW(r.s)} ${tr('подряд над ботом', 'in a row vs bot')}`;
+  });
+}
+document.head.append(h('style', {}, '.tile .recb{position:relative;z-index:1;font-size:11px;font-weight:800;margin-top:6px;background:rgba(0,0,0,.22);padding:3px 8px;border-radius:10px;display:inline-block}#onlineBar .phour{font-weight:700;opacity:.85;margin-top:2px}'));
+renderGrid = wrapFn('renderGrid', () => recDecorate());
+{ const om = Arcade.onMoment; Arcade.onMoment = (kind, info) => {
+  try {
+    const c = Arcade.current();
+    if (kind === 'end' && info && info.mode === 'bot' && !info.hotseat && c) {
+      const id = 'a' + c.n; S.botStreak = S.botStreak || {};
+      S.botStreak[id] = info.result === 'win' ? (S.botStreak[id] || 0) + 1 : 0; save();
+      const st = S.botStreak[id], r = REC[id];
+      if (st > 0 && (!r || st > r.s)) {
+        REC[id] = { name: S.me.name, emoji: S.me.emoji, s: st, d: S.dev };
+        connectedClients().forEach(cl => { try { cl.publish(LNS + 'rec/' + id, JSON.stringify({ name: S.me.name, emoji: S.me.emoji, s: st, d: S.dev, ts: Date.now() }), { qos: 0, retain: true }); } catch (e) {} });
+        setTimeout(() => toast('🏆 ' + `${tr('Новый рекорд', 'New record')}: ${st} ${winsW(st)} ${tr('подряд над ботом!', 'in a row vs the bot!')}`, 3500), 1500);
+      } else if (r && r.d !== S.dev && info.result === 'win') setTimeout(() => toast(`🏆 ${tr('Рекорд', 'Record')}: ${r.emoji} ${r.name} · ${r.s}. ${tr('У тебя', 'You')}: ${st}`, 3000), 1500);
+    }
+  } catch (e) {}
+  return om && om(kind, info);
+}; }
+/* ---- the evening game hour: everyone gathers at the same time (18:00 UTC = 21:00 Moscow) ---- */
+const PH_UTC = 18;
+function playHourText() {
+  const n = new Date(), t = new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate(), PH_UTC));
+  const loc = t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  let d = t - n; if (d < -3600000) d += 86400000;
+  if (d <= 0) return '🔥 ' + tr('Сейчас час игры: все собираются играть!', 'It\'s game hour: everyone is here to play!');
+  const hh = Math.floor(d / 3600000), mm = Math.floor(d % 3600000 / 60000);
+  return '⏰ ' + tr(`Каждый день в ${loc} все собираются играть · через ${hh ? hh + ' ч ' : ''}${mm} мин`, `Every day at ${loc} everyone meets to play · in ${hh ? hh + 'h ' : ''}${mm}m`);
+}
 $('bFind').onclick = () => { lobbyStart(); toast('🔍 ' + tr('Ищем случайного игрока…', 'Looking for a random player…')); };
 
 /* ---------------- translations for the newer UI ---------------- */
@@ -20318,7 +20371,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202611092300';
+const APP_VERSION = '202611092400';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
