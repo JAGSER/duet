@@ -20504,7 +20504,6 @@ function photoRow() {
     else {
       btns.append(h('button', { className: 'btn c', type: 'button', on: { click: () => shoot() } }, '📸 ' + (S.me.ph ? tr('Новое фото', 'New photo') : tr('С камеры', 'From camera'))),
         h('button', { className: 'btn g', type: 'button', on: { click: () => file.click() } }, '🖼 ' + tr('Из галереи', 'From gallery')));
-      if (S.me.ph) btns.append(h('button', { className: 'btn g', type: 'button', on: { click: () => { S.me.ph = ''; save(); userPub(); draw(); } } }, '🗑 ' + tr('Убрать', 'Remove')));
     }
     box.append(btns);
   };
@@ -20615,7 +20614,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202611094600';
+const APP_VERSION = '202611094700';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
