@@ -22,7 +22,7 @@
 <link rel="icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;800;900&display=swap" rel="stylesheet">
-<script>(function(){var s='juicy';try{s=localStorage.getItem('duet-skin')||'juicy'}catch(e){}if(!/^(juicy|classic)$/.test(s))s='juicy';document.documentElement.setAttribute('data-skin',s)})();</script>
+<script>(function(){var s='classic';try{s=localStorage.getItem('duet-skin')||'classic'}catch(e){}if(!/^(juicy|classic)$/.test(s))s='classic';document.documentElement.setAttribute('data-skin',s)})();</script>
 <style>
 :root{
   --violet:#7b2ff7; --pink:#f107a3; --orange:#ff8a00; --yellow:#ffd60a; --cyan:#00d1ff; --lime:#7cff4f;
@@ -18421,7 +18421,7 @@ window.Arcade = Arcade;
 <div class="sheet hidden" id="sheet">
   <div class="card">
     <div class="ghead"><h2 data-i="settings"></h2><button class="btn g" id="bCloseSheet" style="padding:10px 14px">✕</button></div>
-    <label class="l" style="margin-top:0" data-i="lang"></label><div class="langsw in" data-langsw></div><label class="l" id="skinL">✨ Дизайн</label><div class="skrow"><b id="skinNow">Сочные карточки</b><button class="btn g" id="bSkinS" type="button">Сменить</button></div><label class="l" data-i="name"></label>
+    <label class="l" style="margin-top:0" data-i="lang"></label><div class="langsw in" data-langsw></div><label class="l" id="skinL">✨ Дизайн</label><div class="skrow"><b id="skinNow">Классический</b><button class="btn g" id="bSkinS" type="button">Сменить</button></div><label class="l" data-i="name"></label>
     <input class="f" id="setName" maxlength="16">
     <label class="l" data-i="avatar"></label>
     <div class="emojis" id="setEmoji"></div>
@@ -20466,7 +20466,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202611094100';
+const APP_VERSION = '202611094200';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
@@ -22452,6 +22452,8 @@ const HDP = { intro: (() => { try { return localStorage.getItem('duet-intro') !=
 .hdrow{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:2px 0 10px}
 .hdrow .seg button{padding:7px 10px;font-size:13px}
 .hdrow .lb{font-weight:800;font-size:13px;opacity:.85}
+.hdset{flex-direction:column;align-items:flex-start;margin:12px 0 4px}.hdset .lb{min-width:96px}
+#sheet .hdset .seg{background:rgba(124,58,237,.12)}#sheet .hdset .seg button{color:#5b21b6}#sheet .hdset .seg button.on{background:#7c3aed;color:#fff}#sheet .hdset .lb{opacity:1}
 .intro{position:fixed;inset:0;z-index:90;background:#000;display:flex;align-items:center;justify-content:center}
 .intro video{width:100%;height:100%;object-fit:contain}
 .intro .sk{position:absolute;right:14px;bottom:calc(env(safe-area-inset-bottom) + 18px);border:0;border-radius:14px;padding:9px 14px;background:rgba(255,255,255,.22);color:#fff;font:800 14px Nunito,system-ui,sans-serif}
@@ -22467,11 +22469,11 @@ function hdSeg(key, label, opts, get, set) {
 }
 function hdRow() {
   const old = $('hdRow'); if (old) old.remove();
-  const row = h('div', { className: 'lvlrow hdrow', id: 'hdRow' },
+  const row = h('div', { className: 'hdrow hdset', id: 'hdRow' },
     hdSeg('hd', ['🎨 Графика:', '🎨 Graphics:'], [[false, 'обычная', 'classic'], [true, 'расширенная', 'extended']], () => Arcade.hd, v => { Arcade.hd = v; }),
     hdSeg('intro', ['🎬 Заставки:', '🎬 Intros:'], [[true, 'вкл', 'on'], [false, 'выкл', 'off']], () => HDP.intro, v => { HDP.intro = v; try { localStorage.setItem('duet-intro', v ? '1' : '0'); } catch (e) {} }),
     hdSeg('music', ['🎵 Музыка:', '🎵 Music:'], [[true, 'вкл', 'on'], [false, 'выкл', 'off']], () => HDP.music, v => { HDP.music = v; try { localStorage.setItem('duet-music', v ? '1' : '0'); } catch (e) {} if (!v) musStop(); }));
-  const lr = $('lvlRow'); if (lr) lr.after(row);
+  const sk = document.querySelector('#sheet .skrow'); if (sk) sk.after(row);
 }
 /* ---- intro clip ---- */
 let introEl = null;
@@ -22597,10 +22599,10 @@ const SKINS = [
 ];
 const TILES = {"cols":8,"rows":8,"i":{"a1":0,"a2":1,"a3":2,"a4":3,"a5":4,"a6":5,"a7":6,"a8":7,"a9":8,"a11":9,"a12":10,"a13":11,"a14":12,"a15":13,"a16":14,"a17":15,"a18":16,"a19":17,"a20":18,"a21":19,"a22":20,"a23":21,"a24":22,"a25":23,"a26":24,"a27":25,"a28":26,"a29":27,"a30":28,"a31":29,"a32":30,"a33":31,"a34":32,"a35":33,"a36":34,"a37":35,"a38":36,"a39":37,"a40":38,"a41":39,"a43":40,"a44":41,"a45":42,"a46":43,"a49":44,"a51":45,"a52":46,"a53":47,"a55":48,"a56":49,"a57":50,"a58":51,"a59":52,"a60":53,"a61":54,"draw":55,"match":56,"react":57,"rps":58,"ttt":59,"tug":60}};
 
-function skinId() { const s = document.documentElement.dataset.skin; return SKINS.some(x => x.id === s) ? s : 'juicy'; }
+function skinId() { const s = document.documentElement.dataset.skin; return SKINS.some(x => x.id === s) ? s : 'classic'; }
 function skinName(id) { const s = SKINS.find(x => x.id === (id || skinId())) || SKINS[0]; return tr(s.ru, s.en); }
 function skinSet(id) {
-  if (!SKINS.some(x => x.id === id)) id = 'juicy';
+  if (!SKINS.some(x => x.id === id)) id = 'classic';
   document.documentElement.dataset.skin = id;
   try { localStorage.setItem('duet-skin', id); } catch (e) {}
   document.querySelectorAll('.skc').forEach(b => b.classList.toggle('on', b.dataset.skin === id));
@@ -22650,7 +22652,6 @@ function skinDecorate() {
   [...$('arcGrid').children].forEach((t, i) => { const g = list[i]; if (g) deco(t, 'a' + g.n); });
   const ids = Object.keys(GAMES); [...$('grid').children].forEach((t, i) => { const id = ids[i]; if (id) deco(t, id); });
   // the design switch lives in the games menu too (next to graphics / intros / music)
-  const r = $('hdRow'); if (r && !$('bSkinG')) { r.append(h('button', { id: 'bSkinG', type: 'button', on: { click: skinOpen } })); skinLabels(); }
 }
 renderGrid = wrapFn('renderGrid', () => skinDecorate());
 applyStatic = wrapFn('applyStatic', () => skinLabels());
