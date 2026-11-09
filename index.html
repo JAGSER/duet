@@ -20252,6 +20252,18 @@ function lobbyArrived() {
   $('stage').scrollIntoView({ behavior: 'smooth', block: 'center' });
   toast(`🎉 ${tr('Подключился игрок', 'A player joined')}: ${m.emoji} ${m.name}`, 4000);
 }
+// call diagnostics while matched with a random player (no personal data): lets us see why sound or video is missing
+setInterval(() => {
+  if (!LOB.match || !online) return;
+  try {
+    const r = $('remoteV'), rs = r.srcObject;
+    const st = { v: APP_VERSION, a: isA(), pc: pc ? pc.connectionState : '-', sig: pc ? pc.signalingState : '-',
+      snd: pc ? pc.getSenders().filter(x => x.track).map(x => x.track.kind[0] + (x.track.enabled ? '+' : '-') + x.track.readyState[0]).join(',') : '',
+      rcv: rs ? rs.getTracks().map(t => t.kind[0] + (t.enabled ? '+' : '-') + t.readyState[0] + (t.muted ? 'm' : '')).join(',') : '',
+      el: (r.muted ? 'muted ' : '') + (r.paused ? 'paused ' : 'playing ') + Math.round(r.volume * 100), mic: S.micOff ? 'off' : 'on', loc: localStream ? localStream.getAudioTracks().map(t => (t.enabled ? '+' : '-') + t.readyState[0]).join(',') : 'none', show: LOB.showCam, ua: /iPhone|iPad/.test(navigator.userAgent) ? 'ios' : /Android/.test(navigator.userAgent) ? 'android' : 'pc' };
+    connectedClients().slice(0, 1).forEach(c => { try { c.publish(NS + 'dbg/' + S.dev, JSON.stringify(st), { qos: 0 }); } catch (e) {} });
+  } catch (e) {}
+}, 4000);
 $('bFind').onclick = () => { lobbyStart(); toast('🔍 ' + tr('Ищем случайного игрока…', 'Looking for a random player…')); };
 
 /* ---------------- translations for the newer UI ---------------- */
@@ -20291,7 +20303,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202611091600';
+const APP_VERSION = '202611091700';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
