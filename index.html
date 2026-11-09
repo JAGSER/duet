@@ -20227,7 +20227,7 @@ function renderLobby() {
 }
 
 /* ---- while searching: sample clips in the partner window, bot game, switch when a real player comes ---- */
-const DEMO_N = 6;
+const DEMO_N = 7;
 let demoI = Math.floor(Math.random() * DEMO_N), demoOn = false, demoLeft = DEMO_N, demoSince = 0; // each clip plays once per search, then the window goes back to normal
 const demoV = h('video', { id: 'demoV', playsInline: true, muted: true, preload: 'auto' });
 demoV.muted = true; demoV.setAttribute('playsinline', ''); demoV.setAttribute('muted', '');
@@ -20374,7 +20374,7 @@ function callBar(peer, room) {
   setTimeout(() => { if (bar.isConnected) bar.remove(); }, 60000);
 }
 // --- the sheet: all players, online first ---
-document.head.append(h('style', {}, '.urow{display:flex;align-items:center;gap:8px;padding:9px 4px;border-bottom:1px solid #eee6ff}.urow .un{flex:1;min-width:0}.urow .un b{display:block;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.urow .un small{color:var(--muted);font-weight:700;font-size:12px}.urow .btn{padding:8px 10px;font-size:14px}.udot{width:9px;height:9px;border-radius:50%;background:#c9c0e0;flex:none}.udot.on{background:#2ecc71}.umsg{font-size:13px;padding:6px 4px;border-bottom:1px dashed #eee6ff}.umsg.mine{color:var(--muted)}#bUsers{border:0;border-radius:12px;padding:5px 10px;font:inherit;font-size:12px;font-weight:800;cursor:pointer;background:rgba(255,255,255,.25);color:#fff;margin-left:6px}'));
+document.head.append(h('style', {}, '.urow{display:flex;align-items:center;gap:8px;padding:9px 4px;border-bottom:1px solid #eee6ff}.urow .un{flex:1;min-width:0}.urow .un b{display:block;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.urow .un small{color:var(--muted);font-weight:700;font-size:12px}.urow .btn{padding:8px 10px;font-size:14px}.udot{width:9px;height:9px;border-radius:50%;background:#c9c0e0;flex:none}.udot.on{background:#2ecc71}.umsg{font-size:13px;padding:6px 4px;border-bottom:1px dashed #eee6ff}.umsg.mine{color:var(--muted)}#bUsers{border:0;border-radius:12px;padding:6px 12px;font:inherit;font-size:13px;font-weight:900;cursor:pointer;background:#ffd23f;color:#3a1d6e;margin-left:6px;box-shadow:0 3px 0 rgba(0,0,0,.18);animation:bUsersPulse 1.6s ease-in-out infinite}#bUsers:active{transform:translateY(2px)}@keyframes bUsersPulse{0%,100%{box-shadow:0 3px 0 rgba(0,0,0,.18),0 0 0 0 rgba(255,210,63,.75)}50%{box-shadow:0 3px 0 rgba(0,0,0,.18),0 0 0 7px rgba(255,210,63,0)}}'));
 function usersSheet() {
   if ($('usersSheet')) return;
   document.body.append(h('div', { className: 'sheet hidden', id: 'usersSheet', on: { click: e => { if (e.target.id === 'usersSheet') $('usersSheet').classList.add('hidden'); } } },
@@ -20415,7 +20415,7 @@ function renderUsersBtn() {
   const bar = $('onlineBar'); if (!bar) return; let b = $('bUsers');
   const n = (S.inbox || []).filter(x => !x.mine && !x.read).length;
   if (!b) { b = h('button', { id: 'bUsers', type: 'button', on: { click: () => openUsers() } }); }
-  b.textContent = '👥 ' + tr('Все игроки', 'All players') + (n ? ` · 💬 ${n}` : '');
+  b.textContent = '👥 ' + tr('Все игроки', 'All players') + (n ? ` · 💬 ${n}` : '') + ' ›';
   const first = bar.firstChild; if (b.parentNode !== bar) { if (first && first.nextSibling) bar.insertBefore(b, first.nextSibling); else bar.append(b); }
 }
 // --- name: newcomers get «Игрок 123», a small bar asks for a real name (can be skipped) ---
@@ -20466,7 +20466,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202611092900';
+const APP_VERSION = '202611093000';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
