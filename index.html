@@ -18647,6 +18647,8 @@ function show(id) { ['scrSetup', 'scrInvite', 'scrMain'].forEach(s => $(s).class
 function emojiPicker(el, cur, onPick) { el.innerHTML = ''; EMOJIS.forEach(e => el.append(h('button', { className: e === cur ? 'on' : '', textContent: e, type: 'button', on: { click: () => { [...el.children].forEach(b => b.classList.remove('on')); el.children[EMOJIS.indexOf(e)].classList.add('on'); onPick(e); } } }))); }
 
 let pickEmoji = EMOJIS[rnd(EMOJIS.length)];
+// first visit without an invite link: straight in, camera on and the search for a player running
+function autoGuest() { let id = ''; for (let i = 0; i < 8; i++) id += ALPH[rnd(ALPH.length)]; S = { me: { name: tr('Игрок', 'Player') + ' ' + (100 + rnd(900)), emoji: pickEmoji }, pair: { id }, partner: null, autoRandom: true }; save(); pinUrl(); startMain(); }
 function setupScreen() {
   show('scrSetup');
   emojiPicker($('emojiPick'), pickEmoji, e => pickEmoji = e);
@@ -20138,6 +20140,7 @@ function lobbyWire(topic, str) {
 }
 setInterval(() => {
   if (!started || !LOB.on) return;
+  if (LOB.searching && !LOB.match && online) { lobbyStop(); return; } // the partner came: stop searching
   const now = Date.now();
   if (now - LOB.lastPub > 12000) lobbyPub();
   for (const [d, p] of LOB.peers) if (now - p.seen > 40000) LOB.peers.delete(d);
@@ -20239,7 +20242,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202610272121';
+const APP_VERSION = '202611091200';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
@@ -24333,7 +24336,7 @@ $('bShotNow').onclick = async () => { $('shotsSheet').classList.add('hidden'); a
 function startMain() {
   applyStatic();
   show('scrMain'); started = true; renderStatus(); renderVideo(); renderGrid(); renderMaskBtn(); updateShotBadge(); renderPoints(); setManifest(); maybeAskInstall();
-  if (S.autoRandom && !S.friend) setTimeout(() => { if (!online && !LOB.on) lobbyStart(); }, 1500); // no friend yet: play with whoever is on the site
+  setTimeout(() => { if (!online && !LOB.on) lobbyStart(); }, S.friend ? 5000 : 1500); // search for a player by default while the partner is not here
   startNet();
   // camera and microphone are always on: start them right away (first launch asks for permission)
   S.micOff = false; save(); startCam(true);
@@ -24344,7 +24347,7 @@ if (roomBoot()) { /* watching as a guest */ }
 else if (S.me && S.pair) {
   if (lc0 && lc0 !== S.pair.id) { S.pair = { id: lc0 }; S.partner = null; save(); setTimeout(() => toast(T.switchedPair(fmtCode(lc0)), 3500), 300); }
   pinUrl(); startMain();
-} else setupScreen();
+} else if (!lc0) autoGuest(); else setupScreen();
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
 </body>
