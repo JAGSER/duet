@@ -20425,12 +20425,8 @@ function pCard(u, n, me) {
   const g = u.g === 'f' ? '♀' : u.g === 'm' ? '♂' : '';
   const facts = [];
   if (u.cc) facts.push(ccFlag(u.cc) + ' ' + ccName(u.cc));
-  if (u.nl) facts.push('🗣️ ' + langName(u.nl));
-  if (u.tz) { const t = tzTime(u.tz); if (t) facts.push('🕒 ' + tr('там сейчас ', 'local time ') + t); }
-  if (u.dv) facts.push(u.dv === 'm' ? '📱 ' + tr('с телефона', 'on a phone') : '💻 ' + tr('с компьютера', 'on a computer'));
   if (u.gp) facts.push('🎮 ' + u.gp + ' ' + gamesW(u.gp));
   const recs = Object.values(REC).filter(r => r.d === u.dev).length; if (recs) facts.push('🏆 ' + tr('рекордсмен', 'record holder'));
-  if (u.since) facts.push('📅 ' + tr('с нами с ', 'here since ') + sinceText(u.since));
   return h('div', { className: 'pcard' + (u.on ? ' on' : '') },
     h('div', { className: 'pav' }, u.ph ? h('img', { src: u.ph, alt: '' }) : u.emoji, h('i')),
     h('b', { className: 'pnm' + (u.a ? ' nick' : '') }, u.name + (g ? ' ' : ''), g ? h('span', { className: 'pg ' + u.g }, g) : null),
@@ -20493,9 +20489,14 @@ function snapFace() {
 function photoRow() {
   const box = h('div', { className: 'pph' });
   const draw = (pending) => {
-    box.innerHTML = '';
+    box.querySelectorAll(':scope > :not(input)').forEach(x => x.remove());
     const src = pending || S.me.ph;
-    box.append(h('div', { className: 'pav big' }, src ? h('img', { src, alt: '' }) : S.me.emoji));
+    const av = h('div', { className: 'pav big' + (src ? '' : ' pick'), title: src ? '' : tr('Выбрать аватар', 'Pick an avatar') }, src ? h('img', { src, alt: '' }) : S.me.emoji);
+    if (!src) av.addEventListener('click', () => {
+      if (picker.childElementCount) { picker.innerHTML = ''; return; }
+      emojiPicker(picker, S.me.emoji, e => { S.me.emoji = e; save(); try { renderStatus(); } catch (x) {} lobbyPub(); userPub(); picker.innerHTML = ''; draw(); });
+    });
+    box.append(av);
     const btns = h('div', { className: 'pphb' });
     if (pending) btns.append(
       h('button', { className: 'btn y', type: 'button', on: { click: () => { S.me.ph = pending; save(); userPub(); draw(); toast('✅ ' + tr('Фото в анкете', 'Photo added'), 1500); } } }, '✅ ' + tr('В анкету', 'Use it')),
@@ -20512,13 +20513,15 @@ function photoRow() {
     if (!d) { toast('📷 ' + tr('Включи камеру, чтобы сделать фото', 'Turn the camera on to take a photo'), 2500); return; }
     draw(d);
   };
+  const picker = h('div', { className: 'emojis pemo' });
   const file = h('input', { type: 'file', accept: 'image/*', style: 'display:none', on: { change: () => {
     const f = file.files && file.files[0]; if (!f) return; const img = new Image(); const url = URL.createObjectURL(f);
     img.onload = () => { const side = Math.min(img.width, img.height), c = document.createElement('canvas'); c.width = c.height = 128; c.getContext('2d').drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, 128, 128); URL.revokeObjectURL(url); draw(c.toDataURL('image/jpeg', .72)); };
     img.src = url; file.value = ''; } } });
   box.append(file); draw();
+  const wrap = h('div', {}, box, picker);
   if (!S.me.ph) setTimeout(() => snapFace().then(d => { if (d && box.isConnected && !box.querySelector('.btn.y')) draw(d); }), 400);
-  return box;
+  return wrap;
 }
 // a small window: name, gender and «call someone to play». Can be closed without filling anything in.
 function profileSheet(why, after) {
@@ -20574,7 +20577,7 @@ function botCountdown() {
     clearInterval(iv); bar.remove(); playBotWhileWaiting(); openArc(5);
   }, 1000);
 }
-document.head.append(h('style', {}, '.pcards{display:grid;grid-template-columns:1fr 1fr;gap:10px}.pcard{background:#f6f2ff;border-radius:18px;padding:12px 10px 10px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:3px}.pcard.on{background:#eafbf1}.pav{position:relative;width:62px;height:62px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:36px;box-shadow:0 3px 10px rgba(80,40,160,.15)}.pcard.me{background:#fff7d6;cursor:pointer;outline:2px solid #ffd23f}.pcard.del{opacity:.55}.pdel{width:100%;margin-top:14px;color:#c0392b}#profSheet{z-index:120}.pav img{width:100%;height:100%;border-radius:50%;object-fit:cover}.pav.big{width:72px;height:72px;font-size:42px;flex:none}.pph{display:flex;align-items:center;gap:12px;margin:0 0 10px}.pphb{display:flex;flex-wrap:wrap;gap:6px}.pphb .btn{padding:8px 11px;font-size:14px}.pav i{position:absolute;right:2px;bottom:2px;width:13px;height:13px;border-radius:50%;background:#c9c0e0;border:2px solid #fff}.pcard.on .pav i{background:#2ecc71}.pnm{font-size:15px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:4px}.pnm.nick{font-style:italic;opacity:.65;font-weight:700}.pg{font-weight:900}.pg.f{color:#e84393}.pg.m{color:#0984e3}.pst{font-size:12px;font-weight:800;color:var(--muted)}.pfx{display:flex;flex-direction:column;gap:1px;font-size:11.5px;font-weight:700;color:#5d5478;margin:4px 0 6px;line-height:1.3}.pbt{display:flex;gap:6px;margin-top:auto}.pbt .btn{padding:7px 12px;font-size:15px}.pin{width:100%;box-sizing:border-box;font:inherit;font-size:16px;padding:11px 14px;border-radius:14px;border:2px solid #e3dbff}.pgr{display:flex;gap:8px;margin-top:10px}.pgb{flex:1;border:2px solid #e3dbff;background:#fff;border-radius:14px;padding:10px;font:inherit;font-weight:800;cursor:pointer;color:var(--ink)}.pgb.on{background:#7c3aed;border-color:#7c3aed;color:#fff}.pinv{margin-top:14px;padding-top:12px;border-top:1px dashed #e3dbff;display:flex;flex-wrap:wrap;gap:8px}.pinv .pl{flex:1 1 100%;font-weight:900;font-size:14px}.pinv .btn{padding:8px 12px;font-size:14px}#profSheet .card{max-height:88vh;overflow:auto}#onlineBar .nick,.urow .un b.nick{font-style:italic;opacity:.72;font-weight:600}#nameBar,#botCd{position:fixed;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 14px);z-index:95;margin:0 auto;box-shadow:0 8px 30px rgba(0,0,0,.3);max-width:520px}#botCd{justify-content:space-between;flex-wrap:nowrap}#botCd b{font-size:18px;color:var(--violet)}'));
+document.head.append(h('style', {}, '.pcards{display:grid;grid-template-columns:1fr 1fr;gap:10px}.pcard{background:#f6f2ff;border-radius:18px;padding:12px 10px 10px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:3px}.pcard.on{background:#eafbf1}.pav{position:relative;width:62px;height:62px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:36px;box-shadow:0 3px 10px rgba(80,40,160,.15)}.pcard.me{background:#fff7d6;cursor:pointer;outline:2px solid #ffd23f}.pcard.del{opacity:.55}.pdel{width:100%;margin-top:14px;color:#c0392b}#profSheet{z-index:120}.pav img{width:100%;height:100%;border-radius:50%;object-fit:cover}.pav.pick{cursor:pointer;outline:3px dashed #c9b6ff;outline-offset:2px}.pemo{margin:0 0 10px}.pemo:empty{display:none}.pemo button{width:42px;height:42px;font-size:23px}.pav.big{width:72px;height:72px;font-size:42px;flex:none}.pph{display:flex;align-items:center;gap:12px;margin:0 0 10px}.pphb{display:flex;flex-wrap:wrap;gap:6px}.pphb .btn{padding:8px 11px;font-size:14px}.pav i{position:absolute;right:2px;bottom:2px;width:13px;height:13px;border-radius:50%;background:#c9c0e0;border:2px solid #fff}.pcard.on .pav i{background:#2ecc71}.pnm{font-size:15px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:4px}.pnm.nick{font-style:italic;opacity:.65;font-weight:700}.pg{font-weight:900}.pg.f{color:#e84393}.pg.m{color:#0984e3}.pst{font-size:12px;font-weight:800;color:var(--muted)}.pfx{display:flex;flex-direction:column;gap:1px;font-size:11.5px;font-weight:700;color:#5d5478;margin:4px 0 6px;line-height:1.3}.pbt{display:flex;gap:6px;margin-top:auto}.pbt .btn{padding:7px 12px;font-size:15px}.pin{width:100%;box-sizing:border-box;font:inherit;font-size:16px;padding:11px 14px;border-radius:14px;border:2px solid #e3dbff}.pgr{display:flex;gap:8px;margin-top:10px}.pgb{flex:1;border:2px solid #e3dbff;background:#fff;border-radius:14px;padding:10px;font:inherit;font-weight:800;cursor:pointer;color:var(--ink)}.pgb.on{background:#7c3aed;border-color:#7c3aed;color:#fff}.pinv{margin-top:14px;padding-top:12px;border-top:1px dashed #e3dbff;display:flex;flex-wrap:wrap;gap:8px}.pinv .pl{flex:1 1 100%;font-weight:900;font-size:14px}.pinv .btn{padding:8px 12px;font-size:14px}#profSheet .card{max-height:88vh;overflow:auto}#onlineBar .nick,.urow .un b.nick{font-style:italic;opacity:.72;font-weight:600}#nameBar,#botCd{position:fixed;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 14px);z-index:95;margin:0 auto;box-shadow:0 8px 30px rgba(0,0,0,.3);max-width:520px}#botCd{justify-content:space-between;flex-wrap:nowrap}#botCd b{font-size:18px;color:var(--violet)}'));
 $('bFind').onclick = () => { lobbyStart(); toast('🔍 ' + tr('Ищем случайного игрока…', 'Looking for a random player…')); };
 
 /* ---------------- translations for the newer UI ---------------- */
@@ -20614,7 +20617,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202611094700';
+const APP_VERSION = '202611094800';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
