@@ -20214,18 +20214,20 @@ function renderLobby() {
 
 /* ---- while searching: sample clips in the partner window, bot game, switch when a real player comes ---- */
 const DEMO_N = 1;
-let demoI = Math.floor(Math.random() * DEMO_N), demoOn = false;
+let demoI = Math.floor(Math.random() * DEMO_N), demoOn = false, demoLeft = DEMO_N, demoSince = 0; // each clip plays once per search, then the window goes back to normal
 const demoV = h('video', { id: 'demoV', playsInline: true, muted: true, preload: 'auto' });
 demoV.muted = true; demoV.setAttribute('playsinline', ''); demoV.setAttribute('muted', '');
 const demoBg = h('video', { className: 'demoBg', playsInline: true, muted: true }); demoBg.muted = true; demoBg.setAttribute('playsinline', '');
 const demoBox = h('div', { id: 'demoBox', className: 'hidden' }, demoBg, demoV, h('span', { className: 'demoTag', id: 'demoTag' }), h('div', { className: 'demoCap', id: 'demoCap' }));
 $('stage').insertBefore(demoBox, $('localV'));
 document.head.append(h('style', {}, '.stage.demo .ph{display:none}#demoBox{position:absolute;inset:0;z-index:2;background:#24124f}#demoBox video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}#demoBox .demoBg{object-fit:cover;filter:blur(18px) brightness(.7);transform:scale(1.15)}.demoTag{position:absolute;top:8px;left:8px;z-index:2;background:rgba(0,0,0,.45);color:#fff;font-size:11px;font-weight:800;padding:3px 8px;border-radius:9px;letter-spacing:.5px;text-transform:uppercase}.demoCap{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);z-index:2;background:rgba(20,0,50,.6);color:#fff;font-size:14px;font-weight:800;padding:7px 14px;border-radius:14px;white-space:nowrap;backdrop-filter:blur(6px)}'));
-function demoNext() { demoI = (demoI + 1 + Math.floor(Math.random() * (DEMO_N - 1))) % DEMO_N; demoV.src = demoBg.src = 'demo' + (demoI + 1) + '.mp4?v=62'; demoV.play().catch(() => {}); demoBg.play().catch(() => {}); }
-demoV.addEventListener('ended', () => { if (demoOn) demoNext(); });
+const demoUnseen = () => { const seen = S.demoSeen || []; const a = []; for (let i = 0; i < DEMO_N; i++) if (!seen.includes(i + 1)) a.push(i); return a; }; // a clip is shown to a player only once, ever
+function demoNext() { const un = demoUnseen(); if (!un.length) { demoLeft = 0; return; } demoI = un[Math.floor(Math.random() * un.length)]; S.demoSeen = (S.demoSeen || []).concat(demoI + 1); save(); demoV.src = demoBg.src = 'demo' + (demoI + 1) + '.mp4?v=62'; demoV.play().catch(() => {}); demoBg.play().catch(() => {}); }
+demoV.addEventListener('ended', () => { if (!demoOn) return; if (--demoLeft > 0 && demoUnseen().length) demoNext(); else { demoOn = false; demoBox.classList.add('hidden'); $('stage').classList.remove('demo'); demoBg.pause(); } });
 demoV.addEventListener('error', () => { if (demoOn) setTimeout(demoNext, 800); });
 function demoRender() {
-  const on = !!(started && LOB.searching && !LOB.match && !online);
+  if (LOB.since !== demoSince) { demoSince = LOB.since; demoLeft = demoUnseen().length; }
+  const on = !!(started && LOB.searching && !LOB.match && !online && demoLeft > 0);
   $('demoTag').textContent = tr('пример', 'sample');
   $('demoCap').textContent = '🔍 ' + tr('Ищем живого игрока…', 'Looking for a real player…');
   if (on === demoOn) return;
@@ -20284,7 +20286,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202611091400';
+const APP_VERSION = '202611091500';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
