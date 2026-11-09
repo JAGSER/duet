@@ -20098,7 +20098,7 @@ const LNS = NS + 'lobby/';
 const LOB = { on: false, searching: false, peers: new Map(), skip: new Map(), inviting: null, match: null, saved: null, showCam: false, lastPub: 0 };
 function lobbyTopics() { return S.dev ? [LNS + 'p/+', LNS + 'm/' + S.dev, LNS + 'hi', LNS + 'rec/+', LNS + 'u/+', LNS + 'box/' + S.dev + '/+'] : []; }
 function lobbyPub(clear) {
-  const body = clear ? '' : JSON.stringify({ d: S.dev, name: S.me.name, emoji: S.me.emoji, lang: LANG, a: meAuto() ? 1 : 0, cc: S.cc || '', g: S.me.g || '', st: LOB.searching ? 'free' : 'busy', ts: Date.now() });
+  const body = clear ? '' : JSON.stringify({ d: S.dev, name: S.me.del ? tr('Гость', 'Guest') : S.me.name, emoji: S.me.del ? '👤' : S.me.emoji, lang: LANG, a: S.me.del || meAuto() ? 1 : 0, cc: S.me.del ? '' : S.cc || '', g: S.me.del ? '' : S.me.g || '', st: LOB.searching ? 'free' : 'busy', ts: Date.now() });
   connectedClients().forEach(c => { try { c.publish(LNS + 'p/' + S.dev, body, { qos: 0, retain: true }); } catch (e) {} });
   LOB.lastPub = Date.now();
 }
@@ -20339,8 +20339,8 @@ function playHourText() {
 }
 /* ================= players directory: everyone who ever came, kept on the relay; call to play or write a message ================= */
 const USERS = new Map();
-function userPub() { if (!S.dev || !S.me) return; const b = JSON.stringify(Object.assign({ name: S.me.name, emoji: S.me.emoji, lang: LANG, a: meAuto() ? 1 : 0, cc: S.cc || '', seen: Date.now() }, meCard())); connectedClients().forEach(c => { try { c.publish(LNS + 'u/' + S.dev, b, { qos: 0, retain: true }); } catch (e) {} }); }
-function userGot(dev, str) { if (!dev || dev === S.dev || !str) return; try { const m = JSON.parse(str); USERS.set(dev, { dev, name: String(m.name || '?').slice(0, 16), emoji: String(m.emoji || '🙂').slice(0, 4), seen: +m.seen || 0, lang: m.lang, a: !!m.a, cc: ccOk(m.cc), g: m.g === 'm' || m.g === 'f' ? m.g : '', tz: String(m.tz || '').slice(0, 40), dv: m.dv === 'd' ? 'd' : m.dv === 'm' ? 'm' : '', since: +m.since || 0, gp: +m.gp || 0, nl: String(m.nl || '').slice(0, 12), ph: typeof m.ph === 'string' && m.ph.startsWith('data:image/jpeg;base64,') && m.ph.length < 30000 ? m.ph : '' }); if ($('usersSheet') && !$('usersSheet').classList.contains('hidden')) renderUsers(); } catch (e) {} }
+function userPub() { if (!S.dev || !S.me) return; const b = JSON.stringify(S.me.del ? { del: 1, name: '', emoji: '👤', seen: Date.now() } : Object.assign({ name: S.me.name, emoji: S.me.emoji, lang: LANG, a: meAuto() ? 1 : 0, cc: S.cc || '', seen: Date.now() }, meCard())); connectedClients().forEach(c => { try { c.publish(LNS + 'u/' + S.dev, b, { qos: 0, retain: true }); } catch (e) {} }); }
+function userGot(dev, str) { if (!dev || dev === S.dev || !str) return; try { const m = JSON.parse(str); USERS.set(dev, { dev, name: String(m.name || '?').slice(0, 16), emoji: String(m.emoji || '🙂').slice(0, 4), seen: +m.seen || 0, lang: m.lang, a: !!m.a, cc: ccOk(m.cc), g: m.g === 'm' || m.g === 'f' ? m.g : '', tz: String(m.tz || '').slice(0, 40), dv: m.dv === 'd' ? 'd' : m.dv === 'm' ? 'm' : '', since: +m.since || 0, gp: +m.gp || 0, nl: String(m.nl || '').slice(0, 12), ph: typeof m.ph === 'string' && m.ph.startsWith('data:image/jpeg;base64,') && m.ph.length < 30000 ? m.ph : '', del: !!m.del }); if ($('usersSheet') && !$('usersSheet').classList.contains('hidden')) renderUsers(); } catch (e) {} }
 setInterval(() => { if (started) userPub(); }, 5 * 60000);
 function agoText(ts) { const d = Math.max(0, Date.now() - ts) / 60000; if (d < 2) return tr('только что', 'just now'); if (d < 60) return tr(`${Math.round(d)} мин назад`, `${Math.round(d)} min ago`); if (d < 1440) return tr(`${Math.round(d / 60)} ч назад`, `${Math.round(d / 60)} h ago`); return tr(`${Math.round(d / 1440)} дн назад`, `${Math.round(d / 1440)} d ago`); }
 function isOnlineDev(dev) { const p = LOB.peers.get(dev); return !!(p && p.live); }
@@ -20404,18 +20404,24 @@ function renderUsers(focus) {
     setTimeout(() => inp.focus(), 50); return;
   }
   const blocked = S.blocked || [];
-  const list = [...USERS.values()].filter(u => !blocked.includes(u.dev)).map(u => Object.assign({}, u, { on: isOnlineDev(u.dev) })).sort((a, b) => (b.on - a.on) || (a.a - b.a) || (b.seen - a.seen)).slice(0, 200);
+  const list = [...USERS.values()].filter(u => !blocked.includes(u.dev)).map(u => Object.assign({}, u, { on: isOnlineDev(u.dev) })).sort((a, b) => (a.del - b.del) || (b.on - a.on) || (a.a - b.a) || (b.seen - a.seen)).slice(0, 200);
   const unread = d => (S.inbox || []).filter(x => x.f === d && !x.mine && !x.read).length;
-  body.append(h('button', { className: 'btn y', type: 'button', style: 'width:100%;margin-bottom:10px', on: { click: () => profileSheet('me') } }, '✏️ ' + tr('Моя анкета', 'My profile')));
   if (!list.length) body.append(h('p', { className: 'small' }, tr('Пока здесь пусто. Как только кто-то зайдёт на сайт, он появится в списке.', 'Nobody here yet. Everyone who visits the site shows up here.')));
   const grid = h('div', { className: 'pcards' }); body.append(grid);
+  grid.append(myCard());
   list.forEach(u => grid.append(pCard(u, unread(u.dev))));
 }
 function langName(l) { try { return new Intl.DisplayNames([LANG === 'en' ? 'en' : 'ru'], { type: 'language' }).of(l); } catch (e) { return l; } }
 function tzTime(tz) { try { return new Date().toLocaleTimeString(LANG === 'en' ? 'en-GB' : 'ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: tz }); } catch (e) { return ''; } }
 function sinceText(ts) { try { return new Date(ts).toLocaleDateString(LANG === 'en' ? 'en-GB' : 'ru-RU', { day: 'numeric', month: 'long' }); } catch (e) { return ''; } }
 function gamesW(n) { return tr(n % 10 === 1 && n % 100 !== 11 ? 'игра' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 'игры' : 'игр', n === 1 ? 'game' : 'games'); }
-function pCard(u, n) {
+function myCard() {
+  const u = Object.assign({ dev: S.dev, name: S.me.name, emoji: S.me.emoji, a: meAuto(), cc: S.cc, seen: Date.now(), on: true, del: !!S.me.del }, meCard());
+  const c = pCard(u, 0, true); c.classList.add('me'); c.addEventListener('click', () => profileSheet('me')); return c;
+}
+function pCard(u, n, me) {
+  if (u.del) return h('div', { className: 'pcard del' + (me ? ' me' : '') }, h('div', { className: 'pav' }, '👤', h('i')), h('b', { className: 'pnm' }, tr('Удалённый профиль', 'Deleted profile')),
+    h('div', { className: 'pst' }, me ? tr('это ты · нажми, чтобы вернуть', 'this is you · tap to restore') : tr('был(а) ', 'seen ') + agoText(u.seen)));
   const g = u.g === 'f' ? '♀' : u.g === 'm' ? '♂' : '';
   const facts = [];
   if (u.cc) facts.push(ccFlag(u.cc) + ' ' + ccName(u.cc));
@@ -20428,9 +20434,9 @@ function pCard(u, n) {
   return h('div', { className: 'pcard' + (u.on ? ' on' : '') },
     h('div', { className: 'pav' }, u.ph ? h('img', { src: u.ph, alt: '' }) : u.emoji, h('i')),
     h('b', { className: 'pnm' + (u.a ? ' nick' : '') }, u.name + (g ? ' ' : ''), g ? h('span', { className: 'pg ' + u.g }, g) : null),
-    h('div', { className: 'pst' }, u.on ? tr('на сайте', 'online') : tr('был(а) ', 'seen ') + agoText(u.seen)),
+    h('div', { className: 'pst' }, me ? tr('это ты', 'this is you') : u.on ? tr('на сайте', 'online') : tr('был(а) ', 'seen ') + agoText(u.seen)),
     h('div', { className: 'pfx' }, ...facts.map(f => h('span', {}, f))),
-    h('div', { className: 'pbt' }, h('button', { className: 'btn c', type: 'button', title: tr('Позвать играть', 'Invite to play'), on: { click: () => callToPlay(u) } }, '🎮'),
+    me ? h('div', { className: 'pbt' }, h('button', { className: 'btn y', type: 'button' }, '✏️ ' + tr('Моя анкета', 'My profile'))) : h('div', { className: 'pbt' }, h('button', { className: 'btn c', type: 'button', title: tr('Позвать играть', 'Invite to play'), on: { click: () => callToPlay(u) } }, '🎮'),
       h('button', { className: 'btn g', type: 'button', title: tr('Написать', 'Message'), on: { click: () => renderUsers(u.dev) } }, '💬' + (n ? ' ' + n : ''))));
 }
 function renderUsersBtn() {
@@ -20492,11 +20498,12 @@ function photoRow() {
     box.append(h('div', { className: 'pav big' }, src ? h('img', { src, alt: '' }) : S.me.emoji));
     const btns = h('div', { className: 'pphb' });
     if (pending) btns.append(
-      h('button', { className: 'btn y', type: 'button', on: { click: () => { S.me.ph = pending; save(); userPub(); draw(); toast('✅ ' + tr('Фото в анкете', 'Photo added'), 1500); } } }, '✅ ' + tr('Оставить', 'Keep')),
+      h('button', { className: 'btn y', type: 'button', on: { click: () => { S.me.ph = pending; save(); userPub(); draw(); toast('✅ ' + tr('Фото в анкете', 'Photo added'), 1500); } } }, '✅ ' + tr('В анкету', 'Use it')),
       h('button', { className: 'btn g', type: 'button', on: { click: () => shoot() } }, '🔄 ' + tr('Ещё раз', 'Retake')),
       h('button', { className: 'btn g', type: 'button', on: { click: () => draw() } }, tr('Не надо', 'No')));
     else {
-      btns.append(h('button', { className: 'btn c', type: 'button', on: { click: () => shoot() } }, '📸 ' + (S.me.ph ? tr('Новое фото', 'New photo') : tr('Фото для анкеты', 'Profile photo'))));
+      btns.append(h('button', { className: 'btn c', type: 'button', on: { click: () => shoot() } }, '📸 ' + (S.me.ph ? tr('Новое фото', 'New photo') : tr('С камеры', 'From camera'))),
+        h('button', { className: 'btn g', type: 'button', on: { click: () => file.click() } }, '🖼 ' + tr('Из галереи', 'From gallery')));
       if (S.me.ph) btns.append(h('button', { className: 'btn g', type: 'button', on: { click: () => { S.me.ph = ''; save(); userPub(); draw(); } } }, '🗑 ' + tr('Убрать', 'Remove')));
     }
     box.append(btns);
@@ -20506,7 +20513,13 @@ function photoRow() {
     if (!d) { toast('📷 ' + tr('Включи камеру, чтобы сделать фото', 'Turn the camera on to take a photo'), 2500); return; }
     draw(d);
   };
-  draw(); return box;
+  const file = h('input', { type: 'file', accept: 'image/*', style: 'display:none', on: { change: () => {
+    const f = file.files && file.files[0]; if (!f) return; const img = new Image(); const url = URL.createObjectURL(f);
+    img.onload = () => { const side = Math.min(img.width, img.height), c = document.createElement('canvas'); c.width = c.height = 128; c.getContext('2d').drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, 128, 128); URL.revokeObjectURL(url); draw(c.toDataURL('image/jpeg', .72)); };
+    img.src = url; file.value = ''; } } });
+  box.append(file); draw();
+  if (!S.me.ph) setTimeout(() => snapFace().then(d => { if (d && box.isConnected && !box.querySelector('.btn.y')) draw(d); }), 400);
+  return box;
 }
 // a small window: name, gender and «call someone to play». Can be closed without filling anything in.
 function profileSheet(why, after) {
@@ -20517,9 +20530,9 @@ function profileSheet(why, after) {
     : why === 'me' ? '✏️ ' + tr('Моя анкета', 'My profile') : '👋 ' + tr('Давай познакомимся', 'Let\'s get acquainted');
   const inp = h('input', { type: 'text', maxLength: 16, value: meAuto() ? '' : S.me.name, placeholder: tr('Твоё имя', 'Your name'), className: 'pin' });
   const gb = (v, l) => h('button', { type: 'button', className: 'pgb' + (g === v ? ' on' : ''), on: { click: e => { g = g === v ? '' : v; sh.querySelectorAll('.pgb').forEach(b => b.classList.toggle('on', b === e.currentTarget && g === v)); } } }, l);
-  const close = () => { sh.remove(); };
+  const close = () => { sh.remove(); if ($('usersSheet') && !$('usersSheet').classList.contains('hidden')) renderUsers(); };
   const saveIt = () => {
-    const v = inp.value.trim(); if (v) S.me.name = v.slice(0, 16); S.me.g = g; save();
+    const v = inp.value.trim(); if (v) S.me.name = v.slice(0, 16); S.me.g = g; S.me.del = false; save();
     try { renderStatus(); } catch (e) {} lobbyPub(); userPub(); close();
     if (after) after(); else { toast('✅ ' + tr('Сохранено', 'Saved'), 1500); }
   };
@@ -20536,9 +20549,12 @@ function profileSheet(why, after) {
       photoRow(),
       inp,
       h('div', { className: 'pgr' }, gb('m', '♂ ' + tr('Парень', 'Guy')), gb('f', '♀ ' + tr('Девушка', 'Girl'))),
-      h('button', { className: 'btn y', type: 'button', style: 'width:100%;margin-top:10px', on: { click: saveIt } }, why === 'call' ? '🎮 ' + tr('Сохранить и позвать', 'Save and invite') : tr('Сохранить', 'Save')),
+      h('button', { className: 'btn y', type: 'button', style: 'width:100%;margin-top:10px', on: { click: saveIt } }, S.me.del && why === 'me' ? '↩️ ' + tr('Вернуть анкету', 'Restore my profile') : why === 'call' ? '🎮 ' + tr('Сохранить и позвать', 'Save and invite') : tr('Сохранить', 'Save')),
       why === 'call' ? h('button', { className: 'btn g', type: 'button', style: 'width:100%;margin-top:8px', on: { click: () => { close(); after && after(); } } }, tr('Позвать без имени', 'Invite without a name')) : null,
-      inv));
+      inv,
+      why === 'me' && !S.me.del ? h('button', { className: 'btn g pdel', type: 'button', on: { click: e => {
+        const b = e.currentTarget; if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = '⚠️ ' + tr('Точно удалить? Нажми ещё раз', 'Sure? Tap again'); return; }
+        S.me.del = true; S.me.ph = ''; save(); lobbyPub(); userPub(); close(); toast('🗑 ' + tr('Анкета удалена', 'Profile deleted'), 2000); if ($('usersSheet') && !$('usersSheet').classList.contains('hidden')) renderUsers(); } } }, '🗑 ' + tr('Удалить мою анкету', 'Delete my profile')) : null));
   document.body.append(sh); setTimeout(() => inp.focus(), 120);
 }
 // games played (shown in the profile card)
@@ -20559,7 +20575,7 @@ function botCountdown() {
     clearInterval(iv); bar.remove(); playBotWhileWaiting(); openArc(5);
   }, 1000);
 }
-document.head.append(h('style', {}, '.pcards{display:grid;grid-template-columns:1fr 1fr;gap:10px}.pcard{background:#f6f2ff;border-radius:18px;padding:12px 10px 10px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:3px}.pcard.on{background:#eafbf1}.pav{position:relative;width:62px;height:62px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:36px;box-shadow:0 3px 10px rgba(80,40,160,.15)}.pav img{width:100%;height:100%;border-radius:50%;object-fit:cover}.pav.big{width:72px;height:72px;font-size:42px;flex:none}.pph{display:flex;align-items:center;gap:12px;margin:0 0 10px}.pphb{display:flex;flex-wrap:wrap;gap:6px}.pphb .btn{padding:8px 11px;font-size:14px}.pav i{position:absolute;right:2px;bottom:2px;width:13px;height:13px;border-radius:50%;background:#c9c0e0;border:2px solid #fff}.pcard.on .pav i{background:#2ecc71}.pnm{font-size:15px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:4px}.pnm.nick{font-style:italic;opacity:.65;font-weight:700}.pg{font-weight:900}.pg.f{color:#e84393}.pg.m{color:#0984e3}.pst{font-size:12px;font-weight:800;color:var(--muted)}.pfx{display:flex;flex-direction:column;gap:1px;font-size:11.5px;font-weight:700;color:#5d5478;margin:4px 0 6px;line-height:1.3}.pbt{display:flex;gap:6px;margin-top:auto}.pbt .btn{padding:7px 12px;font-size:15px}.pin{width:100%;box-sizing:border-box;font:inherit;font-size:16px;padding:11px 14px;border-radius:14px;border:2px solid #e3dbff}.pgr{display:flex;gap:8px;margin-top:10px}.pgb{flex:1;border:2px solid #e3dbff;background:#fff;border-radius:14px;padding:10px;font:inherit;font-weight:800;cursor:pointer;color:var(--ink)}.pgb.on{background:#7c3aed;border-color:#7c3aed;color:#fff}.pinv{margin-top:14px;padding-top:12px;border-top:1px dashed #e3dbff;display:flex;flex-wrap:wrap;gap:8px}.pinv .pl{flex:1 1 100%;font-weight:900;font-size:14px}.pinv .btn{padding:8px 12px;font-size:14px}#profSheet .card{max-height:88vh;overflow:auto}#onlineBar .nick,.urow .un b.nick{font-style:italic;opacity:.72;font-weight:600}#nameBar,#botCd{position:fixed;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 14px);z-index:95;margin:0 auto;box-shadow:0 8px 30px rgba(0,0,0,.3);max-width:520px}#botCd{justify-content:space-between;flex-wrap:nowrap}#botCd b{font-size:18px;color:var(--violet)}'));
+document.head.append(h('style', {}, '.pcards{display:grid;grid-template-columns:1fr 1fr;gap:10px}.pcard{background:#f6f2ff;border-radius:18px;padding:12px 10px 10px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:3px}.pcard.on{background:#eafbf1}.pav{position:relative;width:62px;height:62px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:36px;box-shadow:0 3px 10px rgba(80,40,160,.15)}.pcard.me{background:#fff7d6;cursor:pointer;outline:2px solid #ffd23f}.pcard.del{opacity:.55}.pdel{width:100%;margin-top:14px;color:#c0392b}#profSheet{z-index:120}.pav img{width:100%;height:100%;border-radius:50%;object-fit:cover}.pav.big{width:72px;height:72px;font-size:42px;flex:none}.pph{display:flex;align-items:center;gap:12px;margin:0 0 10px}.pphb{display:flex;flex-wrap:wrap;gap:6px}.pphb .btn{padding:8px 11px;font-size:14px}.pav i{position:absolute;right:2px;bottom:2px;width:13px;height:13px;border-radius:50%;background:#c9c0e0;border:2px solid #fff}.pcard.on .pav i{background:#2ecc71}.pnm{font-size:15px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:4px}.pnm.nick{font-style:italic;opacity:.65;font-weight:700}.pg{font-weight:900}.pg.f{color:#e84393}.pg.m{color:#0984e3}.pst{font-size:12px;font-weight:800;color:var(--muted)}.pfx{display:flex;flex-direction:column;gap:1px;font-size:11.5px;font-weight:700;color:#5d5478;margin:4px 0 6px;line-height:1.3}.pbt{display:flex;gap:6px;margin-top:auto}.pbt .btn{padding:7px 12px;font-size:15px}.pin{width:100%;box-sizing:border-box;font:inherit;font-size:16px;padding:11px 14px;border-radius:14px;border:2px solid #e3dbff}.pgr{display:flex;gap:8px;margin-top:10px}.pgb{flex:1;border:2px solid #e3dbff;background:#fff;border-radius:14px;padding:10px;font:inherit;font-weight:800;cursor:pointer;color:var(--ink)}.pgb.on{background:#7c3aed;border-color:#7c3aed;color:#fff}.pinv{margin-top:14px;padding-top:12px;border-top:1px dashed #e3dbff;display:flex;flex-wrap:wrap;gap:8px}.pinv .pl{flex:1 1 100%;font-weight:900;font-size:14px}.pinv .btn{padding:8px 12px;font-size:14px}#profSheet .card{max-height:88vh;overflow:auto}#onlineBar .nick,.urow .un b.nick{font-style:italic;opacity:.72;font-weight:600}#nameBar,#botCd{position:fixed;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 14px);z-index:95;margin:0 auto;box-shadow:0 8px 30px rgba(0,0,0,.3);max-width:520px}#botCd{justify-content:space-between;flex-wrap:nowrap}#botCd b{font-size:18px;color:var(--violet)}'));
 $('bFind').onclick = () => { lobbyStart(); toast('🔍 ' + tr('Ищем случайного игрока…', 'Looking for a random player…')); };
 
 /* ---------------- translations for the newer UI ---------------- */
@@ -20599,7 +20615,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202611094500';
+const APP_VERSION = '202611094600';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
