@@ -18697,7 +18697,7 @@ function startNet() {
         will: { topic: topicP(S.dev), payload: '', retain: true, qos: 0 } });
     } catch (e) { return { url, connected: false, end() {}, publish() {} }; }
     c.url = url;
-    c.on('connect', () => { c.subscribe([NS + S.pair.id + '/p/+', topicM(S.dev), ...lobbyTopics()], { qos: 0 }); if (LOB.on) LOB.subAt = Date.now(); if (LOB.on) setTimeout(lobbyPub, 300); try { c.publish(topicP(S.dev), presencePayload(), { qos: 0, retain: true }); } catch (e) {} renderNet(); });
+    c.on('connect', () => { c.subscribe([NS + S.pair.id + '/p/+', topicM(S.dev), ...lobbyTopics()], { qos: 0 }); if (LOB.on) LOB.subAt = Date.now(); if (started) setTimeout(lobbyPub, 300); try { c.publish(topicP(S.dev), presencePayload(), { qos: 0, retain: true }); } catch (e) {} renderNet(); });
     ['close', 'offline', 'error', 'reconnect'].forEach(ev => c.on(ev, () => renderNet()));
     c.on('message', (topic, buf) => onWire(topic, buf ? buf.toString() : ''));
     return c;
@@ -20096,7 +20096,7 @@ $('installSheet').onclick = e => { if (e.target === $('installSheet')) $('instal
    Strangers never see/hear you unless you press «Показать себя». */
 const LNS = NS + 'lobby/';
 const LOB = { on: false, searching: false, peers: new Map(), skip: new Map(), inviting: null, match: null, saved: null, showCam: false, lastPub: 0 };
-function lobbyTopics() { return LOB.on ? [LNS + 'p/+', LNS + 'm/' + S.dev, LNS + 'hi'] : []; }
+function lobbyTopics() { return S.dev ? [LNS + 'p/+', LNS + 'm/' + S.dev, LNS + 'hi'] : []; }
 function lobbyPub(clear) {
   const body = clear ? '' : JSON.stringify({ d: S.dev, name: S.me.name, emoji: S.me.emoji, lang: LANG, st: LOB.searching ? 'free' : 'busy', ts: Date.now() });
   connectedClients().forEach(c => { try { c.publish(LNS + 'p/' + S.dev, body, { qos: 0, retain: true }); } catch (e) {} });
@@ -20113,10 +20113,10 @@ function lobbyStart() {
   setTimeout(() => connectedClients().forEach(c => { try { c.publish(LNS + 'hi', S.dev, { qos: 0 }); } catch (e) {} }), 400);
   if (!connectedClients().length) setTimeout(() => { if (LOB.on) { lobbySubscribe(); lobbyPub(); } }, 3000);
 }
-function lobbyStop() { LOB.searching = false; LOB.inviting = null; if (!LOB.match) { lobbyPub(true); LOB.on = false; } else lobbyPub(); renderLobby(); }
+function lobbyStop() { LOB.searching = false; LOB.inviting = null; if (!LOB.match) LOB.on = false; lobbyPub(); renderLobby(); }
 function lobbyWire(topic, str) {
   const rest = topic.slice(LNS.length).split('/');
-  if (rest[0] === 'hi') { if (str !== S.dev && LOB.on) setTimeout(lobbyPub, 200 + Math.random() * 600); return; }
+  if (rest[0] === 'hi') { if (str !== S.dev && started) setTimeout(lobbyPub, 200 + Math.random() * 600); return; }
   if (rest[0] === 'p') {
     const dev = rest[1]; if (!dev || dev === S.dev) return;
     if (!str) { LOB.peers.delete(dev); renderLobby(); return; }
@@ -20124,7 +20124,7 @@ function lobbyWire(topic, str) {
     if (m.ts && Math.abs(Date.now() - m.ts) > 30 * 60000) { LOB.peers.delete(dev); return; } // only drop very old retained ghosts (phone clocks may differ)
     const prev = LOB.peers.get(dev); // a retained doc right after subscribing may be someone who already left: count them once they announce again
     LOB.peers.set(dev, { live: !!(prev && prev.live) || !!prev || Date.now() - (LOB.subAt || 0) > 3000, dev, name: String(m.name || '?').slice(0, 16), emoji: String(m.emoji || '🙂').slice(0, 4), st: m.st, seen: Date.now(), ts: m.ts || Date.now(), lang: m.lang });
-    const now1 = LOB.peers.get(dev); if (now1.live && !(prev && prev.live)) toast(`👋 ${tr('На сайт зашёл', 'Someone joined')} ${now1.emoji} ${now1.name}`, 2500);
+    const now1 = LOB.peers.get(dev); if (now1.live && !(prev && prev.live) && Date.now() - (LOB.subAt || 0) > 6000) toast(`👋 ${tr('На сайт зашёл', 'Someone joined')} ${now1.emoji} ${now1.name}`, 2500);
     renderLobby(); return;
   }
   if (rest[0] !== 'm' || rest[1] !== S.dev) return;
@@ -20149,7 +20149,9 @@ function lobbyWire(topic, str) {
   }
 }
 setInterval(() => {
-  if (!started || !LOB.on) return;
+  if (!started) return;
+  if (Date.now() - LOB.lastPub > 12000) lobbyPub(); // presence for the «online now» list, searching or not
+  if (!LOB.on) { for (const [d, p] of LOB.peers) if (now0() - p.seen > 40000) LOB.peers.delete(d); renderOnline(); return; }
   if (LOB.searching && !LOB.match && online) { lobbyStop(); return; } // the partner came: stop searching
   const now = Date.now();
   if (LOB.searching && !LOB.botHint && now - (LOB.since || now) > 5000 && !Arcade.current() && !gameId) { LOB.botHint = true; toast('🤖 ' + tr('Пока ищем, сыграй с ботом. Как только найдётся живой игрок, переключим к нему', 'While we search, play the bot. As soon as a real player shows up, we switch you to them'), 5000); }
@@ -20198,7 +20200,7 @@ function showMeToStranger() {
   send({ t: 'cam', on: LOB.showCam }); renderLobby();
 }
 function renderLobby() {
-  demoRender();
+  demoRender(); renderOnline();
   const bar = $('lobbyBar'); if (!bar) return;
   const n = [...LOB.peers.values()].filter(p => p.live).length; // only people who are really on the site now
   $('bFind').classList.toggle('hidden', LOB.searching || !!LOB.match);
@@ -20264,6 +20266,19 @@ setInterval(() => {
     connectedClients().slice(0, 1).forEach(c => { try { c.publish(NS + 'dbg/' + S.dev, JSON.stringify(st), { qos: 0 }); } catch (e) {} });
   } catch (e) {}
 }, 4000);
+function now0() { return Date.now(); }
+// who is on the site right now: names of everyone online, shown on the main screen and while playing
+const onlineBar = h('div', { id: 'onlineBar' });
+$('status').after(onlineBar);
+document.head.append(h('style', {}, '#onlineBar{font-size:13px;font-weight:700;color:#fff;opacity:.92;margin:-2px 4px 8px;line-height:1.35;overflow-wrap:anywhere}#onlineBar:empty{display:none}#onlineBar b{font-weight:900}#arcHud #onlineBar,.ingame #onlineBar{font-size:12px}'));
+function renderOnline() {
+  const live = [...LOB.peers.values()].filter(p => p.live);
+  if (!started) { onlineBar.textContent = ''; return; }
+  const names = live.map(p => `${p.emoji} ${p.name}${p.st === 'free' ? ' 🔍' : ''}`);
+  onlineBar.innerHTML = ''; onlineBar.append(h('b', {}, `🟢 ${tr('Сейчас на сайте', 'Online now')}: ${live.length + 1}`), document.createTextNode(' · ' + [tr('ты', 'you')].concat(names).join(', ')));
+}
+function presenceStart() { lobbySubscribe(); lobbyPub(); setTimeout(() => connectedClients().forEach(c => { try { c.publish(LNS + 'hi', S.dev, { qos: 0 }); } catch (e) {} }), 400); }
+addEventListener('pagehide', () => { try { lobbyPub(true); } catch (e) {} });
 $('bFind').onclick = () => { lobbyStart(); toast('🔍 ' + tr('Ищем случайного игрока…', 'Looking for a random player…')); };
 
 /* ---------------- translations for the newer UI ---------------- */
@@ -20303,7 +20318,7 @@ Arcade.getFace = () => (FX.face && FX.face.ok && Date.now() - FX.face.ts < 1200)
 Arcade.getVideo = local => local ? $('localV') : $('remoteV');
 
 /* ---------------- updates: tell the user when a newer version is on the site ---------------- */
-const APP_VERSION = '202611091700';
+const APP_VERSION = '202611091800';
 let updShown = false;
 async function checkUpdate() {
   if (updShown || location.protocol === 'file:') return;
@@ -24398,7 +24413,7 @@ function startMain() {
   applyStatic();
   show('scrMain'); started = true; renderStatus(); renderVideo(); renderGrid(); renderMaskBtn(); updateShotBadge(); renderPoints(); setManifest(); maybeAskInstall();
   setTimeout(() => { if (!online && !LOB.on) lobbyStart(); }, S.friend ? 5000 : 1500); // search for a player by default while the partner is not here
-  startNet();
+  startNet(); setTimeout(() => { try { presenceStart(); } catch (e) {} }, 1200);
   // camera and microphone are always on: start them right away (first launch asks for permission)
   S.micOff = false; save(); startCam(true);
 }
